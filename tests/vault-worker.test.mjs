@@ -611,3 +611,73 @@ test('Vault Coordinator reports a temporary read failure instead of treating a m
   assert.match((await responseJson(read)).error, /temporarily unavailable/);
   assert.equal(storageMap.has('vault-packet:' + dateString), false);
 });
+
+
+test('invalid device signatures consume their nonce and cannot be replayed with a later valid signature', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const publicKeySpki = base64Url(publicKeyBytes);
+  const deviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', publicKeyBytes)));
+
+  const challengeResponse = await coordinator.fetch(coordinatorRequest('/device/challenge', {
+    method: 'POST',
+    body: { deviceId, publicKeySpki }
+  }));
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await responseJson(challengeResponse);
+  const challengeKey = 'device-challenge:' + challenge.challengeId;
+  assert.equal(storageMap.has(challengeKey), true);
+
+  const invalid = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: {
+      challengeId: challenge.challengeId,
+      deviceId,
+      signature: base64Url(new Uint8Array(64))
+    }
+  }));
+  assert.equal(invalid.status, 401);
+  assert.equal(storageMap.has(challengeKey), false);
+
+  const validSignature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+  const replay = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: {
+      challengeId: challenge.challengeId,
+      deviceId,
+      signature: validSignature
+    }
+  }));
+  assert.equal(replay.status, 401);
+  assert.equal([...storageMap.keys()].some(key => key.startsWith('device-session:')), false);
+});
+
+test('Durable Object alarm purges a device session when its two-minute idle expiry is reached', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const { deviceId, sessionToken } = await createCoordinatorSession(coordinator);
+  const sessionHash = await (async () => {
+    const digest = new Uint8Array(await webcrypto.subtle.digest(
+      'SHA-256', new TextEncoder().encode(sessionToken)
+    ));
+    return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  })();
+  const sessionKey = 'device-session:' + sessionHash;
+  const record = storageMap.get(sessionKey);
+  assert.equal(record.deviceId, deviceId);
+  record.idleExpiresAt = Date.now() - 1;
+  storageMap.set(sessionKey, record);
+
+  await coordinator.alarm();
+  assert.equal(storageMap.has(sessionKey), false);
+});
