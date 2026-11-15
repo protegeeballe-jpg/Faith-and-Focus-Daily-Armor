@@ -681,3 +681,50 @@ test('Durable Object alarm purges a device session when its two-minute idle expi
   await coordinator.alarm();
   assert.equal(storageMap.has(sessionKey), false);
 });
+
+
+test('device challenge and verification do not perform the vault packet-index KV bootstrap', async () => {
+  const { coordinator, failures, storageMap } = makeCoordinator();
+  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  assert.equal(initialized.status, 200);
+
+  // A challenge is an authentication operation; it must not read the KV
+  // packet index merely because this is the first request to this Coordinator.
+  failures.get = true;
+  const session = await createCoordinatorSession(coordinator);
+  assert.equal(typeof session.sessionToken, 'string');
+  assert.equal(storageMap.has('vault-index'), false);
+});
+
+test('rotating the account write credential revokes all existing device sessions', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  const first = await createCoordinatorSession(coordinator);
+  const second = await createCoordinatorSession(coordinator);
+  assert.equal([...storageMap.keys()].filter(key => key.startsWith('device-session:')).length, 2);
+
+  const rotated = await coordinator.fetch(coordinatorRequest('/admin/rotate-token', {
+    method: 'POST',
+    token: 'R'.repeat(43),
+    body: {}
+  }));
+  assert.equal(rotated.status, 200);
+  assert.equal([...storageMap.keys()].some(key => key.startsWith('device-session:')), false);
+
+  const staleRequest = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: first.sessionToken
+  }));
+  assert.equal(staleRequest.status, 401);
+  const secondStaleRequest = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: second.sessionToken
+  }));
+  assert.equal(secondStaleRequest.status, 401);
+});
