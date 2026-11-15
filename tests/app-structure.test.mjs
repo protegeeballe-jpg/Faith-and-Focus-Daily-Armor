@@ -474,7 +474,11 @@ test('unified vault login derives separate credentials and synchronizes encrypte
  assert.doesNotMatch(session,/sessionStorage/);
  assert.match(sync,/setTimeout\([\s\S]*?5000\)/);
  assert.match(sync,/X-App-Client/);
- assert.match(sync,/X-Write-Token/);
+ assert.match(sync,/X-Vault-Membership/);
+ assert.match(sync,/X-Device-Session/);
+ assert.doesNotMatch(sync,/X-Write-Token/);
+ assert.match(session,/X-Write-Token/);
+ assert.match(session,/establishDeviceSession/);
  assert.match(sync,/encryptDailyBundle/);
  assert.match(sync,/decryptDailyBundle/);
  assert.match(sync,/putLocalDailyPacket/);
