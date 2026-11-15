@@ -69,8 +69,8 @@ test('the account passphrase is reused for Diary migration only after cryptograp
 
   const verify = extract(
     writing,
-    'async function derivePreviousWritingKeyFromPassphrase(passphrase) {',
-    'async function migratePreviousDiaryRecords(previousKey) {'
+    'async function derivePreviousWritingKeyFromPassphrase(passphrase){',
+    'async function migratePreviousDiaryRecords(previousKey){'
   );
   assert.match(verify, /derivePrivateWritingKey\(passphrase/);
   assert.match(verify, /crypto\.subtle\.decrypt/);
@@ -79,8 +79,8 @@ test('the account passphrase is reused for Diary migration only after cryptograp
 
   const adopt = extract(
     writing,
-    'export async function adoptVaultEncryptionKey(key,accountPassphrase=\'\') {',
-    'export function clearVaultEncryptionKey() {'
+    'export async function adoptVaultEncryptionKey(key,accountPassphrase=\'\'){',
+    'export function clearVaultEncryptionKey(){'
   );
   assert.match(adopt, /derivePreviousWritingKeyFromPassphrase\(accountPassphrase\)/);
   assert.match(adopt, /return \{legacyMigrationRequired:true,legacyKeyUnavailable\}/);
