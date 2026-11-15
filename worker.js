@@ -8,6 +8,91 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const PACKET_FORMAT = "faith-focus-encrypted-daily-packet";
 const encoder = new TextEncoder();
 
+const LEGACY_VAULT_ID_DOMAIN = "FaithFocus|VaultID|v1|";
+const MEMBERSHIP_TICKET_TTL_MS = 5 * 60 * 1000;
+const DEVICE_CHALLENGE_TTL_MS = 60 * 1000;
+const DEVICE_SESSION_IDLE_MS = 2 * 60 * 1000;
+const DEVICE_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
+const MAX_DEVICES_PER_VAULT = 10;
+const MAX_PENDING_DEVICE_CHALLENGES = 3;
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const DEVICE_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{86}$/;
+
+function fromBase64Url(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new TypeError("Invalid base64url value.");
+  }
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/")
+    + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+async function createVaultMembershipTicket(vaultId, pepper) {
+  if (!VAULT_ID_PATTERN.test(vaultId || "")
+      || typeof pepper !== "string" || pepper.length < 32) {
+    throw new Error("Vault membership signing is not configured.");
+  }
+  const payload = {
+    version: 1,
+    vaultId,
+    expiresAt: Date.now() + MEMBERSHIP_TICKET_TTL_MS
+  };
+  const encodedPayload = encodeBase64Url(encoder.encode(JSON.stringify(payload)));
+  const signature = await hmacHex(
+    pepper,
+    "FaithFocus|vault-membership|v1|" + encodedPayload
+  );
+  return encodedPayload + "." + signature;
+}
+
+async function verifyVaultMembershipTicket(ticket, vaultId, pepper) {
+  if (typeof ticket !== "string" || ticket.length > 1024
+      || typeof pepper !== "string" || pepper.length < 32) return false;
+  const parts = ticket.split(".");
+  if (parts.length !== 2 || !/^[a-f0-9]{64}$/.test(parts[1])) return false;
+
+  let payload;
+  try {
+    const expected = await hmacHex(
+      pepper,
+      "FaithFocus|vault-membership|v1|" + parts[0]
+    );
+    if (!constantTimeEqual(expected, parts[1])) return false;
+    payload = JSON.parse(new TextDecoder().decode(fromBase64Url(parts[0])));
+  } catch {
+    return false;
+  }
+
+  const now = Date.now();
+  return Boolean(payload && payload.version === 1
+    && payload.vaultId === vaultId
+    && Number.isSafeInteger(payload.expiresAt)
+    && payload.expiresAt > now
+    && payload.expiresAt <= now + MEMBERSHIP_TICKET_TTL_MS + 30_000);
+}
+
+async function validateDevicePublicKey(publicKeySpki, deviceId) {
+  if (!DEVICE_ID_PATTERN.test(deviceId || "")
+      || typeof publicKeySpki !== "string"
+      || publicKeySpki.length < 80 || publicKeySpki.length > 180) return false;
+  try {
+    const spki = fromBase64Url(publicKeySpki);
+    if (spki.byteLength < 64 || spki.byteLength > 128) return false;
+    const digest = await sha256Bytes(spki);
+    if (!constantTimeEqual(encodeBase64Url(digest), deviceId)) return false;
+    const key = await crypto.subtle.importKey(
+      "spki", spki,
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"]
+    );
+    return key.algorithm?.name === "ECDSA" && key.algorithm?.namedCurve === "P-256";
+  } catch {
+    return false;
+  }
+}
+
 function jsonResponse(body, status, origin = null) {
   const headers = new Headers({
     "Content-Type": "application/json; charset=utf-8",
@@ -226,19 +311,20 @@ function withCorsPreflight() {
     headers: {
       "Access-Control-Allow-Origin": APP_ORIGIN,
       "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-App-Client, X-Write-Token, X-Base-Updated-At",
+      "Access-Control-Allow-Headers": "Content-Type, X-App-Client, X-Write-Token, X-Base-Updated-At, X-Vault-Membership, X-Device-Session, X-Legacy-Username",
       "Access-Control-Max-Age": "600",
       "Vary": "Origin"
     }
   });
 }
 
-async function callCoordinator(env, vaultId, path, { token, oldToken, body } = {}) {
+async function callCoordinator(env, vaultId, path, { token, oldToken, sessionToken, body } = {}) {
   const id = env.VAULT_COORDINATOR.idFromName(vaultId);
   const stub = env.VAULT_COORDINATOR.get(id);
   const headers = new Headers({ "X-Vault-Id": vaultId });
   if (token) headers.set("X-Write-Token", token);
   if (oldToken) headers.set("X-Legacy-Write-Token", oldToken);
+  if (sessionToken) headers.set("X-Device-Session", sessionToken);
   if (body !== undefined) headers.set("Content-Type", "application/json");
   return stub.fetch(new Request("https://vault-coordinator.internal" + path, {
     method: body === undefined ? "POST" : "POST",
@@ -279,7 +365,7 @@ export default {
       }
       try {
         bodyText = await readBodyLimited(request, MAX_REQUEST_BYTES);
-      } catch (error) {
+      } catch {
         return jsonResponse({ error: "The request body could not be read safely." }, 400, origin);
       }
       if (bodyText === null) return jsonResponse({ error: "Request payload exceeds the 1 MB limit." }, 413, origin);
@@ -291,28 +377,56 @@ export default {
         return jsonResponse({ error: "The account registry services are not configured. Please contact the app maintainer." }, 503, origin);
       }
       const route = accountRoute[1];
-      if (["signup", "migrate-legacy", "recover"].includes(route)
+      if (["signup", "migrate-legacy", "recover", "unlock", "complete-recovery"].includes(route)
           && (!env.RECOVERY_PEPPER || String(env.RECOVERY_PEPPER).length < 32)) {
-        return jsonResponse({ error: "Account recovery is not configured. Please contact the app maintainer." }, 503, origin);
+        return jsonResponse({ error: "Account security is not configured. Please contact the app maintainer." }, 503, origin);
       }
       const payload = await parseJsonBody(bodyText);
       if (!payload) return jsonResponse({ error: "Invalid JSON request body." }, 400, origin);
+
       if (route === "unlock") {
         const vaultId = payload.vaultId;
         const token = request.headers.get("X-Write-Token") || "";
         if (!VAULT_ID_PATTERN.test(vaultId || "") || !TOKEN_PATTERN.test(token)) {
           return jsonResponse({ error: "The account credentials were not accepted." }, 401, origin);
         }
+
+        // Check account-to-vault membership in the registry before creating or
+        // waking the per-vault Durable Object. Invalid IDs never reach KV.
+        const membershipResponse = await callRegistry(
+          env, "/vault-membership", { vaultId, action: "unlock" }, request
+        );
+        if (!membershipResponse.ok) {
+          return jsonResponse(
+            { error: "The username or passphrase was not accepted." },
+            membershipResponse.status === 429 ? 429 : 401,
+            origin
+          );
+        }
+
         const claimResponse = await callCoordinator(env, vaultId, "/claim", { token });
-        if (!claimResponse.ok) return jsonResponse({ error: "The username or passphrase was not accepted." }, claimResponse.status, origin);
+        if (!claimResponse.ok) {
+          return jsonResponse({ error: "The username or passphrase was not accepted." }, claimResponse.status, origin);
+        }
         const metadataResponse = await callRegistry(env, "/authenticated-envelope", { vaultId }, request);
         const metadata = await metadataResponse.json();
         if (!metadataResponse.ok) return jsonResponse(metadata, metadataResponse.status, origin);
-        return jsonResponse(metadata, 200, origin);
+
+        const membershipTicket = await createVaultMembershipTicket(vaultId, env.RECOVERY_PEPPER);
+        return jsonResponse({ ...metadata, membershipTicket }, 200, origin);
       }
 
       const registryResponse = await callRegistry(env, "/" + route, payload, request);
       const responseText = await registryResponse.text();
+      if (registryResponse.ok && ["signup", "migrate-legacy", "complete-recovery"].includes(route)) {
+        let result;
+        try { result = JSON.parse(responseText); }
+        catch { return jsonResponse({ error: "The account registry returned an invalid response." }, 502, origin); }
+        if (VAULT_ID_PATTERN.test(result?.vaultId || "")) {
+          result.membershipTicket = await createVaultMembershipTicket(result.vaultId, env.RECOVERY_PEPPER);
+        }
+        return jsonResponse(result, registryResponse.status, origin);
+      }
       return new Response(responseText, {
         status: registryResponse.status,
         headers: {
@@ -325,17 +439,52 @@ export default {
       });
     }
 
-    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2}))$/.exec(url.pathname);
+    // The legacy claim path is migration-only. It must use the deterministic
+    // username-derived Vault ID and pass a registry eligibility/rate-limit check.
+    const legacyClaim = /^\/vault\/([a-f0-9]{64})\/claim$/.exec(url.pathname);
+    const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
+    if (legacyClaim && legacyUsernameHeader) {
+      if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, origin);
+      const username = validUsername(legacyUsernameHeader);
+      const token = request.headers.get("X-Write-Token") || "";
+      if (!username || !TOKEN_PATTERN.test(token)) {
+        return jsonResponse({ error: "The existing vault credentials were not accepted." }, 401, origin);
+      }
+      const expectedVaultId = await sha256Hex(LEGACY_VAULT_ID_DOMAIN + username);
+      if (!constantTimeEqual(expectedVaultId, legacyClaim[1])) {
+        return jsonResponse({ error: "The legacy account reference is invalid." }, 400, origin);
+      }
+      if (!env.ACCOUNT_REGISTRY || !env.VAULT_COORDINATOR) {
+        return jsonResponse({ error: "The account registry services are not configured." }, 503, origin);
+      }
+      const eligibility = await callRegistry(
+        env, "/legacy-eligibility", { username, vaultId: legacyClaim[1] }, request
+      );
+      if (!eligibility.ok) {
+        return jsonResponse(
+          { error: "This account is not eligible for the legacy upgrade flow." },
+          eligibility.status === 429 ? 429 : 401,
+          origin
+        );
+      }
+      const claimResponse = await callCoordinator(env, legacyClaim[1], "/claim", { token });
+      if (!claimResponse.ok) {
+        return jsonResponse({ error: "The username or passphrase was not accepted." }, claimResponse.status, origin);
+      }
+      return jsonResponse({ ok: true, claimed: true, legacy: true }, 200, origin);
+    }
+
+    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
     if (!match || url.search || !VAULT_ID_PATTERN.test(match[1])) {
       return jsonResponse({ error: "Route not found." }, 404, origin);
     }
-    if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR) {
-      return jsonResponse({ error: "Cloudflare KV and Durable Object bindings are not configured." }, 503, origin);
+    if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR || !env.RECOVERY_PEPPER) {
+      return jsonResponse({ error: "Cloudflare vault services are not configured." }, 503, origin);
     }
 
     const [, vaultId, resource, dateString] = match;
-    const expectedMethods = resource === "claim" ? ["POST"]
-      : resource === "index" ? ["GET"] : ["GET", "PUT"];
+    const expectedMethods = resource === "index" ? ["GET"]
+      : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
     if (!expectedMethods.includes(request.method)) {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
@@ -346,32 +495,75 @@ export default {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
 
+    // This signed, short-lived ticket proves that the registry previously
+    // confirmed this Vault ID. It is an edge gate only; it cannot read data.
+    const membershipTicket = request.headers.get("X-Vault-Membership") || "";
+    if (!(await verifyVaultMembershipTicket(membershipTicket, vaultId, env.RECOVERY_PEPPER))) {
+      return jsonResponse({ error: "A valid account membership ticket is required. Please sign in again." }, 403, origin);
+    }
+
+    let payload = null;
+    if (bodyText) {
+      payload = await parseJsonBody(bodyText);
+      if (!payload) return jsonResponse({ error: "Invalid JSON request body." }, 400, origin);
+    }
+
     const token = request.headers.get("X-Write-Token") || "";
-    if (!TOKEN_PATTERN.test(token)) {
-      return jsonResponse({ error: "A valid vault write credential is required." }, 401, origin);
+    const sessionToken = request.headers.get("X-Device-Session") || "";
+
+    if (resource === "device/challenge") {
+      if (!payload || Object.keys(payload).length !== 2
+          || typeof payload.deviceId !== "string"
+          || typeof payload.publicKeySpki !== "string"
+          || !TOKEN_PATTERN.test(token)
+          || !(await validateDevicePublicKey(payload.publicKeySpki, payload.deviceId))) {
+        return jsonResponse({ error: "The device registration request is invalid." }, 400, origin);
+      }
+    } else if (resource === "device/verify") {
+      if (!payload || Object.keys(payload).length !== 3
+          || !DEVICE_ID_PATTERN.test(payload.deviceId || "")
+          || !DEVICE_ID_PATTERN.test(payload.challengeId || "")
+          || !DEVICE_SIGNATURE_PATTERN.test(payload.signature || "")) {
+        return jsonResponse({ error: "The device challenge response is invalid." }, 400, origin);
+      }
+      try {
+        if (fromBase64Url(payload.signature).byteLength !== 64) {
+          return jsonResponse({ error: "The device challenge signature has an invalid size." }, 400, origin);
+        }
+      } catch {
+        return jsonResponse({ error: "The device challenge signature is malformed." }, 400, origin);
+      }
+    } else {
+      if (!TOKEN_PATTERN.test(sessionToken)) {
+        return jsonResponse({ error: "A valid device session is required. Please sign in again." }, 401, origin);
+      }
+      if (resource === "device/session/revoke"
+          && (!payload || Object.keys(payload).length !== 1
+            || !DEVICE_ID_PATTERN.test(payload.deviceId || ""))) {
+        return jsonResponse({ error: "The device session revocation request is invalid." }, 400, origin);
+      }
     }
 
     const id = env.VAULT_COORDINATOR.idFromName(vaultId);
     const coordinator = env.VAULT_COORDINATOR.get(id);
-    const internalUrl = new URL("/" + resource, "https://vault-coordinator.internal");
-    if (dateString) internalUrl.pathname = "/day/" + dateString;
-
+    const internalPath = "/" + resource;
     const headers = new Headers({
       "Content-Type": "application/json",
-      "X-Write-Token": token,
       "X-Vault-Id": vaultId
     });
-    if (request.method === "PUT") {
-      headers.set("X-Base-Updated-At", request.headers.get("X-Base-Updated-At") || "none");
-    }
-    const response = await coordinator.fetch(new Request(internalUrl, {
-      method: request.method,
-      headers,
-      body: bodyText || undefined
-    }));
-    const responseText = await response.text();
+    if (resource === "device/challenge") headers.set("X-Write-Token", token);
+    if (sessionToken) headers.set("X-Device-Session", sessionToken);
+    const coordinatorResponse = await coordinator.fetch(new Request(
+      "https://vault-coordinator.internal" + internalPath,
+      {
+        method: request.method,
+        headers,
+        body: bodyText || undefined
+      }
+    ));
+    const responseText = await coordinatorResponse.text();
     return new Response(responseText, {
-      status: response.status,
+      status: coordinatorResponse.status,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
