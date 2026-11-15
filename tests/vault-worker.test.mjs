@@ -765,3 +765,38 @@ test('expired device challenges are consumed and rejected without creating a ses
   assert.equal(storageMap.has(key), false);
   assert.equal([...storageMap.keys()].some(item => item.startsWith('device-session:')), false);
 });
+
+
+test('invalid or expired device sessions are rejected before any packet-index KV read', async () => {
+  const { coordinator, storageMap, failures } = makeCoordinator();
+  failures.get = true;
+
+  const invalid = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: 'I'.repeat(43)
+  }));
+  assert.equal(invalid.status, 401);
+  assert.equal(storageMap.has('vault-index'), false);
+
+  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  assert.equal(initialized.status, 200);
+  const valid = await createCoordinatorSession(coordinator);
+  const digest = new Uint8Array(await webcrypto.subtle.digest(
+    'SHA-256', new TextEncoder().encode(valid.sessionToken)
+  ));
+  const hash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  const sessionKey = 'device-session:' + hash;
+  const sessionRecord = storageMap.get(sessionKey);
+  sessionRecord.idleExpiresAt = Date.now() - 1;
+  storageMap.set(sessionKey, sessionRecord);
+
+  const expired = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: valid.sessionToken
+  }));
+  assert.equal(expired.status, 401);
+  assert.equal(storageMap.has('vault-index'), false);
+});
