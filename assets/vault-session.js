@@ -9,7 +9,7 @@ import { startVaultSync, stopVaultSync } from './vault-sync.js';
 import { getOrCreateDeviceIdentity, signDeviceMessage } from './device-identity.js';
 import {
   adoptVaultEncryptionKey, clearVaultEncryptionKey,
-  flushAndSaveCurrentPrivateWriting, stopRegisteredVoiceNoteRecording
+  flushAndSaveCurrentPrivateWritingForLock, stopRegisteredVoiceNoteRecording
 } from './writing-security.js';
 
 const WORKER_ORIGIN = 'https://faith-focus-proxy.nine-westhigh.workers.dev';
@@ -193,7 +193,15 @@ function clearPendingLegacyAccount() {
   pendingLegacyAccount = null;
 }
 
+function concealApplicationViews() {
+  ['view-launcher', 'little-garden', 'view-diary', 'view-checklist'].forEach(id => {
+    byId(id)?.classList.add('hidden');
+  });
+  window.dispatchEvent(new Event('faith-focus:app-locked'));
+}
+
 function showLogin(message = 'Log in to your existing account and open all of its features.') {
+  concealApplicationViews();
   clearRecoverySession();
   clearPendingLegacyAccount();
   byId('view-pin')?.classList.remove('hidden');
@@ -271,7 +279,7 @@ function clearAnswerFields(prefix) {
 
 async function submitVaultLogin(event) {
   event.preventDefault();
-  if (loginInProgress || activeCredentials) return;
+  if (loginInProgress || locking || activeCredentials) return;
 
   const usernameField = byId('vault-username');
   const passphraseField = byId('vault-passphrase');
@@ -343,7 +351,6 @@ async function submitVaultLogin(event) {
 
     setStatus('vault-login-message', 'Checking your passphrase securely on this device…');
     loginMaterial = await deriveVaultLoginMaterial(account, passphrase);
-    passphrase = '';
     passphraseField.value = '';
 
     setStatus('vault-login-message', 'Unlocking your encrypted account…');
@@ -356,7 +363,8 @@ async function submitVaultLogin(event) {
 
     setStatus('vault-login-message', 'Connecting your Checklist, Diary and Garden…');
     await startVaultSync(credentials);
-    const migration = await adoptVaultEncryptionKey(credentials.encryptionKey);
+    const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
+    passphrase = '';
     activeCredentials = credentials;
     if (usernameField) usernameField.value = credentials.username;
     showApplication();
@@ -386,7 +394,7 @@ async function submitVaultLogin(event) {
 
 async function submitVaultSignup(event) {
   event.preventDefault();
-  if (loginInProgress || activeCredentials) return;
+  if (loginInProgress || locking || activeCredentials) return;
 
   const username = byId('signup-username')?.value || '';
   const passphraseField = byId('signup-passphrase');
@@ -430,7 +438,6 @@ async function submitVaultSignup(event) {
   let accountCreated = false;
   try {
     credentials = await createVaultAccount(usernameResult.normalized, passphrase, answers);
-    passphrase = '';
 
     const payload = {
       ...credentials.accountRecord,
@@ -451,7 +458,8 @@ async function submitVaultSignup(event) {
     signupStage = 'opening your new account on this device';
     setStatus('vault-signup-message', 'Opening your new account…');
     await startVaultSync(credentials);
-    const migration = await adoptVaultEncryptionKey(credentials.encryptionKey);
+    const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
+    passphrase = '';
     activeCredentials = credentials;
     byId('vault-username').value = credentials.username;
     showApplication();
@@ -512,6 +520,7 @@ async function submitLegacyUpgrade(event) {
   let migrationStage = 'preparing the secure upgrade on this device';
   let credentials = null;
   let accountMigrated = false;
+  let passphraseForDiary = pendingLegacyAccount.passphrase;
   try {
     setStatus('vault-legacy-upgrade-message', 'Preparing your existing account…');
     credentials = await createLegacyVaultUpgrade(
@@ -542,7 +551,8 @@ async function submitLegacyUpgrade(event) {
     migrationStage = 'opening your upgraded account on this device';
     setStatus('vault-legacy-upgrade-message', 'Your existing account is secured. Opening your original vault…', 'success');
     await startVaultSync(credentials);
-    const migration = await adoptVaultEncryptionKey(credentials.encryptionKey);
+    const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphraseForDiary);
+    passphraseForDiary = '';
     activeCredentials = credentials;
     if (byId('vault-username')) byId('vault-username').value = credentials.username;
     showApplication();
@@ -576,6 +586,7 @@ async function submitLegacyUpgrade(event) {
       status?.focus?.({ preventScroll: true });
     }
   } finally {
+    passphraseForDiary = '';
     loginInProgress = false;
     setBusy('vault-legacy-upgrade-submit', false, 'SECURE EXISTING ACCOUNT', 'Securing your account…');
   }
@@ -687,40 +698,70 @@ async function completeRecovery(event) {
   }
 }
 
-export async function lockAccount(message = 'Your account is locked.') {
+export async function lockAccount(message = 'Your account is locked. Please sign in again.') {
   if (!activeCredentials || locking) return;
+
   locking = true;
   if (inactivityTimer) clearTimeout(inactivityTimer);
   inactivityTimer = null;
   lastActivityAt = 0;
 
+  const credentialsToRevoke = activeCredentials;
+  // This helper captures the editor contents synchronously before its first await.
+  const localSavePromise = flushAndSaveCurrentPrivateWritingForLock();
+
+  // Conceal the app and remove access to the active in-memory session immediately.
+  activeCredentials = null;
+  concealApplicationViews();
+  showLogin(message);
+  setBusy('vault-login-submit', true, 'LOG IN', 'Locking account…');
+
+  // Revoke the server session concurrently with the local encrypted flush.
+  const revocationPromise = revokeDeviceSession(credentialsToRevoke)
+    .then(() => ({ confirmed: true, error: null }))
+    .catch(error => ({ confirmed: false, error }));
+
+  let localSaveError = null;
+  let syncStopError = null;
+  let revocation = { confirmed: false, error: null };
+
   try {
-    await stopRegisteredVoiceNoteRecording();
-    await flushAndSaveCurrentPrivateWriting();
-    // Save local changes before clearing credentials.
-    await stopVaultSync();
-    // Request revocation before clearing local credentials.
     try {
-      await revokeDeviceSession(activeCredentials);
-    } catch (revokeError) {
-      console.warn('[Vault Session] Device-session revocation could not reach the server; the server-side idle expiry remains active.', revokeError);
+      await localSavePromise;
+    } catch (error) {
+      localSaveError = error;
+      console.warn('[Vault Session] Final local writing save could not be confirmed.', error);
     }
-  } catch (error) {
+
+    try {
+      await stopVaultSync();
+    } catch (error) {
+      syncStopError = error;
+      console.warn('[Vault Session] Local vault sync cleanup did not complete cleanly.', error);
+    }
+
+    revocation = await revocationPromise;
+    if (!revocation.confirmed) {
+      console.warn('[Vault Session] Server device-session revocation was not confirmed; the server-side expiry remains the fallback.', revocation.error);
+    }
+  } finally {
+    wipeWriteToken(credentialsToRevoke.writeToken);
+    credentialsToRevoke.deviceSessionToken = '';
+    credentialsToRevoke.vaultMembershipTicket = '';
+    credentialsToRevoke.devicePrivateKey = null;
+    activeCredentials = null;
+    clearVaultEncryptionKey();
+    concealApplicationViews();
     locking = false;
-    resetInactivityTimer();
-    setStatus('vault-login-message', 'The account remains open because a final local save could not be completed. ' + (error?.message || ''), 'error');
-    return;
+    showLogin(message);
+    setBusy('vault-login-submit', false, 'LOG IN', 'Locking account…');
   }
 
-  wipeWriteToken(activeCredentials.writeToken);
-  activeCredentials.deviceSessionToken = '';
-  activeCredentials.vaultMembershipTicket = '';
-  activeCredentials.devicePrivateKey = null;
-  activeCredentials = null;
-  clearVaultEncryptionKey();
-  locking = false;
-  lastActivityAt = 0;
-  showLogin(message);
+  const warnings = [];
+  if (localSaveError) warnings.push('The final local Diary save could not be confirmed; previously saved encrypted records remain on this device.');
+  if (syncStopError) warnings.push('Local sync cleanup could not be confirmed.');
+  if (!revocation.confirmed) warnings.push('The server did not confirm session revocation; its session expiry remains the fallback.');
+  if (warnings.length) setStatus('vault-login-message', message + ' ' + warnings.join(' '), 'error');
 }
 
 export function isVaultAccountUnlocked() {
