@@ -1284,31 +1284,34 @@ export class VaultCoordinator {
     if (!VAULT_ID_PATTERN.test(this.vaultId)) return jsonResponse({ error: "Invalid vault identifier." }, 400);
 
     const path = new URL(request.url).pathname;
-    // Authentication, challenge, claim, and internal administration paths do
-    // not need the packet index. Do not spend a KV read merely to authenticate
-    // a device, consume a nonce, revoke a session, or initialize a new vault.
     const requiresPacketIndex = path === "/index" || path.startsWith("/day/");
-    if (requiresPacketIndex && !this.initialized) {
-      this.initialized = this.state.blockConcurrencyWhile(async () => {
-        if (!(await this.state.storage.get("vault-index"))) {
-          // A KV read failure must not be mistaken for an empty vault index.
-          // Retry initialization on the next data request instead of caching a blank index.
-          const index = await this.env.VAULT_PACKETS.get(this.indexKey(), "json");
-          await this.state.storage.put("vault-index", index || {});
-        }
-      });
-    }
-    if (requiresPacketIndex) {
-      try {
-        await this.initialized;
-      } catch {
-        this.initialized = null;
-        return jsonResponse({
-          error: "The vault index is temporarily unavailable. Please retry; no data was changed."
-        }, 503);
-      }
-    }
     return this.serialized(async () => {
+      // Validate the device session before any daily-index KV bootstrap. The
+      // serialized queue prevents concurrent session revocation from racing
+      // this pre-check and the subsequent data operation.
+      if (requiresPacketIndex) {
+        if (!(await this.authenticateDeviceSession(request, { touch: false }))) {
+          return this.unauthorized();
+        }
+        if (!this.initialized) {
+          this.initialized = (async () => {
+            if (!(await this.state.storage.get("vault-index"))) {
+              // A KV read failure must not be mistaken for an empty vault index.
+              // Retry initialization on the next data request instead of caching a blank index.
+              const index = await this.env.VAULT_PACKETS.get(this.indexKey(), "json");
+              await this.state.storage.put("vault-index", index || {});
+            }
+          })();
+        }
+        try {
+          await this.initialized;
+        } catch {
+          this.initialized = null;
+          return jsonResponse({
+            error: "The vault index is temporarily unavailable. Please retry; no data was changed."
+          }, 503);
+        }
+      }
 
       // These administrative paths are reachable only through internal Worker
       // bindings; the public router never forwards client-controlled paths here.
