@@ -947,6 +947,281 @@ export class VaultCoordinator {
     return this.vaultId + ":" + dateString;
   }
 
+  deviceChallengeKey(challengeId) {
+    return "device-challenge:" + challengeId;
+  }
+
+  deviceKey(deviceId) {
+    return "device:" + deviceId;
+  }
+
+  deviceSessionKey(tokenHash) {
+    return "device-session:" + tokenHash;
+  }
+
+  async allowRateLimit(action, limit, windowMs) {
+    const now = Date.now();
+    const bucket = Math.floor(now / windowMs);
+    const key = "auth-rate:" + action + ":" + bucket;
+    const previousKey = "auth-rate:" + action + ":" + (bucket - 1);
+    const count = (await this.state.storage.get(key)) || 0;
+    if (count >= limit) return false;
+    await this.state.storage.put(key, count + 1);
+    await this.state.storage.delete(previousKey);
+    return true;
+  }
+
+  async createDeviceChallenge(request) {
+    if (!(await this.authenticate(request))) return this.unauthorized();
+    if (!(await this.allowRateLimit("device-challenge", 5, 60_000))) {
+      return jsonResponse({ error: "Too many device sign-in attempts. Please try again in one minute." }, 429);
+    }
+
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device registration request." }, 400); }
+    if (!payload || Object.keys(payload).length !== 2
+        || !DEVICE_ID_PATTERN.test(payload.deviceId || "")
+        || typeof payload.publicKeySpki !== "string"
+        || payload.publicKeySpki.length < 80 || payload.publicKeySpki.length > 180) {
+      return jsonResponse({ error: "Invalid device registration request." }, 400);
+    }
+
+    let spki;
+    try {
+      spki = fromBase64Url(payload.publicKeySpki);
+      if (spki.byteLength < 64 || spki.byteLength > 128) throw new Error("Invalid public key size.");
+      const fingerprint = encodeBase64Url(await sha256Bytes(spki));
+      if (!constantTimeEqual(fingerprint, payload.deviceId)) {
+        return jsonResponse({ error: "The device identity does not match its public key." }, 400);
+      }
+      const imported = await crypto.subtle.importKey(
+        "spki", spki, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]
+      );
+      if (imported.algorithm?.namedCurve !== "P-256") throw new Error("Unsupported device curve.");
+    } catch {
+      return jsonResponse({ error: "The device public key is invalid or unsupported." }, 400);
+    }
+
+    const existingDevice = await this.state.storage.get(this.deviceKey(payload.deviceId));
+    if (existingDevice && existingDevice.publicKeySpki !== payload.publicKeySpki) {
+      return jsonResponse({ error: "This device identifier is already associated with a different public key." }, 409);
+    }
+
+    const now = Date.now();
+    const pending = await this.state.storage.list({ prefix: "device-challenge:" });
+    for (const [key, challenge] of pending) {
+      if (!challenge || challenge.expiresAt <= now) await this.state.storage.delete(key);
+    }
+    const remaining = await this.state.storage.list({ prefix: "device-challenge:" });
+    if (remaining.size >= MAX_PENDING_DEVICE_CHALLENGES) {
+      return jsonResponse({ error: "Too many pending device sign-ins. Complete one or wait for it to expire." }, 429);
+    }
+
+    const devices = await this.state.storage.list({ prefix: "device:" });
+    if (!existingDevice && devices.size >= MAX_DEVICES_PER_VAULT) {
+      return jsonResponse({ error: "This account has reached its trusted-device limit. Remove an old device before adding another." }, 429);
+    }
+
+    const challengeId = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const nonce = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const expiresAt = now + DEVICE_CHALLENGE_TTL_MS;
+    const message = JSON.stringify({
+      domain: "FaithFocus|device-auth|v1",
+      vaultId: this.vaultId,
+      deviceId: payload.deviceId,
+      challengeId,
+      nonce,
+      expiresAt
+    });
+    await this.state.storage.put(this.deviceChallengeKey(challengeId), {
+      vaultId: this.vaultId,
+      deviceId: payload.deviceId,
+      publicKeySpki: payload.publicKeySpki,
+      message,
+      expiresAt,
+      createdAt: now
+    });
+
+    return jsonResponse({ ok: true, challengeId, deviceId: payload.deviceId, message, expiresAt }, 200);
+  }
+
+  async consumeDeviceChallenge(challengeId) {
+    const key = this.deviceChallengeKey(challengeId);
+    // The challenge is read and deleted in one storage transaction. The
+    // request queue serializes this operation, while the transaction preserves
+    // strict single-use semantics if the storage access pattern changes later.
+    return this.state.storage.transaction(async transaction => {
+      const challenge = await transaction.get(key);
+      await transaction.delete(key);
+      return challenge || null;
+    });
+  }
+
+  async scheduleSessionCleanup() {
+    if (typeof this.state.storage.setAlarm !== "function") return;
+    const sessions = await this.state.storage.list({ prefix: "device-session:" });
+    let nextExpiry = null;
+    for (const session of sessions.values()) {
+      if (!session) continue;
+      const expiry = Math.min(session.expiresAt || 0, session.idleExpiresAt || 0);
+      if (expiry > 0 && (nextExpiry === null || expiry < nextExpiry)) nextExpiry = expiry;
+    }
+    if (nextExpiry === null) {
+      await this.state.storage.deleteAlarm?.();
+    } else {
+      await this.state.storage.setAlarm(nextExpiry);
+    }
+  }
+
+  async alarm() {
+    return this.serialized(async () => {
+      const now = Date.now();
+      const sessions = await this.state.storage.list({ prefix: "device-session:" });
+      for (const [key, session] of sessions) {
+        if (!session || session.expiresAt <= now || session.idleExpiresAt <= now) {
+          await this.state.storage.delete(key);
+        }
+      }
+      await this.scheduleSessionCleanup();
+    });
+  }
+
+  async authenticateDeviceSession(request, { touch = true } = {}) {
+    const token = request.headers.get("X-Device-Session") || "";
+    if (!TOKEN_PATTERN.test(token)) return null;
+    const tokenHash = await sha256Hex(token);
+    const key = this.deviceSessionKey(tokenHash);
+    const record = await this.state.storage.get(key);
+    const now = Date.now();
+    if (!record || record.vaultId !== this.vaultId
+        || !Number.isFinite(record.expiresAt)
+        || !Number.isFinite(record.idleExpiresAt)
+        || record.expiresAt <= now || record.idleExpiresAt <= now) {
+      if (record) {
+        await this.state.storage.delete(key);
+        await this.scheduleSessionCleanup();
+      }
+      return null;
+    }
+    if (touch) {
+      record.lastSeenAt = now;
+      record.idleExpiresAt = Math.min(now + DEVICE_SESSION_IDLE_MS, record.expiresAt);
+      await this.state.storage.put(key, record);
+      await this.scheduleSessionCleanup();
+    }
+    return record;
+  }
+
+  async verifyDeviceChallenge(request) {
+    if (!(await this.allowRateLimit("device-verify", 10, 60_000))) {
+      return jsonResponse({ error: "Too many device verification attempts. Please try again in one minute." }, 429);
+    }
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device challenge response." }, 400); }
+    if (!payload || Object.keys(payload).length !== 3
+        || !DEVICE_ID_PATTERN.test(payload.challengeId || "")
+        || !DEVICE_ID_PATTERN.test(payload.deviceId || "")
+        || !DEVICE_SIGNATURE_PATTERN.test(payload.signature || "")) {
+      return jsonResponse({ error: "Invalid device challenge response." }, 400);
+    }
+
+    let challenge;
+    try {
+      challenge = await this.consumeDeviceChallenge(payload.challengeId);
+    } catch {
+      return jsonResponse({ error: "The device challenge could not be consumed safely. Please start sign-in again." }, 503);
+    }
+    if (!challenge || challenge.vaultId !== this.vaultId
+        || challenge.deviceId !== payload.deviceId
+        || challenge.expiresAt <= Date.now()) {
+      return jsonResponse({ error: "The device challenge is invalid, expired, or already used. Please sign in again." }, 401);
+    }
+
+    let signatureValid = false;
+    try {
+      const publicKey = await crypto.subtle.importKey(
+        "spki",
+        fromBase64Url(challenge.publicKeySpki),
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["verify"]
+      );
+      signatureValid = await crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        publicKey,
+        fromBase64Url(payload.signature),
+        encoder.encode(challenge.message)
+      );
+    } catch {
+      signatureValid = false;
+    }
+    if (!signatureValid) {
+      return jsonResponse({ error: "The device could not prove possession of its private signing key. The challenge was consumed; start sign-in again." }, 401);
+    }
+
+    const deviceKey = this.deviceKey(challenge.deviceId);
+    const existing = await this.state.storage.get(deviceKey);
+    if (existing && existing.publicKeySpki !== challenge.publicKeySpki) {
+      return jsonResponse({ error: "The registered device key does not match. Contact the account owner." }, 409);
+    }
+    if (!existing) {
+      const devices = await this.state.storage.list({ prefix: "device:" });
+      if (devices.size >= MAX_DEVICES_PER_VAULT) {
+        return jsonResponse({ error: "This account has reached its trusted-device limit." }, 429);
+      }
+    }
+
+    const now = Date.now();
+    await this.state.storage.put(deviceKey, {
+      deviceId: challenge.deviceId,
+      publicKeySpki: challenge.publicKeySpki,
+      createdAt: existing?.createdAt || now,
+      lastAuthenticatedAt: now
+    });
+
+    const sessionToken = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const sessionHash = await sha256Hex(sessionToken);
+    const session = {
+      vaultId: this.vaultId,
+      deviceId: challenge.deviceId,
+      createdAt: now,
+      lastSeenAt: now,
+      expiresAt: now + DEVICE_SESSION_MAX_MS,
+      idleExpiresAt: now + DEVICE_SESSION_IDLE_MS
+    };
+    await this.state.storage.put(this.deviceSessionKey(sessionHash), session);
+    await this.scheduleSessionCleanup();
+
+    return jsonResponse({
+      ok: true,
+      deviceId: challenge.deviceId,
+      sessionToken,
+      sessionExpiresAt: session.expiresAt,
+      sessionIdleExpiresAt: session.idleExpiresAt
+    }, 200);
+  }
+
+  async revokeDeviceSession(request) {
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device session revocation request." }, 400); }
+    const token = request.headers.get("X-Device-Session") || "";
+    if (!payload || !DEVICE_ID_PATTERN.test(payload.deviceId || "") || !TOKEN_PATTERN.test(token)) {
+      return jsonResponse({ error: "The device session revocation request is invalid." }, 400);
+    }
+    const tokenHash = await sha256Hex(token);
+    const key = this.deviceSessionKey(tokenHash);
+    const session = await this.state.storage.get(key);
+    if (!session || session.vaultId !== this.vaultId || session.deviceId !== payload.deviceId) {
+      return jsonResponse({ error: "The device session is already expired or no longer valid." }, 401);
+    }
+    await this.state.storage.delete(key);
+    await this.scheduleSessionCleanup();
+    return jsonResponse({ ok: true, revoked: true }, 200);
+  }
+
   serialized(operation) {
     const next = this.queue.then(operation, operation);
     this.queue = next.catch(() => {});
