@@ -6,6 +6,7 @@ import {
   encodeBase64Url, wipeWriteToken
 } from './vault-crypto.js';
 import { startVaultSync, stopVaultSync } from './vault-sync.js';
+import { getOrCreateDeviceIdentity, signDeviceMessage } from './device-identity.js';
 import {
   adoptVaultEncryptionKey, clearVaultEncryptionKey,
   flushAndSaveCurrentPrivateWriting, stopRegisteredVoiceNoteRecording
@@ -61,6 +62,104 @@ async function accountRequest(route, body, extraHeaders = {}) {
     throw error;
   }
   return result;
+}
+
+async function deviceAuthRequest(vaultId, route, { body, membershipTicket, writeToken, sessionToken } = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-App-Client': APP_CLIENT,
+    'X-Vault-Membership': membershipTicket
+  };
+  if (writeToken) headers['X-Write-Token'] = writeToken;
+  if (sessionToken) headers['X-Device-Session'] = sessionToken;
+
+  const response = await fetch(WORKER_ORIGIN + '/vault/' + vaultId + '/device/' + route, {
+    method: 'POST',
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'error',
+    headers,
+    body: JSON.stringify(body || {})
+  });
+  let result;
+  try { result = await response.json(); }
+  catch { throw new Error('The device authentication service returned an unreadable response.'); }
+  if (!response.ok) {
+    const error = new Error(result?.error || 'This device could not be authenticated.');
+    error.status = response.status;
+    throw error;
+  }
+  return result;
+}
+
+async function establishDeviceSession(credentials, membershipTicket) {
+  if (!credentials?.vaultId || !(credentials.writeToken instanceof Uint8Array)
+      || typeof membershipTicket !== 'string' || membershipTicket.length < 40) {
+    throw new TypeError('A verified account and vault membership ticket are required for device sign-in.');
+  }
+
+  const { identity } = await getOrCreateDeviceIdentity();
+  const challenge = await deviceAuthRequest(credentials.vaultId, 'challenge', {
+    membershipTicket,
+    writeToken: encodeBase64Url(credentials.writeToken),
+    body: {
+      deviceId: identity.deviceId,
+      publicKeySpki: identity.publicKeySpki
+    }
+  });
+
+  const signature = await signDeviceMessage(identity, challenge.message);
+  const verified = await deviceAuthRequest(credentials.vaultId, 'verify', {
+    membershipTicket,
+    body: {
+      challengeId: challenge.challengeId,
+      deviceId: identity.deviceId,
+      signature
+    }
+  });
+
+  if (verified.deviceId !== identity.deviceId
+      || typeof verified.sessionToken !== 'string'
+      || !/^[A-Za-z0-9_-]{43}$/.test(verified.sessionToken)) {
+    throw new Error('The device authentication service returned an invalid session.');
+  }
+
+  credentials.vaultMembershipTicket = membershipTicket;
+  credentials.deviceId = identity.deviceId;
+  credentials.devicePrivateKey = identity.privateKey;
+  credentials.deviceSessionToken = verified.sessionToken;
+  credentials.deviceSessionExpiresAt = verified.sessionExpiresAt;
+  return credentials;
+}
+
+async function revokeDeviceSession(credentials) {
+  if (!credentials?.vaultId || !credentials.deviceId
+      || !credentials.deviceSessionToken || !credentials.vaultMembershipTicket) return false;
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 2000);
+  try {
+    const response = await fetch(
+      WORKER_ORIGIN + '/vault/' + credentials.vaultId + '/device/session/revoke',
+      {
+        method: 'POST',
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-App-Client': APP_CLIENT,
+          'X-Vault-Membership': credentials.vaultMembershipTicket,
+          'X-Device-Session': credentials.deviceSessionToken
+        },
+        body: JSON.stringify({ deviceId: credentials.deviceId }),
+        signal: controller.signal
+      }
+    );
+    if (!response.ok) throw new Error('The server did not confirm device-session revocation.');
+    return true;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function setBusy(buttonId, busy, idleText, busyText) {
@@ -218,7 +317,8 @@ async function submitVaultLogin(event) {
           headers: {
             'Content-Type': 'application/json',
             'X-App-Client': APP_CLIENT,
-            'X-Write-Token': encodeBase64Url(legacy.writeToken)
+            'X-Write-Token': encodeBase64Url(legacy.writeToken),
+            'X-Legacy-Username': usernameResult.normalized
           },
           body: '{}'
         });
@@ -252,6 +352,7 @@ async function submitVaultLogin(event) {
     });
     credentials = await finishVaultLogin(account, loginMaterial, unlocked.passphraseEnvelope);
     loginMaterial = null;
+    await establishDeviceSession(credentials, unlocked.membershipTicket);
 
     setStatus('vault-login-message', 'Connecting your Checklist, Diary and Garden…');
     await startVaultSync(credentials);
@@ -334,8 +435,9 @@ async function submitVaultSignup(event) {
     };
     signupStage = 'registering your account with the account service';
     setStatus('vault-signup-message', 'Registering your account and recovery questions…');
-    await accountRequest('/account/signup', payload);
+    const registered = await accountRequest('/account/signup', payload);
     accountCreated = true;
+    await establishDeviceSession(credentials, registered.membershipTicket);
 
     // Only clear the form after the server confirms that registration succeeded.
     credentials.accountRecord.questionAnswers.forEach(item => { item.answer = ''; });
@@ -420,8 +522,9 @@ async function submitLegacyUpgrade(event) {
     };
     migrationStage = 'upgrading your existing account with the account service';
     setStatus('vault-legacy-upgrade-message', 'Securing your existing account…');
-    await accountRequest('/account/migrate-legacy', payload);
+    const migrated = await accountRequest('/account/migrate-legacy', payload);
     accountMigrated = true;
+    await establishDeviceSession(credentials, migrated.membershipTicket);
 
     // The original passphrase and legacy vault credentials are retained in
     // memory until the server confirms migration. A failed request can retry.
@@ -590,6 +693,14 @@ export async function lockAccount(message = 'Your account is locked.') {
     // cleared. Do not let a slow/offline cloud request delay the security lock;
     // the queued packet will upload on the next successful sign-in.
     await stopVaultSync({ flushRemote: false });
+    // Explicitly revoke the server-side session at the same lock transition.
+    // If the device is offline, the server's 2-minute idle expiry and cleanup
+    // alarm provide the bounded fallback.
+    try {
+      await revokeDeviceSession(activeCredentials);
+    } catch (revokeError) {
+      console.warn('[Vault Session] Device-session revocation could not reach the server; the server-side idle expiry remains active.', revokeError);
+    }
   } catch (error) {
     locking = false;
     resetInactivityTimer();
@@ -598,6 +709,9 @@ export async function lockAccount(message = 'Your account is locked.') {
   }
 
   wipeWriteToken(activeCredentials.writeToken);
+  activeCredentials.deviceSessionToken = '';
+  activeCredentials.vaultMembershipTicket = '';
+  activeCredentials.devicePrivateKey = null;
   activeCredentials = null;
   clearVaultEncryptionKey();
   locking = false;
