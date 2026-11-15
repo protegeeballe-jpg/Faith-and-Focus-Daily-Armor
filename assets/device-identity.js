@@ -105,8 +105,21 @@ function createIndexedDbAdapter(indexedDBRef) {
             outcome = { record: request.result, created: false };
             return;
           }
-          store.add(value, key);
-          outcome = { record: value, created: true };
+          const addRequest = store.add(value, key);
+          addRequest.onsuccess = () => {
+            // Verify the structured-cloned CryptoKey actually round-trips from
+            // IndexedDB before allowing the caller to use it for enrollment.
+            const confirmationRequest = store.get(key);
+            confirmationRequest.onsuccess = () => {
+              outcome = { record: confirmationRequest.result, created: true };
+            };
+            confirmationRequest.onerror = () => reject(
+              confirmationRequest.error || new Error('The persisted device key could not be read back.')
+            );
+          };
+          addRequest.onerror = () => reject(
+            addRequest.error || new Error('The device key could not be added to persistent storage.')
+          );
         };
         request.onerror = () => reject(request.error || new Error('The existing device identity could not be checked.'));
         transaction.oncomplete = () => resolve(outcome);
