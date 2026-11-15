@@ -1,6 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { webcrypto } from 'node:crypto';
 import worker from '../worker.js';
+
+const PEPPER = 'worker-routing-test-secret-with-at-least-32-characters';
+
+async function membershipTicket(vaultId) {
+  const encodedPayload = Buffer.from(JSON.stringify({
+    version: 1,
+    vaultId,
+    expiresAt: Date.now() + 12 * 60 * 60 * 1000
+  })).toString('base64url');
+  const key = await webcrypto.subtle.importKey(
+    'raw', Buffer.from(PEPPER), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = new Uint8Array(await webcrypto.subtle.sign(
+    'HMAC', key, new TextEncoder().encode('FaithFocus|vault-membership|v1|' + encodedPayload)
+  ));
+  const hex = Array.from(signature, byte => byte.toString(16).padStart(2, '0')).join('');
+  return encodedPayload + '.' + hex;
+}
 
 test('vault PUT requests forward their JSON body to the Durable Object', async () => {
   const vaultId = 'a'.repeat(64);
@@ -17,9 +36,11 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
     baseUpdatedAt: null
   };
   const expectedBody = JSON.stringify(payload);
+  const ticket = await membershipTicket(vaultId);
   let forwarded = null;
 
   const env = {
+    RECOVERY_PEPPER: PEPPER,
     VAULT_PACKETS: {},
     VAULT_COORDINATOR: {
       idFromName: id => id,
@@ -29,7 +50,8 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
             method: request.method,
             body: await request.text(),
             contentType: request.headers.get('Content-Type'),
-            vaultId: request.headers.get('X-Vault-Id')
+            vaultId: request.headers.get('X-Vault-Id'),
+            sessionToken: request.headers.get('X-Device-Session')
           };
           return new Response(JSON.stringify({ ok: true }), {
             status: 200,
@@ -47,7 +69,8 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
-        'X-Write-Token': 'a'.repeat(43),
+        'X-Vault-Membership': ticket,
+        'X-Device-Session': 's'.repeat(43),
         'Content-Type': 'application/json',
         'X-Base-Updated-At': 'none'
       },
@@ -61,6 +84,67 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
     method: 'PUT',
     body: expectedBody,
     contentType: 'application/json',
-    vaultId
+    vaultId,
+    sessionToken: 's'.repeat(43)
   });
+});
+
+
+test('Worker rejects missing membership tickets before creating a vault coordinator', async () => {
+  let coordinatorTouched = false;
+  const vaultId = 'b'.repeat(64);
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/index',
+    {
+      method: 'GET',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'X-Device-Session': 's'.repeat(43)
+      }
+    }
+  ), {
+    RECOVERY_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 403);
+  assert.equal(coordinatorTouched, false);
+});
+
+test('Worker rejects malformed ECDSA signatures before invoking the vault coordinator', async () => {
+  const vaultId = 'c'.repeat(64);
+  const ticket = await membershipTicket(vaultId);
+  let coordinatorTouched = false;
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/device/verify',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'X-Vault-Membership': ticket,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        challengeId: 'c'.repeat(43),
+        deviceId: 'd'.repeat(43),
+        signature: 'not-a-valid-p256-signature'
+      })
+    }
+  ), {
+    RECOVERY_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(coordinatorTouched, false);
 });
