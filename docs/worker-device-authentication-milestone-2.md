@@ -120,6 +120,7 @@ The regression suite covers:
 - successful P-256 challenge and session creation;
 - two concurrent verification attempts on one challenge yielding only one successful session;
 - invalid-signature challenge consumption and replay rejection;
+- expired challenge consumption/rejection with no session creation;
 - SHA-256-only session persistence;
 - explicit revocation and post-revocation denial;
 - two-minute idle cleanup via Durable Object alarm;
