@@ -617,13 +617,8 @@ export class AccountRegistry {
 
   async rateLimitRecovery(request) {
     const ip = request.headers.get("X-Recovery-Client-IP") || "unknown-client";
-    const windowNumber = Math.floor(Date.now() / (15 * 60 * 1000));
     const ipDigest = await hmacHex(this.env.RECOVERY_PEPPER, "recovery-ip|" + ip);
-    const key = "recovery-attempts:" + ipDigest + ":" + windowNumber;
-    const attempts = (await this.state.storage.get(key)) || 0;
-    if (attempts >= 5) return false;
-    await this.state.storage.put(key, attempts + 1);
-    return true;
+    return this.rateLimitSubject("recovery-ip", ipDigest, 5, 15 * 60 * 1000);
   }
 
   async initializeVault(vaultId, writeToken) {
@@ -1267,11 +1262,20 @@ export class VaultCoordinator {
   }
 
   async unauthorized() {
-    const bucket = Math.floor(Date.now() / 60000);
-    const key = "auth-failures:" + bucket;
-    const failures = (await this.state.storage.get(key)) || 0;
-    if (failures >= 12) return jsonResponse({ error: "Too many vault authentication attempts. Try again in one minute." }, 429);
-    await this.state.storage.put(key, failures + 1);
+    const key = "auth-failures";
+    const now = Date.now();
+    let record = await this.state.storage.get(key);
+    if (!record || !Number.isFinite(record.windowStartedAt)
+        || now < record.windowStartedAt || now - record.windowStartedAt >= 60_000) {
+      record = { windowStartedAt: now, count: 0 };
+    }
+    if (record.count >= 12) {
+      return jsonResponse({ error: "Too many vault authentication attempts. Try again in one minute." }, 429);
+    }
+    await this.state.storage.put(key, {
+      windowStartedAt: record.windowStartedAt,
+      count: record.count + 1
+    });
     return jsonResponse({ error: "Vault credentials were not accepted." }, 401);
   }
 
