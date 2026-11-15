@@ -13,7 +13,6 @@ import {
 import { GARDEN_STORAGE_KEY, GARDEN_DAILY_SYNC_PREFIX, mergeGardenStates, validateGardenState } from './garden-model.js';
 import { mergeDailyBundles } from './daily-merge.js';
 import { flushAndSaveCurrentPrivateWriting, stopRegisteredVoiceNoteRecording, mergeEncryptedPrivateWritingRecords } from './writing-security.js';
-import { installVaultSyncRefresh } from './vault-refresh.js';
 
 const WORKER_ORIGIN = 'https://faith-focus-proxy.nine-westhigh.workers.dev';
 const APP_CLIENT = 'faith-focus-daily-armor-web/1';
@@ -30,18 +29,30 @@ const DAILY_RECORD_PREFIXES = [
 const LEGACY_WRITING_CONFIG_KEY = 'dmp_private_writing_crypto_v1';
 
 let activeVault = null;
-let cloudDebounceTimer = null;
 let applyingRemotePacket = 0;
 let syncQueue = Promise.resolve();
 let localCaptureQueues = new Map();
 let localChangeVersions = new Map();
-let pendingCloudDates = new Set();
 let lastStatus = '';
 let storageHooksInstalled = false;
-let foregroundRefreshCleanup = null;
+let localFlushPromise = null;
 let activeVaultRequestControllers = new Set();
 
 const byId = id => document.getElementById(id);
+
+export function hasVerifiedDeviceSession(credentials) {
+  return Boolean(credentials?.vaultId
+    && credentials.encryptionKey
+    && credentials.writeToken instanceof Uint8Array
+    && typeof credentials.vaultMembershipTicket === 'string'
+    && credentials.vaultMembershipTicket.length >= 40
+    && typeof credentials.deviceId === 'string'
+    && /^[A-Za-z0-9_-]{43}$/.test(credentials.deviceId)
+    && typeof credentials.deviceSessionToken === 'string'
+    && /^[A-Za-z0-9_-]{43}$/.test(credentials.deviceSessionToken)
+    && Number.isFinite(credentials.deviceSessionExpiresAt)
+    && credentials.deviceSessionExpiresAt > Date.now());
+}
 
 function status(message, state = 'info') {
   if (message === lastStatus && state !== 'error') return;
@@ -231,10 +242,18 @@ function listLocalStorageDates() {
 
 async function getCredentialHeaders() {
   if (!activeVault) throw new Error('Your account is locked.');
+  if (typeof activeVault.vaultMembershipTicket !== 'string'
+      || typeof activeVault.deviceSessionToken !== 'string'
+      || !/^[A-Za-z0-9_-]{43}$/.test(activeVault.deviceSessionToken)
+      || !Number.isFinite(activeVault.deviceSessionExpiresAt)
+      || activeVault.deviceSessionExpiresAt <= Date.now()) {
+    throw new Error('Your device session has expired. Sign in again to securely reconnect this device.');
+  }
   return {
     Accept: 'application/json',
     'X-App-Client': APP_CLIENT,
-    'X-Write-Token': encodeBase64Url(activeVault.writeToken)
+    'X-Vault-Membership': activeVault.vaultMembershipTicket,
+    'X-Device-Session': activeVault.deviceSessionToken
   };
 }
 
@@ -280,7 +299,7 @@ async function vaultRequest(path, { method = 'GET', body = null, baseUpdatedAt }
     remoteDateCount: result.index && typeof result.index === 'object' ? Object.keys(result.index).length : undefined
   });
   if (!response.ok) {
-    if (response.status === 401) throw new Error('The username or passphrase was not accepted by this vault.');
+    if (response.status === 401) throw new Error('This device session is no longer valid. Sign in again to securely reconnect this device.');
     if (response.status === 409) {
       const error = new Error(result.error || 'This date changed on another device. Your local packet was kept.');
       error.code = 'VAULT_CONFLICT';
@@ -312,10 +331,7 @@ async function captureDailyPacket(dateString) {
       if (prior) {
         try {
           const priorBundle = await decryptDailyBundle(prior.packet, activeVault.encryptionKey, decompressData);
-          if (canonicalBundle(priorBundle) === canonicalBundle(bundle)) {
-            if (prior.dirty) scheduleCloudPush(dateString);
-            return;
-          }
+          if (canonicalBundle(priorBundle) === canonicalBundle(bundle)) return;
         } catch {
           // A packet from a future version is replaced only after the current data is safely encrypted.
         }
@@ -330,8 +346,7 @@ async function captureDailyPacket(dateString) {
       });
       repeat = localChangeVersions.get(dateString) !== snapshotVersion;
       if (!repeat) {
-        status('Saved and encrypted locally. Automatic cloud sync is queued.', 'success');
-        scheduleCloudPush(dateString);
+        status('Saved and encrypted locally. Your next verified sign-in will reconcile this packet.', 'success');
       }
     }
   });
@@ -460,7 +475,7 @@ async function restoreDailyBundle(bundle) {
 }
 
 async function fetchRemoteIndex() {
-  console.log('[Vault Sync] Fetching shared vault index on startup/sync:', { vaultId: activeVault.vaultId, key: activeVault.vaultId + ':index' });
+  console.log('[Vault Sync] Fetching shared vault index after verified sign-in:', { vaultId: activeVault.vaultId, key: activeVault.vaultId + ':index' });
   const result = await vaultRequest('/vault/' + activeVault.vaultId + '/index');
   if (!result.index || typeof result.index !== 'object' || Array.isArray(result.index)) {
     throw new Error('Cloudflare returned an invalid vault index.');
@@ -683,10 +698,8 @@ async function performVaultSync() {
     if (pendingRecords.length) {
       const pendingDates = pendingRecords.map(record => record.dateString).sort();
       status(
-        'Cloud sync is connected. ' + pendingRecords.length + ' local date packet' +
-        (pendingRecords.length === 1 ? ' remains' : 's remain') +
-        ' queued: ' + pendingDates.join(', ') +
-        '. Both local and cloud copies are preserved; automatic retry will continue.',
+        'Some encrypted local packets remain queued: ' + pendingDates.join(', ') +
+        '. They remain saved on this device and will be reconciled at the next verified sign-in.',
         'error'
       );
     } else if (restored) {
@@ -695,30 +708,10 @@ async function performVaultSync() {
       status('Your encrypted vault is up to date on this device.', 'success');
     }
   } catch (error) {
-    status(error.message || 'Automatic vault synchronization could not finish.', 'error');
+    status(error.message || 'Vault reconciliation could not finish.', 'error');
     throw error;
   }
 }
-function scheduleCloudPush(dateString = null) {
-  if (!activeVault) return;
-  if (dateString && isValidDateString(dateString)) pendingCloudDates.add(dateString);
-  if (cloudDebounceTimer) clearTimeout(cloudDebounceTimer);
-  const vaultId = activeVault.vaultId;
-  console.log('[Vault Sync] Local change captured; 5-second debounced cloud save scheduled:', {
-    vaultId, pendingDates: [...pendingCloudDates].sort(), datePacketKeys: [...pendingCloudDates].map(date => vaultId + ':' + date)
-  });
-  status('Local changes are saved on this device. Cloud sync will start in 5 seconds…', 'info');
-  cloudDebounceTimer = window.setTimeout(() => {
-    cloudDebounceTimer = null;
-    const dates = [...pendingCloudDates].sort();
-    pendingCloudDates.clear();
-    console.log('[Vault Sync] Debounce elapsed; pushing pending encrypted date packets:', {
-      vaultId, dates, packetKeys: dates.map(date => vaultId + ':' + date)
-    });
-    synchronizeVault().catch(error => console.error('[Vault Sync] Debounced sync failed:', { vaultId, error }));
-  }, 5000);
-}
-
 async function captureExistingLocalDates() {
   // Only create local packets for dates that actually contain daily records or
   // voice notes. Global account settings must not create an empty "today" packet
@@ -730,8 +723,8 @@ async function captureExistingLocalDates() {
 }
 
 export async function startVaultSync(credentials) {
-  if (!credentials?.vaultId || !credentials?.encryptionKey || !(credentials.writeToken instanceof Uint8Array)) {
-    throw new TypeError('A complete unlocked vault session is required.');
+  if (!hasVerifiedDeviceSession(credentials)) {
+    throw new TypeError('A verified device session is required before vault synchronization can start.');
   }
   activeVault = credentials;
   installLocalStorageHooks();
@@ -759,105 +752,48 @@ export async function startVaultSync(credentials) {
     await synchronizeVault();
   }
 
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
-  window.addEventListener('pagehide', flushVaultSync);
-
-  // Pull changes made on another device when this app returns to the foreground,
-  // and periodically while visible. Do not refresh over text currently being edited.
-  foregroundRefreshCleanup?.();
-  foregroundRefreshCleanup = installVaultSyncRefresh({
-    windowRef: window,
-    documentRef: document,
-    refresh: refreshVaultFromForeground,
-    canRefresh: () => Boolean(activeVault) && !isPrivateWritingEditorFocused(),
-    intervalMs: 30_000
-  });
+  window.addEventListener('pagehide', flushLocalVaultChanges);
 }
 
 function handleLocalDataChanged(event) {
   if (activeVault) scheduleCapture(event?.detail?.dateString || getCurrentDateString());
 }
 
-function isPrivateWritingEditorFocused() {
-  const focusedElement = document.activeElement;
-  return focusedElement?.id === 'private-diary-entry'
-    || focusedElement?.classList?.contains('text-input') === true;
-}
-
-async function refreshVaultFromForeground() {
-  if (!activeVault) return;
-  try {
-    await synchronizeVault();
-  } catch (error) {
-    console.warn('[Vault Sync] Foreground refresh failed; local encrypted packets remain preserved.', {
-      vaultId: activeVault?.vaultId || null,
-      error
-    });
-  }
-}
-
-function handleOnline() {
-  console.log('[Vault Sync] Browser is online; starting immediate reconciliation.', { vaultId: activeVault?.vaultId || null });
-  synchronizeVault().catch(() => {});
-}
-
-function handleOffline() {
-  console.warn('[Vault Sync] Browser is offline. Encrypted local packets remain saved and queued.', { vaultId: activeVault?.vaultId || null });
-  status('Offline — encrypted changes remain saved locally and will retry when online.', 'error');
-}
-
 function handleVisibilityChange() {
-  if (document.visibilityState === 'hidden') flushVaultSync();
+  if (document.visibilityState === 'hidden') flushLocalVaultChanges();
 }
 
-async function flushVaultSync() {
-  if (cloudDebounceTimer) clearTimeout(cloudDebounceTimer);
-  cloudDebounceTimer = null;
-  if (!activeVault) return;
-  try {
-    // Finalize active microphone and writing operations before packaging the day.
-    await stopRegisteredVoiceNoteRecording();
-    await flushAndSaveCurrentPrivateWriting();
-    for (const queue of localCaptureQueues.values()) await queue;
-    await synchronizeVault();
-  } catch {
-    // Local IndexedDB packets remain queued and are retried on the next online event or edit.
-  }
-}
+function flushLocalVaultChanges() {
+  if (!activeVault) return Promise.resolve();
+  if (localFlushPromise) return localFlushPromise;
 
-export async function stopVaultSync({ flushRemote = true } = {}) {
-  if (foregroundRefreshCleanup) {
-    foregroundRefreshCleanup();
-    foregroundRefreshCleanup = null;
-  }
-  if (cloudDebounceTimer) clearTimeout(cloudDebounceTimer);
-  cloudDebounceTimer = null;
-
-  if (activeVault) {
-    if (flushRemote) {
-      await flushVaultSync();
-    } else {
-      // Stop any in-flight cloud operation before the credentials are cleared.
-      // Conditional writes and the retained dirty local packets make retries safe.
-      activeVaultRequestControllers.forEach(controller => controller.abort());
-      activeVaultRequestControllers.clear();
-      // Save and encrypt local changes before locking, but do not wait for a
-      // network round-trip. Dirty IndexedDB packets remain queued for next login.
+  const operation = (async () => {
+    try {
       await stopRegisteredVoiceNoteRecording();
       await flushAndSaveCurrentPrivateWriting();
       for (const queue of localCaptureQueues.values()) await queue;
-      if (cloudDebounceTimer) clearTimeout(cloudDebounceTimer);
-      cloudDebounceTimer = null;
-      pendingCloudDates.clear();
+    } catch (error) {
+      console.warn('[Vault Sync] Local changes remain preserved for the next verified sign-in.', error);
     }
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('offline', handleOffline);
+  })();
+
+  localFlushPromise = operation.finally(() => {
+    localFlushPromise = null;
+  });
+  return localFlushPromise;
+}
+
+export async function stopVaultSync() {
+  if (activeVault) {
+    activeVaultRequestControllers.forEach(controller => controller.abort());
+    activeVaultRequestControllers.clear();
+    await flushLocalVaultChanges();
+
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
-    window.removeEventListener('pagehide', flushVaultSync);
+    window.removeEventListener('pagehide', flushLocalVaultChanges);
   }
   activeVault = null;
 }
@@ -898,8 +834,7 @@ export async function importEncryptedVaultPackets(packets) {
   for (const { bundle } of prepared) await restoreDailyBundle(bundle);
   const { importLocalDailyPackets } = await import('./vault-storage.js');
   await importLocalDailyPackets(packets);
-  status('Restored ' + packets.length + ' validated encrypted daily packet' + (packets.length === 1 ? '' : 's') + '. Automatic cloud sync is queued.', 'success');
-  scheduleCloudPush();
+  status('Restored ' + packets.length + ' validated encrypted daily packet' + (packets.length === 1 ? '' : 's') + '. The packets will be reconciled at the next verified sign-in.', 'success');
 }
 
 export function isVaultSyncActive() {

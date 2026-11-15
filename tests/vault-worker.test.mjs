@@ -61,7 +61,21 @@ function makeCoordinator() {
   const failures = { get: false, put: false };
   const storage = {
     async get(key) { return storageMap.get(key); },
-    async put(key, value) { storageMap.set(key, value); }
+    async put(key, value) { storageMap.set(key, value); },
+    async delete(key) { return storageMap.delete(key); },
+    async list({ prefix = "" } = {}) {
+      return new Map([...storageMap.entries()].filter(([key]) => String(key).startsWith(prefix)));
+    },
+    async transaction(callback) {
+      const transaction = {
+        get: async key => storageMap.get(key),
+        put: async (key, value) => storageMap.set(key, value),
+        delete: async key => storageMap.delete(key)
+      };
+      return callback(transaction);
+    },
+    async setAlarm(timestamp) { this.alarmAt = timestamp; },
+    async deleteAlarm() { this.alarmAt = null; }
   };
   const state = {
     storage,
@@ -82,17 +96,54 @@ function makeCoordinator() {
   return { coordinator: new VaultCoordinator(state, env), storageMap, kvMap, failures };
 }
 
-function coordinatorRequest(path, { method = 'GET', token = WRITE_TOKEN, legacyToken, body } = {}) {
+function coordinatorRequest(path, { method = 'GET', token = WRITE_TOKEN, legacyToken, sessionToken, body } = {}) {
   return new Request('https://vault-coordinator.internal' + path, {
     method,
     headers: {
       'X-Vault-Id': VAULT_ID,
-      'X-Write-Token': token,
+      ...(token ? { 'X-Write-Token': token } : {}),
       ...(legacyToken ? { 'X-Legacy-Write-Token': legacyToken } : {}),
+      ...(sessionToken ? { 'X-Device-Session': sessionToken } : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
     },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
+}
+
+function base64Url(bytes) {
+  return Buffer.from(bytes).toString('base64url');
+}
+
+async function createCoordinatorSession(coordinator, token = WRITE_TOKEN) {
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeySpki = base64Url(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const spkiBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const digest = new Uint8Array(await webcrypto.subtle.digest('SHA-256', spkiBytes));
+  const deviceId = base64Url(digest);
+
+  const challengeResponse = await coordinator.fetch(coordinatorRequest('/device/challenge', {
+    method: 'POST',
+    token,
+    body: { deviceId, publicKeySpki }
+  }));
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await responseJson(challengeResponse);
+  const signature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+
+  const verifiedResponse = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: { challengeId: challenge.challengeId, deviceId, signature }
+  }));
+  assert.equal(verifiedResponse.status, 200);
+  const verified = await responseJson(verifiedResponse);
+  return { deviceId, sessionToken: verified.sessionToken, keyPair, publicKeySpki };
 }
 
 test('Vault Coordinator claims once, stores encrypted date packets, and rejects stale writes', async () => {
@@ -111,8 +162,13 @@ test('Vault Coordinator claims once, stores encrypted date packets, and rejects 
   const claim = await coordinator.fetch(coordinatorRequest('/claim', { method: 'POST', body: {} }));
   assert.equal(claim.status, 200);
 
+  const deviceSession = await createCoordinatorSession(coordinator);
+  assert.equal(typeof deviceSession.sessionToken, 'string');
+
   const firstWrite = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
+    sessionToken: deviceSession.sessionToken,
+    token: null,
     body: { packet, baseUpdatedAt: null }
   }));
   assert.equal(firstWrite.status, 200);
@@ -123,14 +179,20 @@ test('Vault Coordinator claims once, stores encrypted date packets, and rejects 
 
   const staleWrite = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
+    sessionToken: deviceSession.sessionToken,
+    token: null,
     body: { packet, baseUpdatedAt: null }
   }));
   assert.equal(staleWrite.status, 409);
 
-  const badToken = await coordinator.fetch(coordinatorRequest('/index', { token: 'x'.repeat(43) }));
+  const badToken = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: 'x'.repeat(43)
+  }));
   assert.equal(badToken.status, 401);
 
-  const index = await coordinator.fetch(coordinatorRequest('/index'));
+  const index = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(index.status, 200);
   const indexBody = await responseJson(index);
   assert.equal(indexBody.index[dateString], saved.updatedAt);
@@ -149,7 +211,20 @@ function makeDurableNamespace(DurableClass, env) {
         const storage = {
           async get(key) { return map.get(key); },
           async put(key, value) { map.set(key, value); },
-          async delete(key) { return map.delete(key); }
+          async delete(key) { return map.delete(key); },
+          async list({ prefix = "" } = {}) {
+            return new Map([...map.entries()].filter(([key]) => String(key).startsWith(prefix)));
+          },
+          async transaction(callback) {
+            const transaction = {
+              get: async key => map.get(key),
+              put: async (key, value) => map.set(key, value),
+              delete: async key => map.delete(key)
+            };
+            return callback(transaction);
+          },
+          async setAlarm(timestamp) { this.alarmAt = timestamp; },
+          async deleteAlarm() { this.alarmAt = null; }
         };
         const state = {
           storage,
@@ -163,16 +238,21 @@ function makeDurableNamespace(DurableClass, env) {
   };
 }
 
-function accountRequest(path, { body = {}, token } = {}) {
+function accountRequest(path, {
+  method = 'POST', body, token, membershipTicket, sessionToken, legacyUsername
+} = {}) {
   return new Request('https://faith-focus-proxy.nine-westhigh.workers.dev' + path, {
-    method: 'POST',
+    method,
     headers: {
       Origin: ORIGIN,
       'X-App-Client': CLIENT,
-      'Content-Type': 'application/json',
-      ...(token ? { 'X-Write-Token': token } : {})
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { 'X-Write-Token': token } : {}),
+      ...(membershipTicket ? { 'X-Vault-Membership': membershipTicket } : {}),
+      ...(sessionToken ? { 'X-Device-Session': sessionToken } : {}),
+      ...(legacyUsername ? { 'X-Legacy-Username': legacyUsername } : {})
     },
-    body: JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body)
   });
 }
 
@@ -180,6 +260,7 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
   const kvMap = new Map();
   const env = {
     RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters',
     VAULT_PACKETS: {
       async get(key) { return kvMap.get(key) ?? null; },
       async put(key, value) { kvMap.set(key, value); }
@@ -230,7 +311,71 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
     body: { vaultId }, token: writeToken
   }), env);
   assert.equal(unlock.status, 200);
-  assert.equal((await responseJson(unlock)).passphraseEnvelope.algorithm, 'AES-256-GCM');
+  const unlockData = await responseJson(unlock);
+  assert.equal(unlockData.passphraseEnvelope.algorithm, 'AES-256-GCM');
+  assert.equal(typeof unlockData.membershipTicket, 'string');
+
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const publicKeySpki = base64Url(publicKeyBytes);
+  const deviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', publicKeyBytes)));
+
+  const challengeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/challenge', {
+    body: { deviceId, publicKeySpki },
+    token: writeToken,
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await responseJson(challengeResponse);
+  assert.equal(challenge.expiresAt > Date.now(), true);
+  assert.match(challenge.challengeId, /^[A-Za-z0-9_-]{43}$/);
+
+  const signature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+  const verifyRequest = () => worker.fetch(accountRequest('/vault/' + vaultId + '/device/verify', {
+    body: { challengeId: challenge.challengeId, deviceId, signature },
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  const concurrentVerifications = await Promise.all([verifyRequest(), verifyRequest()]);
+  assert.deepEqual(concurrentVerifications.map(item => item.status).sort(), [200, 401]);
+  const verifiedResponse = concurrentVerifications.find(item => item.status === 200);
+  const verified = await responseJson(verifiedResponse);
+  assert.equal(verified.deviceId, deviceId);
+  assert.match(verified.sessionToken, /^[A-Za-z0-9_-]{43}$/);
+
+  const coordinatorStorage = env.VAULT_COORDINATOR.storageMaps.get(vaultId);
+  const sessionEntries = [...coordinatorStorage.entries()].filter(([key]) => key.startsWith('device-session:'));
+  assert.equal(sessionEntries.length, 1);
+  assert.equal(sessionEntries[0][1].deviceId, deviceId);
+  assert.equal(JSON.stringify(sessionEntries).includes(verified.sessionToken), false);
+  assert.equal(sessionEntries[0][0].includes(verified.sessionToken), false);
+
+  const indexResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/index', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(indexResponse.status, 200);
+
+  const revokeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/session/revoke', {
+    body: { deviceId },
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(revokeResponse.status, 200);
+  assert.equal([...coordinatorStorage.keys()].some(key => key.startsWith('device-session:')), false);
+
+  const revokedSessionRequest = await worker.fetch(accountRequest('/vault/' + vaultId + '/index', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(revokedSessionRequest.status, 401);
 
   const wrongAnswers = recoveryAnswers.map(item => ({ ...item }));
   wrongAnswers[0].answer = 'poppy';
@@ -302,6 +447,7 @@ test('Account Registry rejects duplicate questions, spaces, invalid answers, and
   const kvMap = new Map();
   const env = {
     RECOVERY_PEPPER: 'another-test-recovery-pepper-longer-than-32-characters',
+    MEMBERSHIP_PEPPER: 'another-test-membership-pepper-longer-than-32-characters',
     VAULT_PACKETS: {
       async get(key) { return kvMap.get(key) ?? null; },
       async put(key, value) { kvMap.set(key, value); }
@@ -407,10 +553,13 @@ test('Vault Coordinator upgrades an existing legacy token only after verifying t
 test('Vault Coordinator keeps a valid save when the KV packet write is temporarily blocked', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
   await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const deviceSession = await createCoordinatorSession(coordinator);
   failures.put = true;
 
   const saved = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
+    token: null,
+    sessionToken: deviceSession.sessionToken,
     body: { packet, baseUpdatedAt: null }
   }));
   assert.equal(saved.status, 200);
@@ -419,7 +568,9 @@ test('Vault Coordinator keeps a valid save when the KV packet write is temporari
   assert.deepEqual(storageMap.get('vault-packet:' + dateString), packet);
   assert.equal(storageMap.get('vault-index')[dateString], savedBody.updatedAt);
 
-  const readBack = await coordinator.fetch(coordinatorRequest('/day/' + dateString));
+  const readBack = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(readBack.status, 200);
   const readBody = await responseJson(readBack);
   assert.deepEqual(readBody.packet, packet);
@@ -428,19 +579,23 @@ test('Vault Coordinator keeps a valid save when the KV packet write is temporari
 
 test('Vault Coordinator does not initialize an empty index when KV is unavailable and retries cleanly', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
-  failures.get = true;
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  const deviceSession = await createCoordinatorSession(coordinator);
 
-  const blocked = await coordinator.fetch(coordinatorRequest('/index'));
+  failures.get = true;
+  const blocked = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(blocked.status, 503);
   assert.equal(storageMap.has('vault-index'), false);
 
   failures.get = false;
-  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
-    method: 'POST',
-    body: {}
+  const recovered = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: deviceSession.sessionToken
   }));
-  assert.equal(initialized.status, 200);
-  const recovered = await coordinator.fetch(coordinatorRequest('/index'));
   assert.equal(recovered.status, 200);
   assert.deepEqual((await responseJson(recovered)).index, {});
   assert.deepEqual(storageMap.get('vault-index'), {});
@@ -449,10 +604,244 @@ test('Vault Coordinator does not initialize an empty index when KV is unavailabl
 test('Vault Coordinator reports a temporary read failure instead of treating a missing KV packet as empty', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
   await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const deviceSession = await createCoordinatorSession(coordinator);
   failures.get = true;
 
-  const read = await coordinator.fetch(coordinatorRequest('/day/' + dateString));
+  const read = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(read.status, 503);
   assert.match((await responseJson(read)).error, /temporarily unavailable/);
   assert.equal(storageMap.has('vault-packet:' + dateString), false);
+});
+
+
+test('invalid device signatures consume their nonce and cannot be replayed with a later valid signature', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const publicKeySpki = base64Url(publicKeyBytes);
+  const deviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', publicKeyBytes)));
+
+  const challengeResponse = await coordinator.fetch(coordinatorRequest('/device/challenge', {
+    method: 'POST',
+    body: { deviceId, publicKeySpki }
+  }));
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await responseJson(challengeResponse);
+  const challengeKey = 'device-challenge:' + challenge.challengeId;
+  assert.equal(storageMap.has(challengeKey), true);
+
+  const invalid = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: {
+      challengeId: challenge.challengeId,
+      deviceId,
+      signature: base64Url(new Uint8Array(64))
+    }
+  }));
+  assert.equal(invalid.status, 401);
+  assert.equal(storageMap.has(challengeKey), false);
+
+  const validSignature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+  const replay = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: {
+      challengeId: challenge.challengeId,
+      deviceId,
+      signature: validSignature
+    }
+  }));
+  assert.equal(replay.status, 401);
+  assert.equal([...storageMap.keys()].some(key => key.startsWith('device-session:')), false);
+});
+
+test('Durable Object alarm purges a device session when its two-minute idle expiry is reached', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const { deviceId, sessionToken } = await createCoordinatorSession(coordinator);
+  const sessionHash = await (async () => {
+    const digest = new Uint8Array(await webcrypto.subtle.digest(
+      'SHA-256', new TextEncoder().encode(sessionToken)
+    ));
+    return Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  })();
+  const sessionKey = 'device-session:' + sessionHash;
+  const record = storageMap.get(sessionKey);
+  assert.equal(record.deviceId, deviceId);
+  record.idleExpiresAt = Date.now() - 1;
+  storageMap.set(sessionKey, record);
+
+  await coordinator.alarm();
+  assert.equal(storageMap.has(sessionKey), false);
+});
+
+
+test('device challenge and verification do not perform the vault packet-index KV bootstrap', async () => {
+  const { coordinator, failures, storageMap } = makeCoordinator();
+  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  assert.equal(initialized.status, 200);
+
+  // A challenge is an authentication operation; it must not read the KV
+  // packet index merely because this is the first request to this Coordinator.
+  failures.get = true;
+  const session = await createCoordinatorSession(coordinator);
+  assert.equal(typeof session.sessionToken, 'string');
+  assert.equal(storageMap.has('vault-index'), false);
+});
+
+test('rotating the account write credential revokes all existing device sessions', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  const first = await createCoordinatorSession(coordinator);
+  const second = await createCoordinatorSession(coordinator);
+  assert.equal([...storageMap.keys()].filter(key => key.startsWith('device-session:')).length, 2);
+
+  const rotated = await coordinator.fetch(coordinatorRequest('/admin/rotate-token', {
+    method: 'POST',
+    token: 'R'.repeat(43),
+    body: {}
+  }));
+  assert.equal(rotated.status, 200);
+  assert.equal([...storageMap.keys()].some(key => key.startsWith('device-session:')), false);
+
+  const staleRequest = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: first.sessionToken
+  }));
+  assert.equal(staleRequest.status, 401);
+  const secondStaleRequest = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: second.sessionToken
+  }));
+  assert.equal(secondStaleRequest.status, 401);
+});
+
+
+test('expired device challenges are consumed and rejected without creating a session', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const publicKeySpki = base64Url(publicKeyBytes);
+  const deviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', publicKeyBytes)));
+
+  const issued = await coordinator.fetch(coordinatorRequest('/device/challenge', {
+    method: 'POST',
+    body: { deviceId, publicKeySpki }
+  }));
+  assert.equal(issued.status, 200);
+  const challenge = await responseJson(issued);
+  const key = 'device-challenge:' + challenge.challengeId;
+  const stored = storageMap.get(key);
+  storageMap.set(key, { ...stored, expiresAt: Date.now() - 1 });
+
+  const signature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+  const expired = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: { challengeId: challenge.challengeId, deviceId, signature }
+  }));
+
+  assert.equal(expired.status, 401);
+  assert.equal(storageMap.has(key), false);
+  assert.equal([...storageMap.keys()].some(item => item.startsWith('device-session:')), false);
+});
+
+
+test('invalid or expired device sessions are rejected before any packet-index KV read', async () => {
+  const { coordinator, storageMap, failures } = makeCoordinator();
+  failures.get = true;
+
+  const invalid = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: 'I'.repeat(43)
+  }));
+  assert.equal(invalid.status, 401);
+  assert.equal(storageMap.has('vault-index'), false);
+
+  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  assert.equal(initialized.status, 200);
+  const valid = await createCoordinatorSession(coordinator);
+  const digest = new Uint8Array(await webcrypto.subtle.digest(
+    'SHA-256', new TextEncoder().encode(valid.sessionToken)
+  ));
+  const hash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  const sessionKey = 'device-session:' + hash;
+  const sessionRecord = storageMap.get(sessionKey);
+  sessionRecord.idleExpiresAt = Date.now() - 1;
+  storageMap.set(sessionKey, sessionRecord);
+
+  const expired = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: valid.sessionToken
+  }));
+  assert.equal(expired.status, 401);
+  assert.equal(storageMap.has('vault-index'), false);
+});
+
+
+test('an expired device session cannot replace an existing cloud packet', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  const device = await createCoordinatorSession(coordinator);
+
+  const saved = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    method: 'PUT',
+    token: null,
+    sessionToken: device.sessionToken,
+    body: { packet, baseUpdatedAt: null }
+  }));
+  assert.equal(saved.status, 200);
+  const savedBody = await responseJson(saved);
+  const storedPacket = storageMap.get('vault-packet:' + dateString);
+  const storedUpdatedAt = storageMap.get('vault-index')[dateString];
+
+  const digest = new Uint8Array(await webcrypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(device.sessionToken)
+  ));
+  const sessionHash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  const sessionKey = 'device-session:' + sessionHash;
+  const sessionRecord = storageMap.get(sessionKey);
+  storageMap.set(sessionKey, { ...sessionRecord, idleExpiresAt: Date.now() - 1 });
+
+  const changedPacket = { ...packet, ciphertext: Buffer.from('changed packet').toString('base64') };
+  const rejected = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    method: 'PUT',
+    token: null,
+    sessionToken: device.sessionToken,
+    body: { packet: changedPacket, baseUpdatedAt: savedBody.updatedAt }
+  }));
+
+  assert.equal(rejected.status, 401);
+  assert.deepEqual(storageMap.get('vault-packet:' + dateString), storedPacket);
+  assert.equal(storageMap.get('vault-index')[dateString], storedUpdatedAt);
 });

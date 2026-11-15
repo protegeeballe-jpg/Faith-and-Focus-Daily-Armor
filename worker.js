@@ -8,6 +8,85 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const PACKET_FORMAT = "faith-focus-encrypted-daily-packet";
 const encoder = new TextEncoder();
 
+const LEGACY_VAULT_ID_DOMAIN = "FaithFocus|VaultID|v1|";
+const MEMBERSHIP_TICKET_TTL_MS = 12 * 60 * 60 * 1000;
+const DEVICE_CHALLENGE_TTL_MS = 60 * 1000;
+const DEVICE_SESSION_IDLE_MS = 2 * 60 * 1000;
+const DEVICE_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
+const MAX_DEVICES_PER_VAULT = 10;
+const MAX_PENDING_DEVICE_CHALLENGES = 3;
+const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const DEVICE_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{86}$/;
+
+function fromBase64Url(value) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9_-]+$/.test(value)) {
+    throw new TypeError("Invalid base64url value.");
+  }
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/")
+    + "=".repeat((4 - value.length % 4) % 4);
+  const binary = atob(padded);
+  return Uint8Array.from(binary, character => character.charCodeAt(0));
+}
+
+async function createVaultMembershipTicket(vaultId, pepper) {
+  if (!VAULT_ID_PATTERN.test(vaultId || "")
+      || typeof pepper !== "string" || pepper.length < 32) {
+    throw new Error("Vault membership signing is not configured.");
+  }
+  const payload = {
+    version: 1,
+    vaultId,
+    expiresAt: Date.now() + MEMBERSHIP_TICKET_TTL_MS
+  };
+  const encodedPayload = encodeBase64Url(encoder.encode(JSON.stringify(payload)));
+  const signature = await hmacHex(
+    pepper,
+    "FaithFocus|vault-membership|v1|" + encodedPayload
+  );
+  return encodedPayload + "." + signature;
+}
+
+async function verifyVaultMembershipTicket(ticket, vaultId, pepper) {
+  if (typeof ticket !== "string" || ticket.length > 1024
+      || typeof pepper !== "string" || pepper.length < 32) return false;
+  const parts = ticket.split(".");
+  if (parts.length !== 2 || !/^[a-f0-9]{64}$/.test(parts[1])) return false;
+
+  let payload;
+  try {
+    const expected = await hmacHex(
+      pepper,
+      "FaithFocus|vault-membership|v1|" + parts[0]
+    );
+    if (!constantTimeEqual(expected, parts[1])) return false;
+    payload = JSON.parse(new TextDecoder().decode(fromBase64Url(parts[0])));
+  } catch {
+    return false;
+  }
+
+  const now = Date.now();
+  return Boolean(payload && payload.version === 1
+    && payload.vaultId === vaultId
+    && Number.isSafeInteger(payload.expiresAt)
+    && payload.expiresAt > now
+    && payload.expiresAt <= now + MEMBERSHIP_TICKET_TTL_MS + 30_000);
+}
+
+async function validateDevicePublicKey(publicKeySpki, deviceId) {
+  if (!DEVICE_ID_PATTERN.test(deviceId || "")
+      || typeof publicKeySpki !== "string"
+      || publicKeySpki.length < 80 || publicKeySpki.length > 180) return false;
+  try {
+    const spki = fromBase64Url(publicKeySpki);
+    // Validate the public key encoding and fingerprint.
+    if (spki.byteLength < 64 || spki.byteLength > 128) return false;
+    const digest = await sha256Bytes(spki);
+    return constantTimeEqual(encodeBase64Url(digest), deviceId);
+  } catch {
+    return false;
+  }
+}
+
 function jsonResponse(body, status, origin = null) {
   const headers = new Headers({
     "Content-Type": "application/json; charset=utf-8",
@@ -226,19 +305,20 @@ function withCorsPreflight() {
     headers: {
       "Access-Control-Allow-Origin": APP_ORIGIN,
       "Access-Control-Allow-Methods": "GET, POST, PUT, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, X-App-Client, X-Write-Token, X-Base-Updated-At",
+      "Access-Control-Allow-Headers": "Content-Type, X-App-Client, X-Write-Token, X-Base-Updated-At, X-Vault-Membership, X-Device-Session, X-Legacy-Username",
       "Access-Control-Max-Age": "600",
       "Vary": "Origin"
     }
   });
 }
 
-async function callCoordinator(env, vaultId, path, { token, oldToken, body } = {}) {
+async function callCoordinator(env, vaultId, path, { token, oldToken, sessionToken, body } = {}) {
   const id = env.VAULT_COORDINATOR.idFromName(vaultId);
   const stub = env.VAULT_COORDINATOR.get(id);
   const headers = new Headers({ "X-Vault-Id": vaultId });
   if (token) headers.set("X-Write-Token", token);
   if (oldToken) headers.set("X-Legacy-Write-Token", oldToken);
+  if (sessionToken) headers.set("X-Device-Session", sessionToken);
   if (body !== undefined) headers.set("Content-Type", "application/json");
   return stub.fetch(new Request("https://vault-coordinator.internal" + path, {
     method: body === undefined ? "POST" : "POST",
@@ -279,7 +359,7 @@ export default {
       }
       try {
         bodyText = await readBodyLimited(request, MAX_REQUEST_BYTES);
-      } catch (error) {
+      } catch {
         return jsonResponse({ error: "The request body could not be read safely." }, 400, origin);
       }
       if (bodyText === null) return jsonResponse({ error: "Request payload exceeds the 1 MB limit." }, 413, origin);
@@ -291,28 +371,60 @@ export default {
         return jsonResponse({ error: "The account registry services are not configured. Please contact the app maintainer." }, 503, origin);
       }
       const route = accountRoute[1];
-      if (["signup", "migrate-legacy", "recover"].includes(route)
+      if (["signup", "migrate-legacy", "recover", "unlock", "complete-recovery"].includes(route)
           && (!env.RECOVERY_PEPPER || String(env.RECOVERY_PEPPER).length < 32)) {
-        return jsonResponse({ error: "Account recovery is not configured. Please contact the app maintainer." }, 503, origin);
+        return jsonResponse({ error: "Account security is not configured. Please contact the app maintainer." }, 503, origin);
+      }
+      if (["signup", "migrate-legacy", "unlock", "complete-recovery"].includes(route)
+          && (!env.MEMBERSHIP_PEPPER || String(env.MEMBERSHIP_PEPPER).length < 32)) {
+        return jsonResponse({ error: "Device membership signing is not configured. Please contact the app maintainer." }, 503, origin);
       }
       const payload = await parseJsonBody(bodyText);
       if (!payload) return jsonResponse({ error: "Invalid JSON request body." }, 400, origin);
+
       if (route === "unlock") {
         const vaultId = payload.vaultId;
         const token = request.headers.get("X-Write-Token") || "";
-        if (!VAULT_ID_PATTERN.test(vaultId || "") || !TOKEN_PATTERN.test(token)) {
+        if (Object.keys(payload).length !== 1
+            || !VAULT_ID_PATTERN.test(vaultId || "") || !TOKEN_PATTERN.test(token)) {
           return jsonResponse({ error: "The account credentials were not accepted." }, 401, origin);
         }
+
+        // Confirm the account mapping before continuing.
+        const membershipResponse = await callRegistry(
+          env, "/vault-membership", { vaultId, action: "unlock" }, request
+        );
+        if (!membershipResponse.ok) {
+          return jsonResponse(
+            { error: "The username or passphrase was not accepted." },
+            membershipResponse.status === 429 ? 429 : 401,
+            origin
+          );
+        }
+
         const claimResponse = await callCoordinator(env, vaultId, "/claim", { token });
-        if (!claimResponse.ok) return jsonResponse({ error: "The username or passphrase was not accepted." }, claimResponse.status, origin);
+        if (!claimResponse.ok) {
+          return jsonResponse({ error: "The username or passphrase was not accepted." }, claimResponse.status, origin);
+        }
         const metadataResponse = await callRegistry(env, "/authenticated-envelope", { vaultId }, request);
         const metadata = await metadataResponse.json();
         if (!metadataResponse.ok) return jsonResponse(metadata, metadataResponse.status, origin);
-        return jsonResponse(metadata, 200, origin);
+
+        const membershipTicket = await createVaultMembershipTicket(vaultId, env.MEMBERSHIP_PEPPER);
+        return jsonResponse({ ...metadata, membershipTicket }, 200, origin);
       }
 
       const registryResponse = await callRegistry(env, "/" + route, payload, request);
       const responseText = await registryResponse.text();
+      if (registryResponse.ok && ["signup", "migrate-legacy", "complete-recovery"].includes(route)) {
+        let result;
+        try { result = JSON.parse(responseText); }
+        catch { return jsonResponse({ error: "The account registry returned an invalid response." }, 502, origin); }
+        if (VAULT_ID_PATTERN.test(result?.vaultId || "")) {
+          result.membershipTicket = await createVaultMembershipTicket(result.vaultId, env.MEMBERSHIP_PEPPER);
+        }
+        return jsonResponse(result, registryResponse.status, origin);
+      }
       return new Response(responseText, {
         status: registryResponse.status,
         headers: {
@@ -325,17 +437,53 @@ export default {
       });
     }
 
-    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2}))$/.exec(url.pathname);
+    // Validate the legacy account reference.
+    const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
+    const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
+    if (legacyClaim && legacyUsernameHeader) {
+      if (url.search) return jsonResponse({ error: "Unexpected query parameters are not allowed." }, 400, origin);
+      if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, origin);
+      const username = validUsername(legacyUsernameHeader);
+      const token = request.headers.get("X-Write-Token") || "";
+      if (!username || !TOKEN_PATTERN.test(token)) {
+        return jsonResponse({ error: "The existing vault credentials were not accepted." }, 401, origin);
+      }
+      const expectedVaultId = await sha256Hex(LEGACY_VAULT_ID_DOMAIN + username);
+      if (!constantTimeEqual(expectedVaultId, legacyClaim[1])) {
+        return jsonResponse({ error: "The legacy account reference is invalid." }, 400, origin);
+      }
+      if (!env.ACCOUNT_REGISTRY || !env.VAULT_COORDINATOR) {
+        return jsonResponse({ error: "The account registry services are not configured." }, 503, origin);
+      }
+      const eligibility = await callRegistry(
+        env, "/legacy-eligibility", { username, vaultId: legacyClaim[1] }, request
+      );
+      if (!eligibility.ok) {
+        return jsonResponse(
+          { error: "This account is not eligible for the legacy upgrade flow." },
+          eligibility.status === 429 ? 429 : 401,
+          origin
+        );
+      }
+      const claimResponse = await callCoordinator(env, legacyClaim[1], "/claim", { token });
+      if (!claimResponse.ok) {
+        return jsonResponse({ error: "The username or passphrase was not accepted." }, claimResponse.status, origin);
+      }
+      return jsonResponse({ ok: true, claimed: true, legacy: true }, 200, origin);
+    }
+
+    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
     if (!match || url.search || !VAULT_ID_PATTERN.test(match[1])) {
       return jsonResponse({ error: "Route not found." }, 404, origin);
     }
-    if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR) {
-      return jsonResponse({ error: "Cloudflare KV and Durable Object bindings are not configured." }, 503, origin);
+    if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR
+        || !env.MEMBERSHIP_PEPPER || String(env.MEMBERSHIP_PEPPER).length < 32) {
+      return jsonResponse({ error: "Cloudflare vault services are not configured." }, 503, origin);
     }
 
     const [, vaultId, resource, dateString] = match;
-    const expectedMethods = resource === "claim" ? ["POST"]
-      : resource === "index" ? ["GET"] : ["GET", "PUT"];
+    const expectedMethods = resource === "index" ? ["GET"]
+      : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
     if (!expectedMethods.includes(request.method)) {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
@@ -346,32 +494,74 @@ export default {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
 
+    // Validate the supplied membership ticket.
+    const membershipTicket = request.headers.get("X-Vault-Membership") || "";
+    if (!(await verifyVaultMembershipTicket(membershipTicket, vaultId, env.MEMBERSHIP_PEPPER))) {
+      return jsonResponse({ error: "A valid account membership ticket is required. Please sign in again." }, 403, origin);
+    }
+
+    let payload = null;
+    if (bodyText) {
+      payload = await parseJsonBody(bodyText);
+      if (!payload) return jsonResponse({ error: "Invalid JSON request body." }, 400, origin);
+    }
+
     const token = request.headers.get("X-Write-Token") || "";
-    if (!TOKEN_PATTERN.test(token)) {
-      return jsonResponse({ error: "A valid vault write credential is required." }, 401, origin);
+    const sessionToken = request.headers.get("X-Device-Session") || "";
+
+    if (resource === "device/challenge") {
+      if (!payload || Object.keys(payload).length !== 2
+          || typeof payload.deviceId !== "string"
+          || typeof payload.publicKeySpki !== "string"
+          || !TOKEN_PATTERN.test(token)
+          || !(await validateDevicePublicKey(payload.publicKeySpki, payload.deviceId))) {
+        return jsonResponse({ error: "The device registration request is invalid." }, 400, origin);
+      }
+    } else if (resource === "device/verify") {
+      if (!payload || Object.keys(payload).length !== 3
+          || !DEVICE_ID_PATTERN.test(payload.deviceId || "")
+          || !DEVICE_ID_PATTERN.test(payload.challengeId || "")
+          || !DEVICE_SIGNATURE_PATTERN.test(payload.signature || "")) {
+        return jsonResponse({ error: "The device challenge response is invalid." }, 400, origin);
+      }
+      try {
+        if (fromBase64Url(payload.signature).byteLength !== 64) {
+          return jsonResponse({ error: "The device challenge signature has an invalid size." }, 400, origin);
+        }
+      } catch {
+        return jsonResponse({ error: "The device challenge signature is malformed." }, 400, origin);
+      }
+    } else {
+      if (!TOKEN_PATTERN.test(sessionToken)) {
+        return jsonResponse({ error: "A valid device session is required. Please sign in again." }, 401, origin);
+      }
+      if (resource === "device/session/revoke"
+          && (!payload || Object.keys(payload).length !== 1
+            || !DEVICE_ID_PATTERN.test(payload.deviceId || ""))) {
+        return jsonResponse({ error: "The device session revocation request is invalid." }, 400, origin);
+      }
     }
 
     const id = env.VAULT_COORDINATOR.idFromName(vaultId);
     const coordinator = env.VAULT_COORDINATOR.get(id);
-    const internalUrl = new URL("/" + resource, "https://vault-coordinator.internal");
-    if (dateString) internalUrl.pathname = "/day/" + dateString;
-
+    const internalPath = "/" + resource;
     const headers = new Headers({
       "Content-Type": "application/json",
-      "X-Write-Token": token,
       "X-Vault-Id": vaultId
     });
-    if (request.method === "PUT") {
-      headers.set("X-Base-Updated-At", request.headers.get("X-Base-Updated-At") || "none");
-    }
-    const response = await coordinator.fetch(new Request(internalUrl, {
-      method: request.method,
-      headers,
-      body: bodyText || undefined
-    }));
-    const responseText = await response.text();
+    if (resource === "device/challenge") headers.set("X-Write-Token", token);
+    if (sessionToken) headers.set("X-Device-Session", sessionToken);
+    const coordinatorResponse = await coordinator.fetch(new Request(
+      "https://vault-coordinator.internal" + internalPath,
+      {
+        method: request.method,
+        headers,
+        body: bodyText || undefined
+      }
+    ));
+    const responseText = await coordinatorResponse.text();
     return new Response(responseText, {
-      status: response.status,
+      status: coordinatorResponse.status,
       headers: {
         "Content-Type": "application/json; charset=utf-8",
         "Cache-Control": "no-store",
@@ -408,15 +598,26 @@ export class AccountRegistry {
     return hmacHex(this.env.RECOVERY_PEPPER, canonicalRecoveryAnswers(answers));
   }
 
+  async rateLimitSubject(action, subject, limit, windowMs) {
+    const key = "auth-rate:" + action + ":" + subject;
+    const now = Date.now();
+    let record = await this.state.storage.get(key);
+    if (!record || !Number.isFinite(record.windowStartedAt)
+        || now - record.windowStartedAt >= windowMs || now < record.windowStartedAt) {
+      record = { windowStartedAt: now, count: 0 };
+    }
+    if (record.count >= limit) return false;
+    await this.state.storage.put(key, {
+      windowStartedAt: record.windowStartedAt,
+      count: record.count + 1
+    });
+    return true;
+  }
+
   async rateLimitRecovery(request) {
     const ip = request.headers.get("X-Recovery-Client-IP") || "unknown-client";
-    const windowNumber = Math.floor(Date.now() / (15 * 60 * 1000));
     const ipDigest = await hmacHex(this.env.RECOVERY_PEPPER, "recovery-ip|" + ip);
-    const key = "recovery-attempts:" + ipDigest + ":" + windowNumber;
-    const attempts = (await this.state.storage.get(key)) || 0;
-    if (attempts >= 5) return false;
-    await this.state.storage.put(key, attempts + 1);
-    return true;
+    return this.rateLimitSubject("recovery-ip", ipDigest, 5, 15 * 60 * 1000);
   }
 
   async initializeVault(vaultId, writeToken) {
@@ -438,6 +639,37 @@ export class AccountRegistry {
       return jsonResponse({ error: "Invalid account request." }, 400);
     }
 
+    if (path === "/vault-membership") {
+      const vaultId = payload.vaultId;
+      const action = payload.action;
+      if (!VAULT_ID_PATTERN.test(vaultId || "") || action !== "unlock") {
+        return jsonResponse({ error: "The account membership request is invalid." }, 400);
+      }
+      const record = await this.state.storage.get(this.accountKey(vaultId));
+      if (!record || await this.state.storage.get(this.usernameKey(record.username)) !== vaultId) {
+        return jsonResponse({ error: "The account membership could not be verified." }, 404);
+      }
+      if (!(await this.rateLimitSubject("unlock", vaultId, 10, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many sign-in attempts for this account. Please try again later." }, 429);
+      }
+      return jsonResponse({ ok: true, username: record.username }, 200);
+    }
+
+    if (path === "/legacy-eligibility") {
+      const username = validUsername(payload.username);
+      const vaultId = payload.vaultId;
+      if (!username || !VAULT_ID_PATTERN.test(vaultId || "")) {
+        return jsonResponse({ error: "The legacy account reference is invalid." }, 400);
+      }
+      if (await this.state.storage.get(this.usernameKey(username))) {
+        return jsonResponse({ error: "This username already belongs to a registered account." }, 409);
+      }
+      if (!(await this.rateLimitSubject("legacy-upgrade", username, 5, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many legacy upgrade attempts. Please try again later." }, 429);
+      }
+      return jsonResponse({ ok: true }, 200);
+    }
+
     if (path === "/signup") {
       const username = validUsername(payload.username);
       const vaultId = payload.vaultId;
@@ -449,6 +681,9 @@ export class AccountRegistry {
           || payload.recoveryIterations !== 1200000 || !validEnvelope(payload.recoveryEnvelope)
           || !validQuestionAnswers(answers) || !TOKEN_PATTERN.test(payload.writeToken || "")) {
         return jsonResponse({ error: "The sign-up information is incomplete or invalid." }, 400);
+      }
+      if (!(await this.rateLimitSubject("signup", username, 5, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many account creation attempts. Please try again later." }, 429);
       }
       const usernameIndexKey = this.usernameKey(username);
       if (await this.state.storage.get(usernameIndexKey)) {
@@ -504,6 +739,9 @@ export class AccountRegistry {
           || !TOKEN_PATTERN.test(payload.legacyWriteToken || "")) {
         return jsonResponse({ error: "The legacy account upgrade information is incomplete or invalid." }, 400);
       }
+      if (!(await this.rateLimitSubject("legacy-migrate", username, 5, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many legacy migration attempts. Please try again later." }, 429);
+      }
       if (await this.state.storage.get(this.usernameKey(username))) {
         return jsonResponse({ error: "This username already has a registered account." }, 409);
       }
@@ -551,6 +789,9 @@ export class AccountRegistry {
     if (path === "/signin") {
       const username = validUsername(payload.username);
       if (!username) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
+      if (!(await this.rateLimitSubject("signin", username, 30, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many sign-in attempts. Please try again later." }, 429);
+      }
       const vaultId = await this.state.storage.get(this.usernameKey(username));
       if (!vaultId) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
       const record = await this.state.storage.get(this.accountKey(vaultId));
@@ -699,6 +940,294 @@ export class VaultCoordinator {
     return this.vaultId + ":" + dateString;
   }
 
+  deviceChallengeKey(challengeId) {
+    return "device-challenge:" + challengeId;
+  }
+
+  deviceKey(deviceId) {
+    return "device:" + deviceId;
+  }
+
+  deviceSessionKey(tokenHash) {
+    return "device-session:" + tokenHash;
+  }
+
+  async allowRateLimit(action, limit, windowMs) {
+    // Update the request counter for this action.
+    const key = "auth-rate:" + action;
+    const now = Date.now();
+    let record = await this.state.storage.get(key);
+    if (!record || !Number.isFinite(record.windowStartedAt)
+        || now < record.windowStartedAt || now - record.windowStartedAt >= windowMs) {
+      record = { windowStartedAt: now, count: 0 };
+    }
+    if (record.count >= limit) return false;
+    await this.state.storage.put(key, {
+      windowStartedAt: record.windowStartedAt,
+      count: record.count + 1
+    });
+    return true;
+  }
+
+  async createDeviceChallenge(request) {
+    if (!(await this.authenticate(request))) return this.unauthorized();
+    if (!(await this.allowRateLimit("device-challenge", 5, 60_000))) {
+      return jsonResponse({ error: "Too many device sign-in attempts. Please try again in one minute." }, 429);
+    }
+
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device registration request." }, 400); }
+    if (!payload || Object.keys(payload).length !== 2
+        || !DEVICE_ID_PATTERN.test(payload.deviceId || "")
+        || typeof payload.publicKeySpki !== "string"
+        || payload.publicKeySpki.length < 80 || payload.publicKeySpki.length > 180) {
+      return jsonResponse({ error: "Invalid device registration request." }, 400);
+    }
+
+    let spki;
+    try {
+      spki = fromBase64Url(payload.publicKeySpki);
+      if (spki.byteLength < 64 || spki.byteLength > 128) throw new Error("Invalid public key size.");
+      const fingerprint = encodeBase64Url(await sha256Bytes(spki));
+      if (!constantTimeEqual(fingerprint, payload.deviceId)) {
+        return jsonResponse({ error: "The device identity does not match its public key." }, 400);
+      }
+      const imported = await crypto.subtle.importKey(
+        "spki", spki, { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]
+      );
+      if (imported.algorithm?.namedCurve !== "P-256") throw new Error("Unsupported device curve.");
+    } catch {
+      return jsonResponse({ error: "The device public key is invalid or unsupported." }, 400);
+    }
+
+    const existingDevice = await this.state.storage.get(this.deviceKey(payload.deviceId));
+    if (existingDevice && existingDevice.publicKeySpki !== payload.publicKeySpki) {
+      return jsonResponse({ error: "This device identifier is already associated with a different public key." }, 409);
+    }
+
+    const now = Date.now();
+    const pending = await this.state.storage.list({ prefix: "device-challenge:" });
+    for (const [key, challenge] of pending) {
+      if (!challenge || challenge.expiresAt <= now) await this.state.storage.delete(key);
+    }
+    const remaining = await this.state.storage.list({ prefix: "device-challenge:" });
+    if (remaining.size >= MAX_PENDING_DEVICE_CHALLENGES) {
+      return jsonResponse({ error: "Too many pending device sign-ins. Complete one or wait for it to expire." }, 429);
+    }
+
+    const devices = await this.state.storage.list({ prefix: "device:" });
+    if (!existingDevice && devices.size >= MAX_DEVICES_PER_VAULT) {
+      return jsonResponse({ error: "This account has reached its trusted-device limit. Remove an old device before adding another." }, 429);
+    }
+
+    const challengeId = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const nonce = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const expiresAt = now + DEVICE_CHALLENGE_TTL_MS;
+    const message = JSON.stringify({
+      domain: "FaithFocus|device-auth|v1",
+      vaultId: this.vaultId,
+      deviceId: payload.deviceId,
+      challengeId,
+      nonce,
+      expiresAt
+    });
+    await this.state.storage.put(this.deviceChallengeKey(challengeId), {
+      vaultId: this.vaultId,
+      deviceId: payload.deviceId,
+      publicKeySpki: payload.publicKeySpki,
+      message,
+      expiresAt,
+      createdAt: now
+    });
+
+    return jsonResponse({ ok: true, challengeId, deviceId: payload.deviceId, message, expiresAt }, 200);
+  }
+
+  async consumeDeviceChallenge(challengeId) {
+    const key = this.deviceChallengeKey(challengeId);
+    // Read and remove the stored challenge.
+    return this.state.storage.transaction(async () => {
+      // Read and remove the stored value.
+      const challenge = await this.state.storage.get(key);
+      await this.state.storage.delete(key);
+      return challenge || null;
+    });
+  }
+
+  async scheduleSessionCleanup() {
+    if (typeof this.state.storage.setAlarm !== "function") return;
+    const sessions = await this.state.storage.list({ prefix: "device-session:" });
+    let nextExpiry = null;
+    for (const session of sessions.values()) {
+      if (!session) continue;
+      const expiry = Math.min(session.expiresAt || 0, session.idleExpiresAt || 0);
+      if (expiry > 0 && (nextExpiry === null || expiry < nextExpiry)) nextExpiry = expiry;
+    }
+    if (nextExpiry === null) {
+      await this.state.storage.deleteAlarm?.();
+    } else {
+      await this.state.storage.setAlarm(nextExpiry);
+    }
+  }
+
+  async alarm() {
+    return this.serialized(async () => {
+      const now = Date.now();
+      const sessions = await this.state.storage.list({ prefix: "device-session:" });
+      for (const [key, session] of sessions) {
+        if (!session || session.expiresAt <= now || session.idleExpiresAt <= now) {
+          await this.state.storage.delete(key);
+        }
+      }
+      await this.scheduleSessionCleanup();
+    });
+  }
+
+  async authenticateDeviceSession(request, { touch = true } = {}) {
+    const token = request.headers.get("X-Device-Session") || "";
+    if (!TOKEN_PATTERN.test(token)) return null;
+    const tokenHash = await sha256Hex(token);
+    const key = this.deviceSessionKey(tokenHash);
+    const record = await this.state.storage.get(key);
+    const now = Date.now();
+    if (!record || record.vaultId !== this.vaultId
+        || !Number.isFinite(record.expiresAt)
+        || !Number.isFinite(record.idleExpiresAt)
+        || record.expiresAt <= now || record.idleExpiresAt <= now) {
+      if (record) {
+        await this.state.storage.delete(key);
+        await this.scheduleSessionCleanup();
+      }
+      return null;
+    }
+    if (touch) {
+      record.lastSeenAt = now;
+      record.idleExpiresAt = Math.min(now + DEVICE_SESSION_IDLE_MS, record.expiresAt);
+      await this.state.storage.put(key, record);
+      await this.scheduleSessionCleanup();
+    }
+    return record;
+  }
+
+  async verifyDeviceChallenge(request) {
+    if (!(await this.allowRateLimit("device-verify", 10, 60_000))) {
+      return jsonResponse({ error: "Too many device verification attempts. Please try again in one minute." }, 429);
+    }
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device challenge response." }, 400); }
+    if (!payload || Object.keys(payload).length !== 3
+        || !DEVICE_ID_PATTERN.test(payload.challengeId || "")
+        || !DEVICE_ID_PATTERN.test(payload.deviceId || "")
+        || !DEVICE_SIGNATURE_PATTERN.test(payload.signature || "")) {
+      return jsonResponse({ error: "Invalid device challenge response." }, 400);
+    }
+
+    let challenge;
+    try {
+      challenge = await this.consumeDeviceChallenge(payload.challengeId);
+    } catch {
+      return jsonResponse({ error: "The device challenge could not be consumed safely. Please start sign-in again." }, 503);
+    }
+    if (!challenge || challenge.vaultId !== this.vaultId
+        || challenge.deviceId !== payload.deviceId
+        || challenge.expiresAt <= Date.now()) {
+      return jsonResponse({ error: "The device challenge is invalid, expired, or already used. Please sign in again." }, 401);
+    }
+
+    let signatureValid = false;
+    try {
+      const publicKey = await crypto.subtle.importKey(
+        "spki",
+        fromBase64Url(challenge.publicKeySpki),
+        { name: "ECDSA", namedCurve: "P-256" },
+        false,
+        ["verify"]
+      );
+      signatureValid = await crypto.subtle.verify(
+        { name: "ECDSA", hash: "SHA-256" },
+        publicKey,
+        fromBase64Url(payload.signature),
+        encoder.encode(challenge.message)
+      );
+    } catch {
+      signatureValid = false;
+    }
+    if (!signatureValid) {
+      return jsonResponse({ error: "The device could not prove possession of its private signing key. The challenge was consumed; start sign-in again." }, 401);
+    }
+
+    const deviceKey = this.deviceKey(challenge.deviceId);
+    const existing = await this.state.storage.get(deviceKey);
+    if (existing && existing.publicKeySpki !== challenge.publicKeySpki) {
+      return jsonResponse({ error: "The registered device key does not match. Contact the account owner." }, 409);
+    }
+    if (!existing) {
+      const devices = await this.state.storage.list({ prefix: "device:" });
+      if (devices.size >= MAX_DEVICES_PER_VAULT) {
+        return jsonResponse({ error: "This account has reached its trusted-device limit." }, 429);
+      }
+    }
+
+    const now = Date.now();
+    await this.state.storage.put(deviceKey, {
+      deviceId: challenge.deviceId,
+      publicKeySpki: challenge.publicKeySpki,
+      createdAt: existing?.createdAt || now,
+      lastAuthenticatedAt: now
+    });
+
+    const sessionToken = encodeBase64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const sessionHash = await sha256Hex(sessionToken);
+    const session = {
+      vaultId: this.vaultId,
+      deviceId: challenge.deviceId,
+      createdAt: now,
+      lastSeenAt: now,
+      expiresAt: now + DEVICE_SESSION_MAX_MS,
+      idleExpiresAt: now + DEVICE_SESSION_IDLE_MS
+    };
+    await this.state.storage.put(this.deviceSessionKey(sessionHash), session);
+    await this.scheduleSessionCleanup();
+
+    return jsonResponse({
+      ok: true,
+      deviceId: challenge.deviceId,
+      sessionToken,
+      sessionExpiresAt: session.expiresAt,
+      sessionIdleExpiresAt: session.idleExpiresAt
+    }, 200);
+  }
+
+  async revokeAllDeviceSessions() {
+    const sessions = await this.state.storage.list({ prefix: "device-session:" });
+    for (const key of sessions.keys()) {
+      await this.state.storage.delete(key);
+    }
+    await this.scheduleSessionCleanup();
+    return sessions.size;
+  }
+
+  async revokeDeviceSession(request) {
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device session revocation request." }, 400); }
+    const token = request.headers.get("X-Device-Session") || "";
+    if (!payload || !DEVICE_ID_PATTERN.test(payload.deviceId || "") || !TOKEN_PATTERN.test(token)) {
+      return jsonResponse({ error: "The device session revocation request is invalid." }, 400);
+    }
+    const tokenHash = await sha256Hex(token);
+    const key = this.deviceSessionKey(tokenHash);
+    const session = await this.state.storage.get(key);
+    if (!session || session.vaultId !== this.vaultId || session.deviceId !== payload.deviceId) {
+      return jsonResponse({ error: "The device session is already expired or no longer valid." }, 401);
+    }
+    await this.state.storage.delete(key);
+    await this.scheduleSessionCleanup();
+    return jsonResponse({ ok: true, revoked: true }, 200);
+  }
+
   serialized(operation) {
     const next = this.queue.then(operation, operation);
     this.queue = next.catch(() => {});
@@ -727,40 +1256,55 @@ export class VaultCoordinator {
   }
 
   async unauthorized() {
-    const bucket = Math.floor(Date.now() / 60000);
-    const key = "auth-failures:" + bucket;
-    const failures = (await this.state.storage.get(key)) || 0;
-    if (failures >= 12) return jsonResponse({ error: "Too many vault authentication attempts. Try again in one minute." }, 429);
-    await this.state.storage.put(key, failures + 1);
+    const key = "auth-failures";
+    const now = Date.now();
+    let record = await this.state.storage.get(key);
+    if (!record || !Number.isFinite(record.windowStartedAt)
+        || now < record.windowStartedAt || now - record.windowStartedAt >= 60_000) {
+      record = { windowStartedAt: now, count: 0 };
+    }
+    if (record.count >= 12) {
+      return jsonResponse({ error: "Too many vault authentication attempts. Try again in one minute." }, 429);
+    }
+    await this.state.storage.put(key, {
+      windowStartedAt: record.windowStartedAt,
+      count: record.count + 1
+    });
     return jsonResponse({ error: "Vault credentials were not accepted." }, 401);
   }
 
   async fetch(request) {
     this.vaultId = request.headers.get("X-Vault-Id") || "";
     if (!VAULT_ID_PATTERN.test(this.vaultId)) return jsonResponse({ error: "Invalid vault identifier." }, 400);
-    if (!this.initialized) {
-      this.initialized = this.state.blockConcurrencyWhile(async () => {
-        if (!(await this.state.storage.get("vault-index"))) {
-          // A KV read failure must not be mistaken for an empty vault index.
-          // Retry initialization on the next request instead of caching a blank index.
-          const index = await this.env.VAULT_PACKETS.get(this.indexKey(), "json");
-          await this.state.storage.put("vault-index", index || {});
-        }
-      });
-    }
-    try {
-      await this.initialized;
-    } catch {
-      this.initialized = null;
-      return jsonResponse({
-        error: "The vault index is temporarily unavailable. Please retry; no data was changed."
-      }, 503);
-    }
-    return this.serialized(async () => {
-      const path = new URL(request.url).pathname;
 
-      // These administrative paths are reachable only through internal Worker
-      // bindings; the public router never forwards client-controlled paths here.
+    const path = new URL(request.url).pathname;
+    const requiresPacketIndex = path === "/index" || path.startsWith("/day/");
+    return this.serialized(async () => {
+      // Check the session before processing this request.
+      if (requiresPacketIndex) {
+        if (!(await this.authenticateDeviceSession(request, { touch: false }))) {
+          return this.unauthorized();
+        }
+        if (!this.initialized) {
+          this.initialized = (async () => {
+            if (!(await this.state.storage.get("vault-index"))) {
+              // Stop when the stored index cannot be read.
+              const index = await this.env.VAULT_PACKETS.get(this.indexKey(), "json");
+              await this.state.storage.put("vault-index", index || {});
+            }
+          })();
+        }
+        try {
+          await this.initialized;
+        } catch {
+          this.initialized = null;
+          return jsonResponse({
+            error: "The vault index is temporarily unavailable. Please retry; no data was changed."
+          }, 503);
+        }
+      }
+
+      // Handle internal initialization operations.
       if (path === "/admin/initialize") {
         const token = request.headers.get("X-Write-Token") || "";
         if (!TOKEN_PATTERN.test(token)) return jsonResponse({ error: "Invalid initial write token." }, 400);
@@ -792,16 +1336,35 @@ export class VaultCoordinator {
         if (!(await this.state.storage.get("write-token-sha256"))) {
           return jsonResponse({ error: "Vault has not been initialized." }, 404);
         }
+        // Clear active sessions before updating account metadata.
+        await this.revokeAllDeviceSessions();
         await this.state.storage.put("write-token-sha256", await sha256Hex(token));
         return jsonResponse({ ok: true }, 200);
       }
 
+      if (path === "/device/challenge") {
+        return this.createDeviceChallenge(request);
+      }
+
+      if (path === "/device/verify") {
+        return this.verifyDeviceChallenge(request);
+      }
+
+      if (path === "/device/session/revoke") {
+        return this.revokeDeviceSession(request);
+      }
+
       if (path === "/claim") {
-        if (!(await this.authenticate(request))) return this.unauthorized();
+        // Validate the supplied credential before completing the claim.
+        if (request.headers.get("X-Device-Session")) {
+          if (!(await this.authenticateDeviceSession(request))) return this.unauthorized();
+        } else if (!(await this.authenticate(request))) {
+          return this.unauthorized();
+        }
         return jsonResponse({ ok: true, claimed: true }, 200);
       }
 
-      if (!(await this.authenticate(request))) return this.unauthorized();
+      if (!(await this.authenticateDeviceSession(request))) return this.unauthorized();
 
       if (path === "/index" && request.method === "GET") {
         const index = (await this.state.storage.get("vault-index")) || {};
@@ -863,22 +1426,21 @@ export class VaultCoordinator {
       const storedRecord = { packet: update.packet, updatedAt };
 
       const nextIndex = { ...index, [dateString]: updatedAt };
-      // Commit to Durable Object storage first. It is the live source of truth;
-      // KV is a secondary backup and must not be able to reject a valid save.
+      // Store the updated packet.
       await this.state.storage.put(packetStorageKey, update.packet);
       await this.state.storage.put("vault-index", nextIndex);
 
       try {
         await this.env.VAULT_PACKETS.put(this.packetKey(dateString), JSON.stringify(storedRecord));
       } catch {
-        // Keep the committed Durable Object copy available while KV recovers.
+        // Preserve the stored packet while the secondary write is unavailable.
       }
 
       try {
         await this.enforceKvWriteSpacing(this.indexKey());
         await this.env.VAULT_PACKETS.put(this.indexKey(), JSON.stringify(nextIndex));
       } catch {
-        // Durable Object metadata remains authoritative; later requests can refresh KV index.
+        // Refresh packet metadata from the stored value.
       }
 
       return jsonResponse({ ok: true, updatedAt }, 200);
