@@ -41,6 +41,7 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
 
   const env = {
     RECOVERY_PEPPER: PEPPER,
+    MEMBERSHIP_PEPPER: PEPPER,
     VAULT_PACKETS: {},
     VAULT_COORDINATOR: {
       idFromName: id => id,
@@ -105,6 +106,7 @@ test('Worker rejects missing membership tickets before creating a vault coordina
     }
   ), {
     RECOVERY_PEPPER: PEPPER,
+    MEMBERSHIP_PEPPER: PEPPER,
     VAULT_PACKETS: {},
     VAULT_COORDINATOR: {
       idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
@@ -138,6 +140,7 @@ test('Worker rejects malformed ECDSA signatures before invoking the vault coordi
     }
   ), {
     RECOVERY_PEPPER: PEPPER,
+    MEMBERSHIP_PEPPER: PEPPER,
     VAULT_PACKETS: {},
     VAULT_COORDINATOR: {
       idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
@@ -167,6 +170,7 @@ test('account unlock checks registry membership before waking a vault coordinato
     }
   ), {
     RECOVERY_PEPPER: PEPPER,
+    MEMBERSHIP_PEPPER: PEPPER,
     ACCOUNT_REGISTRY: {
       idFromName: () => 'global-account-registry',
       get: () => ({
@@ -211,6 +215,7 @@ test('legacy claims use a separate route and reject a username-to-vault mismatch
     }
   ), {
     RECOVERY_PEPPER: PEPPER,
+    MEMBERSHIP_PEPPER: PEPPER,
     ACCOUNT_REGISTRY: {
       idFromName() { registryTouched = true; return 'global-account-registry'; },
       get() {
