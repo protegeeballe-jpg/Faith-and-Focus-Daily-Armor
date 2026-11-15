@@ -1051,9 +1051,12 @@ export class VaultCoordinator {
     // The challenge is read and deleted in one storage transaction. The
     // request queue serializes this operation, while the transaction preserves
     // strict single-use semantics if the storage access pattern changes later.
-    return this.state.storage.transaction(async transaction => {
-      const challenge = await transaction.get(key);
-      await transaction.delete(key);
+    return this.state.storage.transaction(async () => {
+      // This class is SQLite-backed (wrangler.toml new_sqlite_classes). Use
+      // storage directly inside the transaction callback; the separate txn
+      // parameter is obsolete for SQLite-backed Durable Objects.
+      const challenge = await this.state.storage.get(key);
+      await this.state.storage.delete(key);
       return challenge || null;
     });
   }
@@ -1261,26 +1264,33 @@ export class VaultCoordinator {
   async fetch(request) {
     this.vaultId = request.headers.get("X-Vault-Id") || "";
     if (!VAULT_ID_PATTERN.test(this.vaultId)) return jsonResponse({ error: "Invalid vault identifier." }, 400);
-    if (!this.initialized) {
+
+    const path = new URL(request.url).pathname;
+    // Authentication, challenge, claim, and internal administration paths do
+    // not need the packet index. Do not spend a KV read merely to authenticate
+    // a device, consume a nonce, revoke a session, or initialize a new vault.
+    const requiresPacketIndex = path === "/index" || path.startsWith("/day/");
+    if (requiresPacketIndex && !this.initialized) {
       this.initialized = this.state.blockConcurrencyWhile(async () => {
         if (!(await this.state.storage.get("vault-index"))) {
           // A KV read failure must not be mistaken for an empty vault index.
-          // Retry initialization on the next request instead of caching a blank index.
+          // Retry initialization on the next data request instead of caching a blank index.
           const index = await this.env.VAULT_PACKETS.get(this.indexKey(), "json");
           await this.state.storage.put("vault-index", index || {});
         }
       });
     }
-    try {
-      await this.initialized;
-    } catch {
-      this.initialized = null;
-      return jsonResponse({
-        error: "The vault index is temporarily unavailable. Please retry; no data was changed."
-      }, 503);
+    if (requiresPacketIndex) {
+      try {
+        await this.initialized;
+      } catch {
+        this.initialized = null;
+        return jsonResponse({
+          error: "The vault index is temporarily unavailable. Please retry; no data was changed."
+        }, 503);
+      }
     }
     return this.serialized(async () => {
-      const path = new URL(request.url).pathname;
 
       // These administrative paths are reachable only through internal Worker
       // bindings; the public router never forwards client-controlled paths here.
