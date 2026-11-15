@@ -25,6 +25,7 @@ test('account lock conceals every main application view before awaiting cleanup'
   assert.ok(lock.indexOf('concealApplicationViews();') < lock.indexOf('await localSavePromise'));
   assert.ok(lock.indexOf('showLogin(message);') < lock.indexOf('await localSavePromise'));
   assert.match(lock, /revokeDeviceSession\(credentialsToRevoke\)/);
+  assert.match(lock, /confirmed === true/);
   assert.match(lock, /await stopVaultSync\(\)/);
   assert.match(lock, /clearVaultEncryptionKey\(\)/);
   assert.doesNotMatch(lock, /resetInactivityTimer\(\)/);
