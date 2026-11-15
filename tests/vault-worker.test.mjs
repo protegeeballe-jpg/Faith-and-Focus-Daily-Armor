@@ -96,17 +96,54 @@ function makeCoordinator() {
   return { coordinator: new VaultCoordinator(state, env), storageMap, kvMap, failures };
 }
 
-function coordinatorRequest(path, { method = 'GET', token = WRITE_TOKEN, legacyToken, body } = {}) {
+function coordinatorRequest(path, { method = 'GET', token = WRITE_TOKEN, legacyToken, sessionToken, body } = {}) {
   return new Request('https://vault-coordinator.internal' + path, {
     method,
     headers: {
       'X-Vault-Id': VAULT_ID,
-      'X-Write-Token': token,
+      ...(token ? { 'X-Write-Token': token } : {}),
       ...(legacyToken ? { 'X-Legacy-Write-Token': legacyToken } : {}),
+      ...(sessionToken ? { 'X-Device-Session': sessionToken } : {}),
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' })
     },
     body: body === undefined ? undefined : JSON.stringify(body)
   });
+}
+
+function base64Url(bytes) {
+  return Buffer.from(bytes).toString('base64url');
+}
+
+async function createCoordinatorSession(coordinator, token = WRITE_TOKEN) {
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeySpki = base64Url(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const spkiBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const digest = new Uint8Array(await webcrypto.subtle.digest('SHA-256', spkiBytes));
+  const deviceId = base64Url(digest);
+
+  const challengeResponse = await coordinator.fetch(coordinatorRequest('/device/challenge', {
+    method: 'POST',
+    token,
+    body: { deviceId, publicKeySpki }
+  }));
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await responseJson(challengeResponse);
+  const signature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+
+  const verifiedResponse = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: { challengeId: challenge.challengeId, deviceId, signature }
+  }));
+  assert.equal(verifiedResponse.status, 200);
+  const verified = await responseJson(verifiedResponse);
+  return { deviceId, sessionToken: verified.sessionToken, keyPair, publicKeySpki };
 }
 
 test('Vault Coordinator claims once, stores encrypted date packets, and rejects stale writes', async () => {
@@ -125,8 +162,13 @@ test('Vault Coordinator claims once, stores encrypted date packets, and rejects 
   const claim = await coordinator.fetch(coordinatorRequest('/claim', { method: 'POST', body: {} }));
   assert.equal(claim.status, 200);
 
+  const deviceSession = await createCoordinatorSession(coordinator);
+  assert.equal(typeof deviceSession.sessionToken, 'string');
+
   const firstWrite = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
+    sessionToken: deviceSession.sessionToken,
+    token: null,
     body: { packet, baseUpdatedAt: null }
   }));
   assert.equal(firstWrite.status, 200);
@@ -137,14 +179,20 @@ test('Vault Coordinator claims once, stores encrypted date packets, and rejects 
 
   const staleWrite = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
+    sessionToken: deviceSession.sessionToken,
+    token: null,
     body: { packet, baseUpdatedAt: null }
   }));
   assert.equal(staleWrite.status, 409);
 
-  const badToken = await coordinator.fetch(coordinatorRequest('/index', { token: 'x'.repeat(43) }));
+  const badToken = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: 'x'.repeat(43)
+  }));
   assert.equal(badToken.status, 401);
 
-  const index = await coordinator.fetch(coordinatorRequest('/index'));
+  const index = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(index.status, 200);
   const indexBody = await responseJson(index);
   assert.equal(indexBody.index[dateString], saved.updatedAt);
@@ -434,10 +482,13 @@ test('Vault Coordinator upgrades an existing legacy token only after verifying t
 test('Vault Coordinator keeps a valid save when the KV packet write is temporarily blocked', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
   await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const deviceSession = await createCoordinatorSession(coordinator);
   failures.put = true;
 
   const saved = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
+    token: null,
+    sessionToken: deviceSession.sessionToken,
     body: { packet, baseUpdatedAt: null }
   }));
   assert.equal(saved.status, 200);
@@ -446,7 +497,9 @@ test('Vault Coordinator keeps a valid save when the KV packet write is temporari
   assert.deepEqual(storageMap.get('vault-packet:' + dateString), packet);
   assert.equal(storageMap.get('vault-index')[dateString], savedBody.updatedAt);
 
-  const readBack = await coordinator.fetch(coordinatorRequest('/day/' + dateString));
+  const readBack = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(readBack.status, 200);
   const readBody = await responseJson(readBack);
   assert.deepEqual(readBody.packet, packet);
@@ -467,7 +520,10 @@ test('Vault Coordinator does not initialize an empty index when KV is unavailabl
     body: {}
   }));
   assert.equal(initialized.status, 200);
-  const recovered = await coordinator.fetch(coordinatorRequest('/index'));
+  const deviceSession = await createCoordinatorSession(coordinator);
+  const recovered = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(recovered.status, 200);
   assert.deepEqual((await responseJson(recovered)).index, {});
   assert.deepEqual(storageMap.get('vault-index'), {});
@@ -476,9 +532,12 @@ test('Vault Coordinator does not initialize an empty index when KV is unavailabl
 test('Vault Coordinator reports a temporary read failure instead of treating a missing KV packet as empty', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
   await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const deviceSession = await createCoordinatorSession(coordinator);
   failures.get = true;
 
-  const read = await coordinator.fetch(coordinatorRequest('/day/' + dateString));
+  const read = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(read.status, 503);
   assert.match((await responseJson(read)).error, /temporarily unavailable/);
   assert.equal(storageMap.has('vault-packet:' + dateString), false);
