@@ -728,3 +728,40 @@ test('rotating the account write credential revokes all existing device sessions
   }));
   assert.equal(secondStaleRequest.status, 401);
 });
+
+
+test('expired device challenges are consumed and rejected without creating a session', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const publicKeySpki = base64Url(publicKeyBytes);
+  const deviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', publicKeyBytes)));
+
+  const issued = await coordinator.fetch(coordinatorRequest('/device/challenge', {
+    method: 'POST',
+    body: { deviceId, publicKeySpki }
+  }));
+  assert.equal(issued.status, 200);
+  const challenge = await responseJson(issued);
+  const key = 'device-challenge:' + challenge.challengeId;
+  const stored = storageMap.get(key);
+  storageMap.set(key, { ...stored, expiresAt: Date.now() - 1 });
+
+  const signature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+  const expired = await coordinator.fetch(coordinatorRequest('/device/verify', {
+    method: 'POST',
+    token: null,
+    body: { challengeId: challenge.challengeId, deviceId, signature }
+  }));
+
+  assert.equal(expired.status, 401);
+  assert.equal(storageMap.has(key), false);
+  assert.equal([...storageMap.keys()].some(item => item.startsWith('device-session:')), false);
+});
