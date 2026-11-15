@@ -718,7 +718,10 @@ export async function lockAccount(message = 'Your account is locked. Please sign
 
   // Revoke the server session concurrently with the local encrypted flush.
   const revocationPromise = revokeDeviceSession(credentialsToRevoke)
-    .then(() => ({ confirmed: true, error: null }))
+    .then(confirmed => ({
+      confirmed: confirmed === true,
+      error: confirmed === true ? null : new Error('The server did not confirm device-session revocation.')
+    }))
     .catch(error => ({ confirmed: false, error }));
 
   let localSaveError = null;
