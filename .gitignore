@@ -1,0 +1,8 @@
+# Local-only working notes. Keep internal material outside version control.
+/.private-notes/
+/security-private/
+**/threat-model*.md
+**/*security-architecture*.md
+**/*deployment-playbook*.md
+**/*waf*.md
+**/*secret-setup*.md
