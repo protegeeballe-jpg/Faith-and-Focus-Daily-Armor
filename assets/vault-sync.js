@@ -231,10 +231,16 @@ function listLocalStorageDates() {
 
 async function getCredentialHeaders() {
   if (!activeVault) throw new Error('Your account is locked.');
+  if (typeof activeVault.vaultMembershipTicket !== 'string'
+      || typeof activeVault.deviceSessionToken !== 'string'
+      || !/^[A-Za-z0-9_-]{43}$/.test(activeVault.deviceSessionToken)) {
+    throw new Error('Your device session has expired. Sign in again to securely reconnect this device.');
+  }
   return {
     Accept: 'application/json',
     'X-App-Client': APP_CLIENT,
-    'X-Write-Token': encodeBase64Url(activeVault.writeToken)
+    'X-Vault-Membership': activeVault.vaultMembershipTicket,
+    'X-Device-Session': activeVault.deviceSessionToken
   };
 }
 
