@@ -21,6 +21,15 @@ This milestone adds a server-verified device challenge and short-lived device se
 11. Ordinary vault \`claim\`, \`index\`, and \`day\` operations require the device session and membership ticket. The long-lived account-derived write credential is no longer sent with ordinary vault data requests.
 12. The existing two-minute app inactivity lock stops synchronization, attempts explicit session revocation, and clears the in-memory session token. The server independently enforces a two-minute idle expiry and a 12-hour absolute expiry. Durable Object alarms purge expired session records if the client is offline or cannot complete explicit revocation.
 
+## Secret configuration
+
+The Worker uses two independent secrets:
+
+- \`RECOVERY_PEPPER\` remains dedicated to recovery-answer verification and recovery-envelope protection.
+- \`MEMBERSHIP_PEPPER\` is a separate high-entropy secret (at least 32 characters) used only to sign and verify the short-lived vault-membership ticket.
+
+Do not reuse the same value for both secrets and do not commit either value to \`wrangler.toml\` or the repository. Provision \`MEMBERSHIP_PEPPER\` as a Cloudflare Worker secret (for example, \`wrangler secret put MEMBERSHIP_PEPPER\`) before enabling signup, account unlock, recovery completion, or normal vault routes. The Worker fails closed with a configuration error when the membership secret is absent; it never falls back to \`RECOVERY_PEPPER\`.
+
 ## Challenge and session bounds
 
 | Control | Current limit |
@@ -38,6 +47,10 @@ This milestone adds a server-verified device challenge and short-lived device se
 Challenges are consumed with a Durable Object storage transaction before signature validation. Thus an invalid signature also consumes the challenge, and concurrent submissions of the same challenge cannot both succeed. Expired challenges are rejected and removed. Device public-key registrations remain when a session expires, allowing the same device to re-authenticate with its persisted key.
 
 Changing/resetting the account credential calls the Coordinator's internal token-rotation path, which revokes all extant device sessions but preserves registered public keys. The user must sign in again to obtain new sessions.
+
+**Session-token security boundary:** the server-side session record is associated with a specific vault and device ID, but ordinary data requests currently authenticate with the opaque session token as a bearer credential. Requests do not yet include a fresh P-256 proof-of-possession signature. A party that steals the in-memory session token could replay it from another client until the session is revoked or expires (two-minute idle, 12-hour absolute). If the threat model requires resistance to stolen-token replay, a follow-up should add per-request signed proof (DPoP-style), timestamp/nonce replay protection, and CPU/storage tests. The private key proves possession during enrollment, not on every data request.
+
+**Trusted-device administration:** public-key registrations persist after sessions expire. The current milestone caps a vault at 10 registered devices but does not yet provide a user-facing trusted-device removal/rename interface. Add device management and safe removal before users can reach the cap through repeated browser-profile resets or device replacement.
 
 ## Password hashing and CPU budget
 
@@ -127,6 +140,7 @@ The regression suite covers:
 - session revocation on credential rotation;
 - no packet-index KV bootstrap during authentication-only paths;
 - invalid/expired data-route sessions rejected before packet-index KV bootstrap;
+- missing independent membership secret fails closed without Coordinator access;
 - existing encrypted packet, merge, local-first, and conflict regression tests.
 
 **Production gate:** all repository CI must pass on the exact proposed commit, the WAF IP rule must be configured and tested on the custom API hostname, and actual Worker/DO CPU usage must be measured before deployment.
