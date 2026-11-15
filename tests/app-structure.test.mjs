@@ -127,7 +127,7 @@ test('account inactivity lock is two minutes and rechecks expired sessions after
  assert.match(vaultSession,/window\.addEventListener\('pageshow'/);
  assert.match(vaultSession,/stopVaultSync\(\)/);
  assert.match(vaultSync,/export async function stopVaultSync\(\)/);
- assert.match(vaultSync,/for \(const queue of \[\.\.\.localCaptureQueues\.values\(\)\]\) await queue/);
+ assert.match(vaultSync,/for \(const queue of localCaptureQueues\.values\(\)\) await queue/);
  assert.doesNotMatch(vaultSync,/flushRemote/);
  assert.match(vaultSync,/activeVaultRequestControllers\.forEach\(controller => controller\.abort\(\)\)/);
 });

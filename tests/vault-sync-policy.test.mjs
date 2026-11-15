@@ -37,7 +37,7 @@ test('each account-opening path verifies the device before starting vault synchr
   const requiredSequences = [
     /await establishDeviceSession\(credentials, unlocked\.membershipTicket\);[\s\S]*?await startVaultSync\(credentials\);/,
     /await establishDeviceSession\(credentials, registered\.membershipTicket\);[\s\S]*?await startVaultSync\(credentials\);/,
-    /await establishDeviceSession\(credentials, migrated\.membershipTicket\);[\s\S\S]*?await startVaultSync\(credentials\);/
+    /await establishDeviceSession\(credentials, migrated\.membershipTicket\);[\s\S]*?await startVaultSync\(credentials\);/
   ];
   for (const sequence of requiredSequences) assert.match(sessionSource, sequence);
   assert.equal((sessionSource.match(/await startVaultSync\(credentials\)/g) || []).length, 3);
