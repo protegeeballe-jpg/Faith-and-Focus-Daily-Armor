@@ -1,12 +1,4 @@
-/**
- * Device signing-key persistence for Faith & Focus.
- *
- * This module intentionally does not perform network requests or enroll a key
- * with the Worker. Call getOrCreateDeviceIdentity only after the account
- * passphrase has been verified. A missing IndexedDB record is a new-device
- * condition; an invalid/corrupt record fails closed and is never silently
- * replaced.
- */
+/** Stores and retrieves a persistent browser device identity. */
 
 export const DEVICE_IDENTITY_VERSION = 1;
 
@@ -167,8 +159,7 @@ async function validateRecord(record, cryptoApi) {
     throw new Error('The saved device public key cannot be opened. Sign in again on this device to establish a new device identity.');
   }
 
-  // Prove that the structured-cloned private key still matches the saved public
-  // key. This catches partial/corrupt IndexedDB state before a network call.
+  // Check that the stored private key matches the saved public key.
   const selfTest = cryptoApi.getRandomValues(new Uint8Array(32));
   const signature = await cryptoApi.subtle.sign(
     { name: 'ECDSA', hash: 'SHA-256' },
@@ -275,7 +266,7 @@ export async function getOrCreateDeviceIdentity({
   };
 }
 
-/** Sign a server-issued, domain-separated challenge with the persisted key. */
+/** Sign a message with the persisted device key. */
 export async function signDeviceMessage(identity, message, cryptoApi = globalThis.crypto) {
   if (!identity || !isP256SigningKey(identity.privateKey)) {
     throw new TypeError('A valid persisted device identity is required before signing.');
