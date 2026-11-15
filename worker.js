@@ -387,7 +387,8 @@ export default {
       if (route === "unlock") {
         const vaultId = payload.vaultId;
         const token = request.headers.get("X-Write-Token") || "";
-        if (!VAULT_ID_PATTERN.test(vaultId || "") || !TOKEN_PATTERN.test(token)) {
+        if (Object.keys(payload).length !== 1
+            || !VAULT_ID_PATTERN.test(vaultId || "") || !TOKEN_PATTERN.test(token)) {
           return jsonResponse({ error: "The account credentials were not accepted." }, 401, origin);
         }
 
@@ -441,9 +442,10 @@ export default {
 
     // The legacy claim path is migration-only. It must use the deterministic
     // username-derived Vault ID and pass a registry eligibility/rate-limit check.
-    const legacyClaim = /^\/vault\/([a-f0-9]{64})\/claim$/.exec(url.pathname);
+    const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
     const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
     if (legacyClaim && legacyUsernameHeader) {
+      if (url.search) return jsonResponse({ error: "Unexpected query parameters are not allowed." }, 400, origin);
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, origin);
       const username = validUsername(legacyUsernameHeader);
       const token = request.headers.get("X-Write-Token") || "";
