@@ -600,6 +600,22 @@ export class AccountRegistry {
     return hmacHex(this.env.RECOVERY_PEPPER, canonicalRecoveryAnswers(answers));
   }
 
+  async rateLimitSubject(action, subject, limit, windowMs) {
+    const key = "auth-rate:" + action + ":" + subject;
+    const now = Date.now();
+    let record = await this.state.storage.get(key);
+    if (!record || !Number.isFinite(record.windowStartedAt)
+        || now - record.windowStartedAt >= windowMs || now < record.windowStartedAt) {
+      record = { windowStartedAt: now, count: 0 };
+    }
+    if (record.count >= limit) return false;
+    await this.state.storage.put(key, {
+      windowStartedAt: record.windowStartedAt,
+      count: record.count + 1
+    });
+    return true;
+  }
+
   async rateLimitRecovery(request) {
     const ip = request.headers.get("X-Recovery-Client-IP") || "unknown-client";
     const windowNumber = Math.floor(Date.now() / (15 * 60 * 1000));
@@ -630,6 +646,37 @@ export class AccountRegistry {
       return jsonResponse({ error: "Invalid account request." }, 400);
     }
 
+    if (path === "/vault-membership") {
+      const vaultId = payload.vaultId;
+      const action = payload.action;
+      if (!VAULT_ID_PATTERN.test(vaultId || "") || action !== "unlock") {
+        return jsonResponse({ error: "The account membership request is invalid." }, 400);
+      }
+      const record = await this.state.storage.get(this.accountKey(vaultId));
+      if (!record || await this.state.storage.get(this.usernameKey(record.username)) !== vaultId) {
+        return jsonResponse({ error: "The account membership could not be verified." }, 404);
+      }
+      if (!(await this.rateLimitSubject("unlock", vaultId, 10, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many sign-in attempts for this account. Please try again later." }, 429);
+      }
+      return jsonResponse({ ok: true, username: record.username }, 200);
+    }
+
+    if (path === "/legacy-eligibility") {
+      const username = validUsername(payload.username);
+      const vaultId = payload.vaultId;
+      if (!username || !VAULT_ID_PATTERN.test(vaultId || "")) {
+        return jsonResponse({ error: "The legacy account reference is invalid." }, 400);
+      }
+      if (await this.state.storage.get(this.usernameKey(username))) {
+        return jsonResponse({ error: "This username already belongs to a registered account." }, 409);
+      }
+      if (!(await this.rateLimitSubject("legacy-upgrade", username, 5, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many legacy upgrade attempts. Please try again later." }, 429);
+      }
+      return jsonResponse({ ok: true }, 200);
+    }
+
     if (path === "/signup") {
       const username = validUsername(payload.username);
       const vaultId = payload.vaultId;
@@ -641,6 +688,9 @@ export class AccountRegistry {
           || payload.recoveryIterations !== 1200000 || !validEnvelope(payload.recoveryEnvelope)
           || !validQuestionAnswers(answers) || !TOKEN_PATTERN.test(payload.writeToken || "")) {
         return jsonResponse({ error: "The sign-up information is incomplete or invalid." }, 400);
+      }
+      if (!(await this.rateLimitSubject("signup", username, 5, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many account creation attempts. Please try again later." }, 429);
       }
       const usernameIndexKey = this.usernameKey(username);
       if (await this.state.storage.get(usernameIndexKey)) {
@@ -696,6 +746,9 @@ export class AccountRegistry {
           || !TOKEN_PATTERN.test(payload.legacyWriteToken || "")) {
         return jsonResponse({ error: "The legacy account upgrade information is incomplete or invalid." }, 400);
       }
+      if (!(await this.rateLimitSubject("legacy-migrate", username, 5, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many legacy migration attempts. Please try again later." }, 429);
+      }
       if (await this.state.storage.get(this.usernameKey(username))) {
         return jsonResponse({ error: "This username already has a registered account." }, 409);
       }
@@ -743,6 +796,9 @@ export class AccountRegistry {
     if (path === "/signin") {
       const username = validUsername(payload.username);
       if (!username) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
+      if (!(await this.rateLimitSubject("signin", username, 30, 15 * 60 * 1000))) {
+        return jsonResponse({ error: "Too many sign-in attempts. Please try again later." }, 429);
+      }
       const vaultId = await this.state.storage.get(this.usernameKey(username));
       if (!vaultId) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
       const record = await this.state.storage.get(this.accountKey(vaultId));
