@@ -368,6 +368,9 @@ async function submitVaultLogin(event) {
       setStatus('vault-login-message', 'Your account is open. Your Checklist, Diary and Garden share one account.', 'success');
     }
   } catch (error) {
+    if (credentials?.deviceSessionToken) {
+      try { await revokeDeviceSession(credentials); } catch { /* The server-side idle expiry is the fallback. */ }
+    }
     try { await stopVaultSync(); } catch { /* Preserve the original login error. */ }
     clearVaultEncryptionKey();
     if (loginMaterial) wipeWriteToken(loginMaterial.writeToken);
@@ -457,6 +460,9 @@ async function submitVaultSignup(event) {
       ? 'Your account is open. Older Diary records on this device need one-time migration.'
       : 'Your account is ready. Your Checklist, Diary and Garden now share one account.', 'success');
   } catch (error) {
+    if (credentials?.deviceSessionToken) {
+      try { await revokeDeviceSession(credentials); } catch { /* The server-side idle expiry is the fallback. */ }
+    }
     try { await stopVaultSync(); } catch { /* Keep the original account-creation error. */ }
     clearVaultEncryptionKey();
     if (credentials) {
@@ -546,6 +552,9 @@ async function submitLegacyUpgrade(event) {
       ? 'Your account is open. Older local Diary entries need a one-time legacy Diary migration.'
       : 'Your existing account is open. Your original Checklist, Diary and Garden remain in the same vault.', 'success');
   } catch (error) {
+    if (credentials?.deviceSessionToken) {
+      try { await revokeDeviceSession(credentials); } catch { /* The server-side idle expiry is the fallback. */ }
+    }
     try { await stopVaultSync(); } catch { /* Keep the original migration error. */ }
     clearVaultEncryptionKey();
     if (credentials) {
