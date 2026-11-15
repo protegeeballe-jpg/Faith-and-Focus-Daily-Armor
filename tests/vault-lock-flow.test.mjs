@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const session = readFileSync(new URL('../assets/vault-session.js', import.meta.url), 'utf8');
 const writing = readFileSync(new URL('../assets/writing-security.js', import.meta.url), 'utf8');
 const app = readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
+const vaultSync = readFileSync(new URL('../assets/vault-sync.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 
 function extract(source, startMarker, endMarker) {
@@ -55,6 +56,18 @@ test('locking clears decrypted writing, notebook content, location history and v
   assert.match(app, /clearDiaryVoiceNotePlayback\(\)/);
   assert.match(session, /\['view-launcher', 'little-garden', 'view-diary', 'view-checklist'\]/);
   assert.match(html, /class="fixed inset-0 bg-amber-50 z-50/);
+});
+
+test('stopping vault synchronization clears its in-memory context even when flushing fails', () => {
+  const stop = extract(
+    vaultSync,
+    'export async function stopVaultSync() {',
+    'export async function exportEncryptedVaultPackets() {'
+  );
+  assert.match(stop, /finally/);
+  assert.match(stop, /activeVault = null/);
+  assert.match(stop, /activeVaultRequestControllers\.clear\(\)/);
+  assert.match(stop, /removeEventListener\('faith-focus:local-data-changed'/);
 });
 
 test('the account passphrase is reused for Diary migration only after cryptographic verification', () => {
