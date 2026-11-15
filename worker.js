@@ -9,7 +9,7 @@ const PACKET_FORMAT = "faith-focus-encrypted-daily-packet";
 const encoder = new TextEncoder();
 
 const LEGACY_VAULT_ID_DOMAIN = "FaithFocus|VaultID|v1|";
-const MEMBERSHIP_TICKET_TTL_MS = 5 * 60 * 1000;
+const MEMBERSHIP_TICKET_TTL_MS = 12 * 60 * 60 * 1000;
 const DEVICE_CHALLENGE_TTL_MS = 60 * 1000;
 const DEVICE_SESSION_IDLE_MS = 2 * 60 * 1000;
 const DEVICE_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
