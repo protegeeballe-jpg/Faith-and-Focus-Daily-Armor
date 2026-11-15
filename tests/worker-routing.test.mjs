@@ -148,3 +148,44 @@ test('Worker rejects malformed ECDSA signatures before invoking the vault coordi
   assert.equal(response.status, 400);
   assert.equal(coordinatorTouched, false);
 });
+
+
+test('account unlock checks registry membership before waking a vault coordinator', async () => {
+  let coordinatorTouched = false;
+  let registryPath = null;
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/account/unlock',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'X-Write-Token': 'w'.repeat(43),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ vaultId: 'e'.repeat(64) })
+    }
+  ), {
+    RECOVERY_PEPPER: PEPPER,
+    ACCOUNT_REGISTRY: {
+      idFromName: () => 'global-account-registry',
+      get: () => ({
+        fetch: async request => {
+          registryPath = new URL(request.url).pathname;
+          return new Response(JSON.stringify({ error: 'not registered' }), {
+            status: 404,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      })
+    },
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 401);
+  assert.equal(registryPath, '/vault-membership');
+  assert.equal(coordinatorTouched, false);
+});
