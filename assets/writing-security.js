@@ -66,7 +66,49 @@ import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-wri
             return false;
         }
 
-        export async function adoptVaultEncryptionKey(key){
+        async function derivePreviousWritingKeyFromPassphrase(passphrase){
+            if(typeof passphrase!=='string'||passphrase.length<16||!hasWritingCrypto())return null;
+            const configText=localStorage.getItem(WRITING_CONFIG_KEY);
+            if(!configText)return null;
+            try{
+                const config=JSON.parse(configText);
+                if(config.version!==1||config.algorithm!=='AES-256-GCM'
+                    ||config.kdf!=='PBKDF2-HMAC-SHA-256'
+                    ||config.iterations!==WRITING_KDF_ITERATIONS
+                    ||typeof config.salt!=='string')return null;
+                const key=await derivePrivateWritingKey(passphrase,base64ToBytes(config.salt),config.iterations);
+                const hasVerifier=typeof config.verifierIv==='string'
+                    &&typeof config.verifierCiphertext==='string';
+                if(hasVerifier){
+                    let verified;
+                    try{
+                        verified=await crypto.subtle.decrypt({
+                            name:'AES-GCM',
+                            iv:base64ToBytes(config.verifierIv),
+                            additionalData:new TextEncoder().encode('Daily Mindful Pokes|key-verifier|v1'),
+                            tagLength:128
+                        },key,base64ToBytes(config.verifierCiphertext));
+                    }catch(error){return null;}
+                    if(new TextDecoder().decode(verified)!==WRITING_CHECK_TEXT)return null;
+                }else if(!await hasLegacyEncryptedRecordReadableWithKey(key)){
+                    return null;
+                }
+                return key;
+            }catch(error){
+                return null;
+            }
+        }
+
+        async function migratePreviousDiaryRecords(previousKey){
+            await migrateLegacyPrivateWriting(previousKey,{preserveSource:true});
+            const migrationResult=await migrateEncryptedPrivateRecords(previousKey,vaultPrimaryKey);
+            cleanupLegacyPlaintextPrivateWriting();
+            legacyMigrationRequired=false;
+            legacyKeyUnavailable=false;
+            return migrationResult;
+        }
+
+        export async function adoptVaultEncryptionKey(key,accountPassphrase=''){
             if(!key)throw new TypeError('A vault encryption key is required.');
             vaultPrimaryKey=key;
             const voiceNotes=await exportEncryptedVoiceNotes();
@@ -75,18 +117,39 @@ import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-wri
             legacyMigrationRequired=encryptedRecordsNeedPreviousKey;
             legacyKeyUnavailable=!legacyConfigExists&&encryptedRecordsNeedPreviousKey;
             if(legacyMigrationRequired){
+                if(legacyConfigExists&&accountPassphrase){
+                    const previousKey=await derivePreviousWritingKeyFromPassphrase(accountPassphrase);
+                    if(previousKey){
+                        try{
+                            const migrationResult=await migratePreviousDiaryRecords(previousKey);
+                            writingCryptoKey=vaultPrimaryKey;
+                            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+                            await loadPrivateWritingForDate(getCurrentWritingDate());
+                            localStorage.removeItem(WRITING_CONFIG_KEY);
+                            updatePrivateWritingAccess();
+                            setWritingSecurityStatus(migrationResult.quarantinedCount
+                                ?'Your Diary is unlocked. '+migrationResult.quarantinedCount+' unreadable legacy record(s) were preserved in local quarantine; all readable entries were migrated.'
+                                :'Your Diary is unlocked and its readable legacy entries were migrated to your unified account key.',
+                                migrationResult.quarantinedCount?'info':'success');
+                            return {legacyMigrationRequired:false,legacyMigrated:true,quarantinedCount:migrationResult.quarantinedCount||0};
+                        }catch(error){
+                            writingCryptoKey=null;
+                            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+                            updatePrivateWritingAccess();
+                            setWritingSecurityStatus('Your account is open, but the previous Diary records could not be migrated safely. The original encrypted entries remain preserved. You can retry the one-time Diary migration from this screen. '+(error?.message||''),'error');
+                            console.warn('[Diary migration] Automatic migration with the verified account credential did not complete.',error);
+                            return {legacyMigrationRequired:true,legacyMigrationFailed:true};
+                        }
+                    }
+                }
                 writingCryptoKey=null;
                 writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
                 updatePrivateWritingAccess();
-                setWritingSecurityStatus('Some Diary records still use this device’s previous writing key. Enter the previous Diary passphrase once to migrate only those records. Entries already protected by your account key will be kept as they are.','info');
-                return {legacyMigrationRequired:true};
-            }
-            if(legacyKeyUnavailable){
-                writingCryptoKey=null;
-                writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
-                updatePrivateWritingAccess();
-                setWritingSecurityStatus('Some encrypted Diary entries still need the previous Diary key, and its saved settings are missing on this device. Enter your previous Diary passphrase to try recovery. Your original encrypted entries remain untouched unless the correct key can open them.','info');
-                return {legacyMigrationRequired:false,legacyKeyUnavailable:true};
+                setWritingSecurityStatus(legacyKeyUnavailable
+                    ?'Some encrypted Diary entries still need their previous key, but its saved settings are missing on this device. Your original encrypted entries remain untouched.'
+                    :'Some Diary records still use this device’s previous writing key. Enter the previous Diary passphrase once to migrate only those records. Entries already protected by your account key will be kept as they are.',
+                    'info');
+                return {legacyMigrationRequired:true,legacyKeyUnavailable};
             }
             writingCryptoKey=vaultPrimaryKey;
             writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
@@ -618,17 +681,12 @@ import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-wri
                     previousPassphraseVerified=true;
                 }
                 if(vaultPrimaryKey&&legacyMigrationRequired){
-                    // Stage plaintext migration first but keep every original source
-                    // record until encrypted Diary and voice-note migration succeeds.
-                    await migrateLegacyPrivateWriting(key,{preserveSource:true});
-                    const migrationResult=await migrateEncryptedPrivateRecords(key,vaultPrimaryKey);
+                    // Keep the original records until the entire migration succeeds.
+                    const migrationResult=await migratePreviousDiaryRecords(key);
                     quarantinedRecordCount=migrationResult.quarantinedCount;
                     if(migrationResult.quarantinedCount){
                         console.warn('[Diary migration] Completed with '+migrationResult.quarantinedCount+' unreadable record(s) preserved in local quarantine. Valid Diary records were migrated.');
                     }
-                    cleanupLegacyPlaintextPrivateWriting();
-                    legacyMigrationRequired=false;
-                    legacyKeyUnavailable=false;
                 }else if(vaultPrimaryKey){
                     writingCryptoKey=vaultPrimaryKey;
                 }else{
@@ -663,10 +721,8 @@ import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-wri
             PRIVATE_NOTE_IDS.forEach(id=>{notes[id]=document.getElementById(id)?.value||'';});
             return {diary,notes};
         }
-        async function savePrivateWritingForDate(dateStr=writingLoadedDate){
-            if(!writingCryptoKey||!dateStr||writingLoadedDate!==dateStr
-                ||!isCurrentPrivateWritingDate(dateStr))return;
-            const key=writingCryptoKey,payload=getPrivateWritingPayload();
+        function enqueuePrivateWritingSnapshot(dateStr,payload,key){
+            if(!key||!dateStr||!isCurrentPrivateWritingDate(dateStr))return Promise.resolve();
             const task=async()=>{
                 const diaryPayload=buildPrivateWritingDiaryPayload(
                     payload.diary,typeof writingLoadedDiaryValue==='string'?writingLoadedDiaryValue:'',writingLoadedDiaryMeta
@@ -684,11 +740,19 @@ import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-wri
                 writingLoadedNoteMeta={...notesPayload[PRIVATE_NOTE_META_KEY]};
                 window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed',{detail:{dateString:dateStr}}));
                 const status=document.getElementById('writing-save-status');
-                if(status&&writingCryptoKey)status.textContent='Saved securely on this device.';
+                if(status&&writingCryptoKey===key)status.textContent='Saved securely on this device.';
             };
             writingSavePromise=writingSavePromise.then(task,task);
             return writingSavePromise;
         }
+
+        async function savePrivateWritingForDate(dateStr=writingLoadedDate){
+            if(!writingCryptoKey||!dateStr||writingLoadedDate!==dateStr
+                ||!isCurrentPrivateWritingDate(dateStr))return;
+            const key=writingCryptoKey,payload=getPrivateWritingPayload();
+            return enqueuePrivateWritingSnapshot(dateStr,payload,key);
+        }
+
         function schedulePrivateWritingSave(){
             if(!writingCryptoKey||!writingLoadedDate
                 ||!isCurrentPrivateWritingDate(writingLoadedDate))return;
@@ -800,9 +864,34 @@ export async function flushAndSaveCurrentPrivateWriting(){
     if(writingCryptoKey&&writingLoadedDate)await savePrivateWritingForDate(writingLoadedDate);
     await writingSavePromise;
 }
+
+export async function flushAndSaveCurrentPrivateWritingForLock(){
+    // Capture the visible text synchronously before the caller conceals the app.
+    const dateStr=writingLoadedDate;
+    const key=writingCryptoKey;
+    const snapshot=key&&dateStr&&isCurrentPrivateWritingDate(dateStr)
+        ?getPrivateWritingPayload():null;
+    let firstError=null;
+    if(writingSaveTimer){
+        clearTimeout(writingSaveTimer);
+        writingSaveTimer=null;
+    }
+    try{await stopRegisteredVoiceNoteRecording();}
+    catch(error){firstError=error;}
+    try{await flushPrivateVoiceNoteQueue();}
+    catch(error){firstError=firstError||error;}
+    try{await writingSavePromise;}
+    catch(error){firstError=firstError||error;}
+    if(snapshot){
+        try{await enqueuePrivateWritingSnapshot(dateStr,snapshot,key);}
+        catch(error){firstError=firstError||error;}
+    }
+    if(firstError)throw firstError;
+}
 export {
     WRITING_CONFIG_KEY,WRITING_DIARY_PREFIX,WRITING_NOTES_PREFIX,PRIVATE_NOTE_IDS,
     writingCryptoKey,writingLoadedDate,hasWritingCrypto,getSecureWritingStorageKey,getCurrentWritingDate,
     setWritingSecurityStatus,renderDiarySecurityUI,updatePrivateWritingAccess,
-    handleDiaryKeyAction,lockPrivateWriting,savePrivateWritingForDate,loadPrivateWritingForDate,schedulePrivateWritingSave
+    handleDiaryKeyAction,lockPrivateWriting,savePrivateWritingForDate,loadPrivateWritingForDate,schedulePrivateWritingSave,
+    flushAndSaveCurrentPrivateWritingForLock
 };
