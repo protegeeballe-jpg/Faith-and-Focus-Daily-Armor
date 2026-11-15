@@ -786,16 +786,21 @@ function flushLocalVaultChanges() {
 }
 
 export async function stopVaultSync() {
-  if (activeVault) {
-    activeVaultRequestControllers.forEach(controller => controller.abort());
+  try {
+    if (activeVault) {
+      activeVaultRequestControllers.forEach(controller => {
+        try { controller.abort(); } catch { /* Continue clearing local session state. */ }
+      });
+      await flushLocalVaultChanges();
+    }
+  } finally {
+    // Never retain the in-memory vault context if a local flush or cleanup fails.
     activeVaultRequestControllers.clear();
-    await flushLocalVaultChanges();
-
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
     window.removeEventListener('pagehide', flushLocalVaultChanges);
+    activeVault = null;
   }
-  activeVault = null;
 }
 
 export async function exportEncryptedVaultPackets() {
