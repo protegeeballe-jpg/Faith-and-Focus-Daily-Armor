@@ -78,16 +78,13 @@ async function validateDevicePublicKey(publicKeySpki, deviceId) {
       || publicKeySpki.length < 80 || publicKeySpki.length > 180) return false;
   try {
     const spki = fromBase64Url(publicKeySpki);
+    // Keep the edge Worker check intentionally light: validate encoding,
+    // size, and public-key fingerprint before the Coordinator is touched.
+    // The Coordinator performs the actual P-256 SPKI import before it stores
+    // or uses the key, avoiding duplicate key imports in the edge CPU budget.
     if (spki.byteLength < 64 || spki.byteLength > 128) return false;
     const digest = await sha256Bytes(spki);
-    if (!constantTimeEqual(encodeBase64Url(digest), deviceId)) return false;
-    const key = await crypto.subtle.importKey(
-      "spki", spki,
-      { name: "ECDSA", namedCurve: "P-256" },
-      false,
-      ["verify"]
-    );
-    return key.algorithm?.name === "ECDSA" && key.algorithm?.namedCurve === "P-256";
+    return constantTimeEqual(encodeBase64Url(digest), deviceId);
   } catch {
     return false;
   }
