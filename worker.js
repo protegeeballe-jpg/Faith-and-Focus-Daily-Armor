@@ -378,6 +378,10 @@ export default {
           && (!env.RECOVERY_PEPPER || String(env.RECOVERY_PEPPER).length < 32)) {
         return jsonResponse({ error: "Account security is not configured. Please contact the app maintainer." }, 503, origin);
       }
+      if (["signup", "migrate-legacy", "unlock", "complete-recovery"].includes(route)
+          && (!env.MEMBERSHIP_PEPPER || String(env.MEMBERSHIP_PEPPER).length < 32)) {
+        return jsonResponse({ error: "Device membership signing is not configured. Please contact the app maintainer." }, 503, origin);
+      }
       const payload = await parseJsonBody(bodyText);
       if (!payload) return jsonResponse({ error: "Invalid JSON request body." }, 400, origin);
 
@@ -410,7 +414,7 @@ export default {
         const metadata = await metadataResponse.json();
         if (!metadataResponse.ok) return jsonResponse(metadata, metadataResponse.status, origin);
 
-        const membershipTicket = await createVaultMembershipTicket(vaultId, env.RECOVERY_PEPPER);
+        const membershipTicket = await createVaultMembershipTicket(vaultId, env.MEMBERSHIP_PEPPER);
         return jsonResponse({ ...metadata, membershipTicket }, 200, origin);
       }
 
@@ -421,7 +425,7 @@ export default {
         try { result = JSON.parse(responseText); }
         catch { return jsonResponse({ error: "The account registry returned an invalid response." }, 502, origin); }
         if (VAULT_ID_PATTERN.test(result?.vaultId || "")) {
-          result.membershipTicket = await createVaultMembershipTicket(result.vaultId, env.RECOVERY_PEPPER);
+          result.membershipTicket = await createVaultMembershipTicket(result.vaultId, env.MEMBERSHIP_PEPPER);
         }
         return jsonResponse(result, registryResponse.status, origin);
       }
@@ -477,7 +481,8 @@ export default {
     if (!match || url.search || !VAULT_ID_PATTERN.test(match[1])) {
       return jsonResponse({ error: "Route not found." }, 404, origin);
     }
-    if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR || !env.RECOVERY_PEPPER) {
+    if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR
+        || !env.MEMBERSHIP_PEPPER || String(env.MEMBERSHIP_PEPPER).length < 32) {
       return jsonResponse({ error: "Cloudflare vault services are not configured." }, 503, origin);
     }
 
@@ -497,7 +502,7 @@ export default {
     // This signed, short-lived ticket proves that the registry previously
     // confirmed this Vault ID. It is an edge gate only; it cannot read data.
     const membershipTicket = request.headers.get("X-Vault-Membership") || "";
-    if (!(await verifyVaultMembershipTicket(membershipTicket, vaultId, env.RECOVERY_PEPPER))) {
+    if (!(await verifyVaultMembershipTicket(membershipTicket, vaultId, env.MEMBERSHIP_PEPPER))) {
       return jsonResponse({ error: "A valid account membership ticket is required. Please sign in again." }, 403, origin);
     }
 
