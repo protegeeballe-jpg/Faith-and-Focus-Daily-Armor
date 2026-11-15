@@ -97,7 +97,7 @@ For that one-time migration only, the client now calls the dedicated \`/legacy-c
 
 ## KV and Durable Object resource protection
 
-Device challenge, device verification, session revocation, claim, and internal admin routes do not initialize the daily packet index and therefore do not perform the KV index bootstrap read. Only \`/index\` and \`/day/{date}\` data paths require that bootstrap.
+Device challenge, device verification, session revocation, claim, and internal admin routes do not initialize the daily packet index and therefore do not perform the KV index bootstrap read. For \`/index\` and \`/day/{date}\`, the Coordinator checks the device session inside its serialized request queue before initializing the index, then verifies/touches the session again before returning data. Invalid or expired sessions therefore do not trigger the packet-index KV read. Only an authorized data request can reach that bootstrap.
 
 Account Registry maintains rolling per-subject attempt records. The per-vault Coordinator maintains rolling challenge, verification, and authentication-failure counters. The membership ticket and request schema are validated at the Worker before a client-controlled vault ID reaches its Coordinator.
 
@@ -126,6 +126,7 @@ The regression suite covers:
 - two-minute idle cleanup via Durable Object alarm;
 - session revocation on credential rotation;
 - no packet-index KV bootstrap during authentication-only paths;
+- invalid/expired data-route sessions rejected before packet-index KV bootstrap;
 - existing encrypted packet, merge, local-first, and conflict regression tests.
 
 **Production gate:** all repository CI must pass on the exact proposed commit, the WAF IP rule must be configured and tested on the custom API hostname, and actual Worker/DO CPU usage must be measured before deployment.
