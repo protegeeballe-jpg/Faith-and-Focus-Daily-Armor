@@ -260,6 +260,7 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
   const kvMap = new Map();
   const env = {
     RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters',
     VAULT_PACKETS: {
       async get(key) { return kvMap.get(key) ?? null; },
       async put(key, value) { kvMap.set(key, value); }
@@ -446,6 +447,7 @@ test('Account Registry rejects duplicate questions, spaces, invalid answers, and
   const kvMap = new Map();
   const env = {
     RECOVERY_PEPPER: 'another-test-recovery-pepper-longer-than-32-characters',
+    MEMBERSHIP_PEPPER: 'another-test-membership-pepper-longer-than-32-characters',
     VAULT_PACKETS: {
       async get(key) { return kvMap.get(key) ?? null; },
       async put(key, value) { kvMap.set(key, value); }
