@@ -1319,12 +1319,30 @@ export class VaultCoordinator {
         return jsonResponse({ ok: true }, 200);
       }
 
+      if (path === "/device/challenge") {
+        return this.createDeviceChallenge(request);
+      }
+
+      if (path === "/device/verify") {
+        return this.verifyDeviceChallenge(request);
+      }
+
+      if (path === "/device/session/revoke") {
+        return this.revokeDeviceSession(request);
+      }
+
       if (path === "/claim") {
-        if (!(await this.authenticate(request))) return this.unauthorized();
+        // Account unlock uses the legacy-derived write credential internally;
+        // normal application sessions use the short-lived device token.
+        if (request.headers.get("X-Device-Session")) {
+          if (!(await this.authenticateDeviceSession(request))) return this.unauthorized();
+        } else if (!(await this.authenticate(request))) {
+          return this.unauthorized();
+        }
         return jsonResponse({ ok: true, claimed: true }, 200);
       }
 
-      if (!(await this.authenticate(request))) return this.unauthorized();
+      if (!(await this.authenticateDeviceSession(request))) return this.unauthorized();
 
       if (path === "/index" && request.method === "GET") {
         const index = (await this.state.storage.get("vault-index")) || {};
