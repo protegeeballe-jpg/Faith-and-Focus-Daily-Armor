@@ -120,7 +120,9 @@ async function establishDeviceSession(credentials, membershipTicket) {
 
   if (verified.deviceId !== identity.deviceId
       || typeof verified.sessionToken !== 'string'
-      || !/^[A-Za-z0-9_-]{43}$/.test(verified.sessionToken)) {
+      || !/^[A-Za-z0-9_-]{43}$/.test(verified.sessionToken)
+      || !Number.isFinite(verified.sessionExpiresAt)
+      || verified.sessionExpiresAt <= Date.now()) {
     throw new Error('The device authentication service returned an invalid session.');
   }
 
@@ -696,7 +698,7 @@ export async function lockAccount(message = 'Your account is locked.') {
     await stopRegisteredVoiceNoteRecording();
     await flushAndSaveCurrentPrivateWriting();
     // Save local changes before clearing credentials.
-    await stopVaultSync({ flushRemote: false });
+    await stopVaultSync();
     // Request revocation before clearing local credentials.
     try {
       await revokeDeviceSession(activeCredentials);

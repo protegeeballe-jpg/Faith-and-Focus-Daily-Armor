@@ -803,3 +803,45 @@ test('invalid or expired device sessions are rejected before any packet-index KV
   assert.equal(expired.status, 401);
   assert.equal(storageMap.has('vault-index'), false);
 });
+
+
+test('an expired device session cannot replace an existing cloud packet', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  const device = await createCoordinatorSession(coordinator);
+
+  const saved = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    method: 'PUT',
+    token: null,
+    sessionToken: device.sessionToken,
+    body: { packet, baseUpdatedAt: null }
+  }));
+  assert.equal(saved.status, 200);
+  const savedBody = await responseJson(saved);
+  const storedPacket = storageMap.get('vault-packet:' + dateString);
+  const storedUpdatedAt = storageMap.get('vault-index')[dateString];
+
+  const digest = new Uint8Array(await webcrypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(device.sessionToken)
+  ));
+  const sessionHash = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  const sessionKey = 'device-session:' + sessionHash;
+  const sessionRecord = storageMap.get(sessionKey);
+  storageMap.set(sessionKey, { ...sessionRecord, idleExpiresAt: Date.now() - 1 });
+
+  const changedPacket = { ...packet, ciphertext: Buffer.from('changed packet').toString('base64') };
+  const rejected = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    method: 'PUT',
+    token: null,
+    sessionToken: device.sessionToken,
+    body: { packet: changedPacket, baseUpdatedAt: savedBody.updatedAt }
+  }));
+
+  assert.equal(rejected.status, 401);
+  assert.deepEqual(storageMap.get('vault-packet:' + dateString), storedPacket);
+  assert.equal(storageMap.get('vault-index')[dateString], storedUpdatedAt);
+});

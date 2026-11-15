@@ -16,14 +16,16 @@ test('GitHub Gist and Google Drive credential integrations are not loaded by the
   assert.match(html, /id="vault-sync-settings"/);
 });
 
-test('vault packets save locally first and automatically synchronize after the five-second debounce', () => {
+test('vault packets remain local until verified sign-in reconciliation', () => {
   assert.match(storage, /indexedDB\.open/);
   assert.match(sync, /putLocalDailyPacket/);
-  assert.match(sync, /setTimeout\([\s\S]*?5000\)/);
-  assert.match(sync, /addEventListener\('visibilitychange'/);
-  assert.match(sync, /addEventListener\('online'/);
+  assert.doesNotMatch(sync, /scheduleCloudPush|setInterval|addEventListener\('online'/);
+  assert.match(sync, /hasVerifiedDeviceSession\(credentials\)/);
+  assert.match(sync, /document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
+  assert.match(sync, /window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
   assert.match(sync, /function synchronizeVault\(/);
   assert.match(sync, /function performVaultSync\(/);
+  assert.equal((sync.match(/await synchronizeVault\(\)/g) || []).length, 2);
   assert.match(session, /SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });
 
