@@ -189,3 +189,42 @@ test('account unlock checks registry membership before waking a vault coordinato
   assert.equal(registryPath, '/vault-membership');
   assert.equal(coordinatorTouched, false);
 });
+
+
+test('legacy claims use a separate route and reject a username-to-vault mismatch before Durable Object access', async () => {
+  const username = 'legacy.family';
+  const wrongVaultId = 'a'.repeat(64);
+  let registryTouched = false;
+  let coordinatorTouched = false;
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/legacy-claim/' + wrongVaultId,
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'X-Write-Token': 'w'.repeat(43),
+        'X-Legacy-Username': username,
+        'Content-Type': 'application/json'
+      },
+      body: '{}'
+    }
+  ), {
+    RECOVERY_PEPPER: PEPPER,
+    ACCOUNT_REGISTRY: {
+      idFromName() { registryTouched = true; return 'global-account-registry'; },
+      get() {
+        registryTouched = true;
+        return { fetch: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }) };
+      }
+    },
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(registryTouched, false);
+  assert.equal(coordinatorTouched, false);
+});
