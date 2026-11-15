@@ -577,19 +577,20 @@ test('Vault Coordinator keeps a valid save when the KV packet write is temporari
 
 test('Vault Coordinator does not initialize an empty index when KV is unavailable and retries cleanly', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
-  failures.get = true;
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  const deviceSession = await createCoordinatorSession(coordinator);
 
-  const blocked = await coordinator.fetch(coordinatorRequest('/index'));
+  failures.get = true;
+  const blocked = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null, sessionToken: deviceSession.sessionToken
+  }));
   assert.equal(blocked.status, 503);
   assert.equal(storageMap.has('vault-index'), false);
 
   failures.get = false;
-  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
-    method: 'POST',
-    body: {}
-  }));
-  assert.equal(initialized.status, 200);
-  const deviceSession = await createCoordinatorSession(coordinator);
   const recovered = await coordinator.fetch(coordinatorRequest('/index', {
     token: null, sessionToken: deviceSession.sessionToken
   }));
