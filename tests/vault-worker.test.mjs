@@ -238,16 +238,21 @@ function makeDurableNamespace(DurableClass, env) {
   };
 }
 
-function accountRequest(path, { body = {}, token } = {}) {
+function accountRequest(path, {
+  method = 'POST', body, token, membershipTicket, sessionToken, legacyUsername
+} = {}) {
   return new Request('https://faith-focus-proxy.nine-westhigh.workers.dev' + path, {
-    method: 'POST',
+    method,
     headers: {
       Origin: ORIGIN,
       'X-App-Client': CLIENT,
-      'Content-Type': 'application/json',
-      ...(token ? { 'X-Write-Token': token } : {})
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      ...(token ? { 'X-Write-Token': token } : {}),
+      ...(membershipTicket ? { 'X-Vault-Membership': membershipTicket } : {}),
+      ...(sessionToken ? { 'X-Device-Session': sessionToken } : {}),
+      ...(legacyUsername ? { 'X-Legacy-Username': legacyUsername } : {})
     },
-    body: JSON.stringify(body)
+    body: body === undefined ? undefined : JSON.stringify(body)
   });
 }
 
@@ -305,7 +310,71 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
     body: { vaultId }, token: writeToken
   }), env);
   assert.equal(unlock.status, 200);
-  assert.equal((await responseJson(unlock)).passphraseEnvelope.algorithm, 'AES-256-GCM');
+  const unlockData = await responseJson(unlock);
+  assert.equal(unlockData.passphraseEnvelope.algorithm, 'AES-256-GCM');
+  assert.equal(typeof unlockData.membershipTicket, 'string');
+
+  const keyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const publicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', keyPair.publicKey));
+  const publicKeySpki = base64Url(publicKeyBytes);
+  const deviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', publicKeyBytes)));
+
+  const challengeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/challenge', {
+    body: { deviceId, publicKeySpki },
+    token: writeToken,
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  assert.equal(challengeResponse.status, 200);
+  const challenge = await responseJson(challengeResponse);
+  assert.equal(challenge.expiresAt > Date.now(), true);
+  assert.match(challenge.challengeId, /^[A-Za-z0-9_-]{43}$/);
+
+  const signature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    keyPair.privateKey,
+    new TextEncoder().encode(challenge.message)
+  ));
+  const verifyRequest = () => worker.fetch(accountRequest('/vault/' + vaultId + '/device/verify', {
+    body: { challengeId: challenge.challengeId, deviceId, signature },
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  const concurrentVerifications = await Promise.all([verifyRequest(), verifyRequest()]);
+  assert.deepEqual(concurrentVerifications.map(item => item.status).sort(), [200, 401]);
+  const verifiedResponse = concurrentVerifications.find(item => item.status === 200);
+  const verified = await responseJson(verifiedResponse);
+  assert.equal(verified.deviceId, deviceId);
+  assert.match(verified.sessionToken, /^[A-Za-z0-9_-]{43}$/);
+
+  const coordinatorStorage = env.VAULT_COORDINATOR.storageMaps.get(vaultId);
+  const sessionEntries = [...coordinatorStorage.entries()].filter(([key]) => key.startsWith('device-session:'));
+  assert.equal(sessionEntries.length, 1);
+  assert.equal(sessionEntries[0][1].deviceId, deviceId);
+  assert.equal(JSON.stringify(sessionEntries).includes(verified.sessionToken), false);
+  assert.equal(sessionEntries[0][0].includes(verified.sessionToken), false);
+
+  const indexResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/index', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(indexResponse.status, 200);
+
+  const revokeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/session/revoke', {
+    body: { deviceId },
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(revokeResponse.status, 200);
+  assert.equal([...coordinatorStorage.keys()].some(key => key.startsWith('device-session:')), false);
+
+  const revokedSessionRequest = await worker.fetch(accountRequest('/vault/' + vaultId + '/index', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(revokedSessionRequest.status, 401);
 
   const wrongAnswers = recoveryAnswers.map(item => ({ ...item }));
   wrongAnswers[0].answer = 'poppy';
