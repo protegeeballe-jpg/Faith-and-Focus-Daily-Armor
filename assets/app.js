@@ -1129,7 +1129,9 @@ import {
             diaryArchiveVoiceUrls.forEach(url => URL.revokeObjectURL(url));
             diaryArchiveVoiceUrls = [];
             document.getElementById('diary-archive-entry-voice-notes')?.replaceChildren();
-            document.getElementById('diary-archive-button')?.focus({ preventScroll: true });
+            if (!document.getElementById('view-diary')?.classList.contains('hidden')) {
+                document.getElementById('diary-archive-button')?.focus({ preventScroll: true });
+            }
         }
 
         function showDiaryArchiveList() {
@@ -1401,6 +1403,52 @@ import {
                 throw error;
             }
         }
+
+        function concealUnlockedApplication() {
+            ['view-launcher', 'little-garden', 'view-diary', 'view-checklist'].forEach(id => {
+                document.getElementById(id)?.classList.add('hidden');
+            });
+
+            // Remove decrypted writing and history from the DOM immediately.
+            document.querySelectorAll('#private-diary-entry,.text-input').forEach(field => {
+                field.value = '';
+                field.disabled = true;
+            });
+            document.getElementById('diary-archive-panel')?.classList.add('hidden');
+            document.getElementById('diary-archive-entry-written')?.replaceChildren();
+            document.getElementById('diary-archive-entry-locations')?.replaceChildren();
+            document.getElementById('diary-archive-entry-voice-notes')?.replaceChildren();
+            document.getElementById('diary-archive-date-list')?.replaceChildren();
+            document.getElementById('diary-location-log')?.replaceChildren();
+            const archiveDates = document.getElementById('diary-archive-date-list');
+            const locationLog = document.getElementById('diary-location-log');
+            if (archiveDates) {
+                const item = document.createElement('li');
+                item.className = 'diary-archive-empty';
+                item.textContent = 'Unlock your Diary to view saved dates.';
+                archiveDates.append(item);
+            }
+            if (locationLog) {
+                const item = document.createElement('li');
+                item.className = 'rounded-xl bg-white/70 px-3 py-3 text-xs text-purple-800';
+                item.textContent = 'Unlock your Diary to view location history for this date.';
+                locationLog.append(item);
+            }
+            ['diary-archive-entry-date', 'diary-current-date-label'].forEach(id => {
+                const element = document.getElementById(id);
+                if (element) element.textContent = '';
+            });
+            const locationDate = document.getElementById('diary-location-date');
+            if (locationDate) locationDate.textContent = 'this date';
+
+            diaryViewingHistoricalDate = null;
+            diaryArchiveVoiceUrls.forEach(url => URL.revokeObjectURL(url));
+            diaryArchiveVoiceUrls = [];
+            clearDiaryVoiceNotePlayback();
+            closeDiaryArchive();
+        }
+
+        window.addEventListener('faith-focus:app-locked', concealUnlockedApplication);
 
         document.addEventListener('private-writing:locked', () => {
             clearDiaryVoiceNotePlayback();
