@@ -8,7 +8,7 @@
  * When the cache list or its behavior changes, increment CACHE_NAME so the
  * old shell is retired cleanly after the new worker activates.
  */
-const CACHE_NAME = 'faith-focus-shell-v15-current-diary-revision-merge';
+const CACHE_NAME = 'faith-focus-shell-v16-verified-signin-vault-sync';
 const CACHE_PREFIX = 'faith-focus-';
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -34,7 +34,6 @@ const PRECACHE_URLS = [
     './assets/vault-crypto.js',
     './assets/vault-storage.js',
     './assets/vault-sync.js',
-    './assets/vault-refresh.js',
     './assets/daily-merge.js',
     './assets/vault-session.js',
     './assets/local-backup.js',

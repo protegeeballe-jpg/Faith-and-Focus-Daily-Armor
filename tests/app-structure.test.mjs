@@ -125,9 +125,10 @@ test('account inactivity lock is two minutes and rechecks expired sessions after
  assert.match(vaultSession,/function checkInactivityOnResume/);
  assert.match(vaultSession,/document\.visibilityState === 'visible'/);
  assert.match(vaultSession,/window\.addEventListener\('pageshow'/);
- assert.match(vaultSession,/stopVaultSync\(\{ flushRemote: false \}\)/);
- assert.match(vaultSync,/stopVaultSync\(\{ flushRemote = true \} = \{\}\)/);
- assert.match(vaultSync,/for \(const queue of localCaptureQueues\.values\(\)\) await queue/);
+ assert.match(vaultSession,/stopVaultSync\(\)/);
+ assert.match(vaultSync,/export async function stopVaultSync\(\)/);
+ assert.match(vaultSync,/for \(const queue of \[\.\.\.localCaptureQueues\.values\(\)\]\) await queue/);
+ assert.doesNotMatch(vaultSync,/flushRemote/);
  assert.match(vaultSync,/activeVaultRequestControllers\.forEach\(controller => controller\.abort\(\)\)/);
 });
 
@@ -851,7 +852,7 @@ test('vault sync retries date-level conditional-write conflicts and Settings has
  assert.match(sync,/attempt <= MAX_DATE_RECONCILE_ATTEMPTS/);
  assert.match(sync,/error\.code !== 'VAULT_CONFLICT'/);
  assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt\)/);
- assert.match(sync,/automatic sync will retry/);
+ assert.match(sync,/next verified sign-in/);
  assert.match(sync,/await reconcileDay\(record\.dateString, null\)/);
  assert.match(sync,/const pendingRecords = finalLocalRecords\.filter\(record => record\.dirty\)/);
  assert.match(sync,/expectedPacket: unchangedSinceSnapshot \? local\.packet : null/);
@@ -865,16 +866,18 @@ test('vault sync retries date-level conditional-write conflicts and Settings has
  assert.match(vaultSession,/SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });
 
-test('vault synchronization refreshes while foregrounded without interrupting an active Diary editor',()=>{
- const vaultSync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
- const refresh=readFileSync(new URL('../assets/vault-refresh.js',import.meta.url),'utf8');
- assert.match(vaultSync,/installVaultSyncRefresh\(/);
- assert.match(vaultSync,/intervalMs:\s*30_000/);
- assert.match(vaultSync,/isPrivateWritingEditorFocused/);
- assert.match(vaultSync,/!isPrivateWritingEditorFocused\(\)/);
- assert.match(vaultSync,/foregroundRefreshCleanup\?\.\(\)/);
- assert.match(refresh,/visibilityState !== 'visible'/);
- assert.match(refresh,/inFlight/);
+test('vault synchronization starts after verified sign-in and keeps later changes local',()=>{
+ const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
+ assert.match(sync,/hasVerifiedDeviceSession\(credentials\)/);
+ assert.match(sync,/deviceSessionExpiresAt <= Date\.now\(\)/);
+ assert.match(sync,/window\.addEventListener\('faith-focus:local-data-changed', handleLocalDataChanged\)/);
+ assert.match(sync,/window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
+ assert.doesNotMatch(sync,/installVaultSyncRefresh|foregroundRefreshCleanup|setInterval|scheduleCloudPush|cloudDebounceTimer|handleOnline/);
+ assert.match(sync,/dirty:\s*true/);
+ assert.match(sync,/Your next verified sign-in will reconcile this packet/);
+ assert.equal((sync.match(/await synchronizeVault\(\)/g)||[]).length,2);
+ assert.match(vaultSession,/await establishDeviceSession\(credentials, unlocked\.membershipTicket\);[\s\S]*?await startVaultSync\(credentials\);/);
+ assert.equal((vaultSession.match(/await startVaultSync\(credentials\)/g)||[]).length,3);
 });
 
 test('Diary migration recognizes account-key records and converts only legacy-key entries',()=>{
