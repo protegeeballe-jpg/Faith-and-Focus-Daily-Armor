@@ -233,3 +233,33 @@ test('legacy claims use a separate route and reject a username-to-vault mismatch
   assert.equal(registryTouched, false);
   assert.equal(coordinatorTouched, false);
 });
+
+
+test('Worker fails closed when the independent membership signing secret is missing', async () => {
+  const vaultId = 'f'.repeat(64);
+  const ticket = await membershipTicket(vaultId);
+  let coordinatorTouched = false;
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/index',
+    {
+      method: 'GET',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'X-Vault-Membership': ticket,
+        'X-Device-Session': 's'.repeat(43)
+      }
+    }
+  ), {
+    // Recovery pepper alone must not be reused to sign membership tickets.
+    RECOVERY_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(coordinatorTouched, false);
+});
