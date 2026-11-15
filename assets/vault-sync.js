@@ -773,7 +773,7 @@ function flushLocalVaultChanges() {
     try {
       await stopRegisteredVoiceNoteRecording();
       await flushAndSaveCurrentPrivateWriting();
-      for (const queue of [...localCaptureQueues.values()]) await queue;
+      for (const queue of localCaptureQueues.values()) await queue;
     } catch (error) {
       console.warn('[Vault Sync] Local changes remain preserved for the next verified sign-in.', error);
     }

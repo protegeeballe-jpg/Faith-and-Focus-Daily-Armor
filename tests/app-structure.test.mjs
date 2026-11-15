@@ -473,7 +473,9 @@ test('unified vault login derives separate credentials and synchronizes encrypte
  assert.match(session,/recoverVaultMasterKey/);
  assert.match(session,/wipeWriteToken/);
  assert.doesNotMatch(session,/sessionStorage/);
- assert.match(sync,/setTimeout\([\s\S]*?5000\)/);
+ assert.doesNotMatch(sync,/scheduleCloudPush|setInterval|addEventListener\('online'/);
+ assert.match(sync,/document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
+ assert.match(sync,/window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
  assert.match(sync,/X-App-Client/);
  assert.match(sync,/X-Vault-Membership/);
  assert.match(sync,/X-Device-Session/);
@@ -841,7 +843,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v15-current-diary-revision-merge/);
+ assert.match(serviceWorker,/faith-focus-shell-v16-verified-signin-vault-sync/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -889,7 +891,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v15-current-diary-revision-merge/);
+ assert.match(serviceWorker,/faith-focus-shell-v16-verified-signin-vault-sync/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
