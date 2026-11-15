@@ -61,7 +61,21 @@ function makeCoordinator() {
   const failures = { get: false, put: false };
   const storage = {
     async get(key) { return storageMap.get(key); },
-    async put(key, value) { storageMap.set(key, value); }
+    async put(key, value) { storageMap.set(key, value); },
+    async delete(key) { return storageMap.delete(key); },
+    async list({ prefix = "" } = {}) {
+      return new Map([...storageMap.entries()].filter(([key]) => String(key).startsWith(prefix)));
+    },
+    async transaction(callback) {
+      const transaction = {
+        get: async key => storageMap.get(key),
+        put: async (key, value) => storageMap.set(key, value),
+        delete: async key => storageMap.delete(key)
+      };
+      return callback(transaction);
+    },
+    async setAlarm(timestamp) { this.alarmAt = timestamp; },
+    async deleteAlarm() { this.alarmAt = null; }
   };
   const state = {
     storage,
@@ -149,7 +163,20 @@ function makeDurableNamespace(DurableClass, env) {
         const storage = {
           async get(key) { return map.get(key); },
           async put(key, value) { map.set(key, value); },
-          async delete(key) { return map.delete(key); }
+          async delete(key) { return map.delete(key); },
+          async list({ prefix = "" } = {}) {
+            return new Map([...map.entries()].filter(([key]) => String(key).startsWith(prefix)));
+          },
+          async transaction(callback) {
+            const transaction = {
+              get: async key => map.get(key),
+              put: async (key, value) => map.set(key, value),
+              delete: async key => map.delete(key)
+            };
+            return callback(transaction);
+          },
+          async setAlarm(timestamp) { this.alarmAt = timestamp; },
+          async deleteAlarm() { this.alarmAt = null; }
         };
         const state = {
           storage,
