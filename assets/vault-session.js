@@ -310,7 +310,7 @@ async function submitVaultLogin(event) {
       setStatus('vault-login-message', 'Checking whether this is an existing vault that needs a one-time security upgrade…');
       const legacy = await deriveLegacyVaultCredentials(usernameResult.normalized, passphrase);
       try {
-        const legacyClaim = await fetch(WORKER_ORIGIN + '/vault/' + legacy.vaultId + '/claim', {
+        const legacyClaim = await fetch(WORKER_ORIGIN + '/legacy-claim/' + legacy.vaultId, {
           method: 'POST',
           cache: 'no-store',
           credentials: 'omit',
