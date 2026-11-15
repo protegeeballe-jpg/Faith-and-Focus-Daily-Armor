@@ -962,14 +962,20 @@ export class VaultCoordinator {
   }
 
   async allowRateLimit(action, limit, windowMs) {
+    // One rolling counter per action avoids accumulating a new key for every
+    // time bucket. Calls are serialized by this Durable Object's request queue.
+    const key = "auth-rate:" + action;
     const now = Date.now();
-    const bucket = Math.floor(now / windowMs);
-    const key = "auth-rate:" + action + ":" + bucket;
-    const previousKey = "auth-rate:" + action + ":" + (bucket - 1);
-    const count = (await this.state.storage.get(key)) || 0;
-    if (count >= limit) return false;
-    await this.state.storage.put(key, count + 1);
-    await this.state.storage.delete(previousKey);
+    let record = await this.state.storage.get(key);
+    if (!record || !Number.isFinite(record.windowStartedAt)
+        || now < record.windowStartedAt || now - record.windowStartedAt >= windowMs) {
+      record = { windowStartedAt: now, count: 0 };
+    }
+    if (record.count >= limit) return false;
+    await this.state.storage.put(key, {
+      windowStartedAt: record.windowStartedAt,
+      count: record.count + 1
+    });
     return true;
   }
 
@@ -1208,6 +1214,15 @@ export class VaultCoordinator {
     }, 200);
   }
 
+  async revokeAllDeviceSessions() {
+    const sessions = await this.state.storage.list({ prefix: "device-session:" });
+    for (const key of sessions.keys()) {
+      await this.state.storage.delete(key);
+    }
+    await this.scheduleSessionCleanup();
+    return sessions.size;
+  }
+
   async revokeDeviceSession(request) {
     let payload;
     try { payload = await request.json(); }
@@ -1327,6 +1342,9 @@ export class VaultCoordinator {
         if (!(await this.state.storage.get("write-token-sha256"))) {
           return jsonResponse({ error: "Vault has not been initialized." }, 404);
         }
+        // A recovery-driven account credential rotation must revoke every
+        // active device session while preserving trusted device registrations.
+        await this.revokeAllDeviceSessions();
         await this.state.storage.put("write-token-sha256", await sha256Hex(token));
         return jsonResponse({ ok: true }, 200);
       }
