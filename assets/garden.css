@@ -1003,3 +1003,12 @@ input[type="reset"] {
     .garden-checklist-scene .step-card { border-radius: 1rem; }
     #view-diary .card-lavender { border-radius: 1.05rem; }
 }
+
+/* Keep the optional backup actions as easy to reach as the main scene actions. */
+.settings-modal .drive-sync-panel .garden-action-button {
+    min-height: 44px;
+}
+:where(summary):focus-visible {
+    outline: 3px solid var(--ff-focus);
+    outline-offset: 3px;
+}
