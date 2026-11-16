@@ -579,3 +579,30 @@ test('sign-in fails with a configuration response when membership signing secret
   assert.equal(response.status, 503);
   assert.equal(registryTouched, false);
 });
+
+
+test('account registry routes receive a shared per-location ceiling in addition to per-IP ingress limiting', async () => {
+  const limiters = makeEdgeLimiters();
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/account/signin',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.212',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({username:'registry.probe'})
+    }
+  ), {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    ACCOUNT_REGISTRY: {},
+    VAULT_COORDINATOR: {}
+  });
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth', 'auth']);
+  assert.equal(limiters.calls[1].key, 'account-registry-global:v1');
+});
