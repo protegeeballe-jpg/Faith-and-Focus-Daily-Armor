@@ -30,6 +30,22 @@ function responseJson(response) {
   return response.json();
 }
 
+async function createMembershipTicket(vaultId, pepper) {
+  const encodedPayload = Buffer.from(JSON.stringify({
+    version: 1,
+    vaultId,
+    expiresAt: Date.now() + 60 * 60 * 1000
+  })).toString('base64url');
+  const key = await webcrypto.subtle.importKey(
+    'raw', Buffer.from(pepper), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = new Uint8Array(await webcrypto.subtle.sign(
+    'HMAC', key, new TextEncoder().encode('FaithFocus|vault-membership|v1|' + encodedPayload)
+  ));
+  const hex = Array.from(signature, byte => byte.toString(16).padStart(2, '0')).join('');
+  return encodedPayload + '.' + hex;
+}
+
 test('Worker rejects non-GitHub-Pages origins and missing custom client header', async () => {
   const wrongOrigin = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
     headers: { Origin: 'https://attacker.example', 'X-App-Client': CLIENT }
@@ -49,6 +65,9 @@ test('Worker rejects requests larger than 1 MB before invoking the vault coordin
       Origin: ORIGIN,
       'X-App-Client': CLIENT,
       'CF-Connecting-IP': '203.0.113.55',
+      'X-Vault-Membership': await createMembershipTicket(
+        VAULT_ID, 'worker-test-membership-secret-with-at-least-32-characters'
+      ),
       'X-Write-Token': WRITE_TOKEN,
       'Content-Type': 'application/json',
       'Content-Length': String(1024 * 1024 + 1)
@@ -432,7 +451,8 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
   const oldUsername = await worker.fetch(accountRequest('/account/signin', {
     body: { username: 'family.vault' }
   }), env);
-  assert.equal(oldUsername.status, 401);
+  assert.equal(oldUsername.status, 200);
+  assert.equal((await responseJson(oldUsername)).username, 'family.vault');
 
   const newUsername = await worker.fetch(accountRequest('/account/signin', {
     body: { username: 'family.renamed' }
