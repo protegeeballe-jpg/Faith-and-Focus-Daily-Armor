@@ -111,11 +111,11 @@ function getEdgeRateLimitPolicy(request) {
   if (accountRoute) {
     const route = accountRoute[1];
     const sensitive = ["signup", "migrate-legacy", "recover", "complete-recovery"].includes(route);
-    return { ipLimited: true, sensitiveRoute: sensitive ? "account:" + route : null };
+    return { ipLimited: true, accountRegistry: true, sensitiveRoute: sensitive ? "account:" + route : null };
   }
 
   if (/^\/legacy-claim\/[a-f0-9]{64}$/.test(pathname)) {
-    return { ipLimited: true, sensitiveRoute: "legacy-claim" };
+    return { ipLimited: true, accountRegistry: true, sensitiveRoute: "legacy-claim" };
   }
 
   const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
@@ -158,9 +158,9 @@ async function enforceEdgeRateLimits(request, env, origin) {
   if (policy.sensitiveRoute) {
     checks.push([env.SENSITIVE_IP_RATE_LIMITER, "sensitive:v1:" + policy.sensitiveRoute + ":" + ipDigest]);
   }
-  if (policy.sensitiveRoute === "legacy-claim") {
-    // Also cap distributed, high-cardinality legacy probes per Cloudflare location.
-    checks.push([env.AUTH_IP_RATE_LIMITER, "legacy-claim-global:v1"]);
+  if (policy.accountRegistry) {
+    // Cap distributed requests to the single serialized registry per Cloudflare location.
+    checks.push([env.AUTH_IP_RATE_LIMITER, "account-registry-global:v1"]);
   }
 
   for (const [binding, key] of checks) {
