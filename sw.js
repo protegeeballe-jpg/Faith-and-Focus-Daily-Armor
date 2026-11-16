@@ -8,7 +8,7 @@
  * When the cache list or its behavior changes, increment CACHE_NAME so the
  * old shell is retired cleanly after the new worker activates.
  */
-const CACHE_NAME = 'faith-focus-shell-v18-checklist-return-navigation';
+const CACHE_NAME = 'faith-focus-shell-v19-remove-window-toggle';
 const CACHE_PREFIX = 'faith-focus-';
 const NETWORK_TIMEOUT_MS = 4000;
 
