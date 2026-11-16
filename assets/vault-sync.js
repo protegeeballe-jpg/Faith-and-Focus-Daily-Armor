@@ -29,6 +29,7 @@ const DAILY_RECORD_PREFIXES = [
 const LEGACY_WRITING_CONFIG_KEY = 'dmp_private_writing_crypto_v1';
 
 let activeVault = null;
+let vaultSyncGeneration = 0;
 let applyingRemotePacket = 0;
 let syncQueue = Promise.resolve();
 let localCaptureQueues = new Map();
@@ -727,20 +728,25 @@ export async function startVaultSync(credentials) {
     throw new TypeError('A verified device session is required before vault synchronization can start.');
   }
   activeVault = credentials;
+  const generation = ++vaultSyncGeneration;
+  const isCurrent = () => activeVault === credentials && vaultSyncGeneration === generation;
   installLocalStorageHooks();
 
   try {
     status('Connecting to your private vault…');
     await vaultRequest('/vault/' + activeVault.vaultId + '/claim', { method: 'POST', body: {} });
   } catch (error) {
-    activeVault = null;
+    if (isCurrent()) activeVault = null;
     throw error;
   }
+  if (!isCurrent()) return false;
 
   // Capture actual local daily records first; do not manufacture an empty current-day
   // packet merely because account-wide settings exist on this device.
   await captureExistingLocalDates();
+  if (!isCurrent()) return false;
   await synchronizeVault();
+  if (!isCurrent()) return false;
 
   // Reconcile remote dates before attaching account-wide state to today's packet.
   // This lets a newly signed-in device receive today's Diary/location/voice data
@@ -749,12 +755,15 @@ export async function startVaultSync(credentials) {
       || localStorage.getItem(LEGACY_WRITING_CONFIG_KEY) !== null
       || localStorage.getItem('user_confidence_score') !== null) {
     await captureDailyPacket(getCurrentDateString());
+    if (!isCurrent()) return false;
     await synchronizeVault();
+    if (!isCurrent()) return false;
   }
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
   window.addEventListener('pagehide', flushLocalVaultChanges);
+  return true;
 }
 
 function handleLocalDataChanged(event) {
@@ -785,7 +794,10 @@ function flushLocalVaultChanges() {
   return localFlushPromise;
 }
 
-export async function stopVaultSync() {
+export async function stopVaultSync(expectedCredentials = null) {
+  if (expectedCredentials && activeVault !== expectedCredentials) return;
+  // Invalidate in-flight startup before aborting requests or awaiting local flushes.
+  vaultSyncGeneration += 1;
   try {
     if (activeVault) {
       activeVaultRequestControllers.forEach(controller => {
