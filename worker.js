@@ -447,12 +447,14 @@ async function callRegistry(env, path, body) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin");
+
+    // Apply the IP ingress limit before Origin, method, or client-header rejection.
+    // This does not prevent Worker invocations, but limits downstream processing.
+    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, null);
+    if (edgeLimitResponse) return edgeLimitResponse;
+
     if (origin !== APP_ORIGIN) return jsonResponse({ error: "Origin not allowed." }, 403);
-    if (request.method === "OPTIONS") {
-      const preflightLimitResponse = await enforceEdgeRateLimits(request, env, origin);
-      if (preflightLimitResponse) return preflightLimitResponse;
-      return withCorsPreflight();
-    }
+    if (request.method === "OPTIONS") return withCorsPreflight();
     if (request.headers.get("X-App-Client") !== APP_CLIENT) {
       return jsonResponse({ error: "The application client header is required." }, 403, origin);
     }
@@ -463,9 +465,6 @@ export default {
     const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
     const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
     const knownRoute = Boolean(accountRoute || legacyClaim || match);
-
-    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, origin);
-    if (edgeLimitResponse) return edgeLimitResponse;
 
     if (!knownRoute) return jsonResponse({ error: "Route not found." }, 404, origin);
     if (url.search) return jsonResponse({ error: "Unexpected query parameters are not allowed." }, 400, origin);
@@ -797,7 +796,12 @@ export class AccountRegistry {
     const storage = this.state.storage;
     let cursor = await storage.get(cursorKey) || null;
     let nextExpiry = await storage.get(expiryKey);
-    if (!Number.isFinite(nextExpiry)) nextExpiry = null;
+    if (!Number.isFinite(nextExpiry) || nextExpiry <= now) {
+      cursor = null;
+      nextExpiry = null;
+      await storage.delete(cursorKey);
+      await storage.delete(expiryKey);
+    }
     let scanned = 0;
 
     while (scanned < 1_000) {
@@ -852,7 +856,15 @@ export class AccountRegistry {
       );
 
       if (rateLimits.more || recoveryGrants.more) {
-        await this.state.storage.setAlarm(Date.now() + 60_000);
+        const earliestPendingExpiry = [rateLimits.nextExpiry, recoveryGrants.nextExpiry]
+          .filter(Number.isFinite)
+          .reduce((earliest, expiry) => earliest === null || expiry < earliest ? expiry : earliest, null);
+        const nextSweep = Date.now() + 60_000;
+        await this.state.storage.setAlarm(
+          earliestPendingExpiry === null
+            ? nextSweep
+            : Math.min(nextSweep, Math.max(Date.now() + 1_000, earliestPendingExpiry))
+        );
         return;
       }
 
