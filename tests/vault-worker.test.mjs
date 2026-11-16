@@ -256,6 +256,7 @@ function accountRequest(path, {
     headers: {
       Origin: ORIGIN,
       'X-App-Client': CLIENT,
+      'CF-Connecting-IP': '203.0.113.44',
       ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
       ...(token ? { 'X-Write-Token': token } : {}),
       ...(membershipTicket ? { 'X-Vault-Membership': membershipTicket } : {}),
@@ -269,6 +270,7 @@ function accountRequest(path, {
 test('Account Registry creates one stable vault, verifies recovery answers, and rotates username/passphrase', async () => {
   const kvMap = new Map();
   const env = {
+    ...EDGE_LIMITERS,
     RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
     MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters',
     VAULT_PACKETS: {
@@ -456,6 +458,7 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
 test('Account Registry rejects duplicate questions, spaces, invalid answers, and duplicate usernames', async () => {
   const kvMap = new Map();
   const env = {
+    ...EDGE_LIMITERS,
     RECOVERY_PEPPER: 'another-test-recovery-pepper-longer-than-32-characters',
     MEMBERSHIP_PEPPER: 'another-test-membership-pepper-longer-than-32-characters',
     VAULT_PACKETS: {
