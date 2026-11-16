@@ -17,6 +17,7 @@ function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write =
   });
   return {
     calls,
+    MEMBERSHIP_PEPPER: PEPPER,
     AUTH_IP_RATE_LIMITER: create("auth", auth),
     SENSITIVE_IP_RATE_LIMITER: create("sensitive", sensitive),
     VAULT_ACCOUNT_RATE_LIMITER: create("vault", vault),
