@@ -12,7 +12,7 @@ test('Checklist uses one visible page heading and the shared Room navigation con
   assert.ok(headerStart >= 0 && headerEnd > headerStart, 'the Checklist header must exist');
   const checklistHeader = html.slice(headerStart, headerEnd);
 
-  assert.match(checklistHeader, /id="checklist-page-title"[^>]*>My Health Checklist</);
+  assert.match(checklistHeader, /id="checklist-page-title"[^>]*>My Health Checklist/);
   assert.doesNotMatch(checklistHeader, /data-page="garden"|>Room<\/button>/);
   assert.match(html, /id="garden-close"[^>]*data-garden-action="back-to-room"[^>]*aria-label="Return to The Forge Room"/);
   assert.match(garden, /overlay\.classList\.toggle\('garden-checklist-active', sceneName === 'checklist'\)/);
