@@ -353,7 +353,7 @@ test('the edge IP key requires CF-Connecting-IP and never falls back to X-Forwar
 });
 
 test('edge limiter failures fail closed before a vault Durable Object is reached', async () => {
-  const limiters = makeEdgeLimiters({ throws: ['vault'] });
+  const limiters = makeEdgeLimiters({ throws: ['auth'] });
   let coordinatorTouched = false;
   const vaultId = 'd'.repeat(64);
   const response = await worker.fetch(new Request(
@@ -377,13 +377,13 @@ test('edge limiter failures fail closed before a vault Durable Object is reached
 
   assert.equal(response.status, 503);
   assert.equal(coordinatorTouched, false);
-  assert.deepEqual(limiters.calls.map(call => call.name), ['vault']);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
 });
 
 test('Cloudflare native edge rate-limit bindings are configured with supported minute windows', () => {
   const wrangler = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
   for (const [name, limit] of [
-    ['AUTH_IP_RATE_LIMITER', 30],
+    ['AUTH_IP_RATE_LIMITER', 120],
     ['SENSITIVE_IP_RATE_LIMITER', 5],
     ['VAULT_ACCOUNT_RATE_LIMITER', 120],
     ['VAULT_WRITE_ACCOUNT_RATE_LIMITER', 20]
@@ -441,10 +441,79 @@ test('authenticated vault edge limits key by vault ID instead of shared client I
   });
 
   assert.equal(response.status, 200);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth', 'vault', 'write']);
   const vaultChecks = limiters.calls.filter(call => call.name === 'vault' || call.name === 'write');
   assert.deepEqual(vaultChecks, [
     { name: 'vault', key: 'vault:v1:' + vaultId },
     { name: 'write', key: 'vault-write:v1:' + vaultId }
   ]);
   assert.ok(vaultChecks.every(call => !call.key.includes('198.51.100.121')));
+});
+
+
+test('random vault IDs are IP-limited before membership verification and do not consume vault buckets', async () => {
+  const limiters = makeEdgeLimiters({ auth: false });
+  let coordinatorTouched = false;
+  const vaultId = '9'.repeat(64);
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/index',
+    {
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.129'
+      }
+    }
+  ), {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 429);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
+  assert.equal(coordinatorTouched, false);
+});
+
+test('unknown POST routes are rate-limited and rejected before body parsing', async () => {
+  const limiters = makeEdgeLimiters();
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/not-a-real-route',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.130'
+      },
+      body: 'not-json'
+    }
+  ), limiters);
+
+  assert.equal(response.status, 404);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
+});
+
+test('unsupported methods are rejected before body parsing and after ingress limiting', async () => {
+  const limiters = makeEdgeLimiters();
+  const vaultId = '8'.repeat(64);
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/index',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.131'
+      },
+      body: 'not-json'
+    }
+  ), limiters);
+
+  assert.equal(response.status, 405);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
 });
