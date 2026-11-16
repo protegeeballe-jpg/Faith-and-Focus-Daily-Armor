@@ -27,7 +27,7 @@ test('account lock conceals every main application view before awaiting cleanup'
   assert.ok(lock.indexOf('showLogin(message);') < lock.indexOf('await localSavePromise'));
   assert.match(lock, /revokeDeviceSession\(credentialsToRevoke\)/);
   assert.match(lock, /confirmed === true/);
-  assert.match(lock, /await stopVaultSync\(credentialsToRevoke\)/);
+  assert.match(lock, /await stopVaultSync\(\)/);
   assert.match(lock, /pendingSyncStartup\) await pendingSyncStartup/);
   assert.match(lock, /clearVaultEncryptionKey\(\)/);
   assert.doesNotMatch(lock, /resetInactivityTimer\(\)/);
@@ -91,12 +91,12 @@ test('background synchronization cannot reattach after its account session is lo
   assert.match(vaultSync, /let vaultSyncGeneration = 0/);
   assert.match(vaultSync, /const generation = \+\+vaultSyncGeneration/);
   assert.match(vaultSync, /if \(!isCurrent\(\)\) return false/);
-  assert.match(vaultSync, /stopVaultSync\(expectedCredentials = null\)/);
+  assert.match(vaultSync, /export async function stopVaultSync\(\)/);
   assert.match(vaultSync, /vaultSyncGeneration \+= 1/);
 });
 
 test('checklist reflection text remains on the encrypted autosave path', () => {
-  assert.match(app, /document\.querySelectorAll\('#private-diary-entry,\.text-input'\)\.forEach\(field=>\s*field\.addEventListener\('input',schedulePrivateWritingSave\)/s);
+  assert.match(app, /document\.querySelectorAll\('#private-diary-entry,\.text-input'\)\.forEach\(field=>\{\s*field\.addEventListener\('input',schedulePrivateWritingSave\)/s);
   assert.match(writing, /function schedulePrivateWritingSave\(\)/);
   assert.match(writing, /savePrivateWritingForDate\(writingLoadedDate\)/);
   assert.match(writing, /const PRIVATE_NOTE_IDS=\['note-success','note-priorities','note-gratitude-others','note-gratitude-god'\]/);
