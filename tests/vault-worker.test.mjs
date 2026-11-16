@@ -1001,37 +1001,47 @@ test('sign-in lookup uses the same status and response shape for known and unkno
   assert.ok(authRateKeys.every(key => key.startsWith('auth-rate:unlock:')));
 });
 
-test('legacy eligibility rejects missing legacy indexes before a vault coordinator can be created', async () => {
-  const username = 'not.a.legacy.vault';
+test('local-only legacy accounts can upgrade without a cloud packet index', async () => {
+  const username = 'local.only.family';
   const digest = new Uint8Array(await webcrypto.subtle.digest(
     'SHA-256',
     new TextEncoder().encode('FaithFocus|VaultID|v1|' + username)
   ));
   const legacyVaultId = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
-  let coordinatorTouched = false;
+  const legacyToken = 'E'.repeat(43);
   const kvMap = new Map();
   const env = {
     ...EDGE_LIMITERS,
     RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
     MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters',
-    VAULT_PACKETS: { async get(key) { return kvMap.get(key) ?? null; } },
-    ACCOUNT_REGISTRY: null,
-    VAULT_COORDINATOR: {
-      idFromName() { coordinatorTouched = true; throw new Error('must not create an empty legacy coordinator'); },
-      get() { coordinatorTouched = true; throw new Error('must not wake an empty legacy coordinator'); }
-    }
+    VAULT_PACKETS: { async get(key) { return kvMap.get(key) ?? null; } }
   };
+  env.VAULT_COORDINATOR = makeDurableNamespace(VaultCoordinator, env);
   env.ACCOUNT_REGISTRY = makeDurableNamespace(AccountRegistry, env);
+
+  const initialized = await env.VAULT_COORDINATOR.get(legacyVaultId).fetch(new Request(
+    'https://vault-coordinator.internal/admin/initialize',
+    {
+      method: 'POST',
+      headers: {
+        'X-Vault-Id': legacyVaultId,
+        'X-Write-Token': legacyToken,
+        'Content-Type': 'application/json'
+      },
+      body: '{}'
+    }
+  ));
+  assert.equal(initialized.status, 200);
+  assert.equal(kvMap.has(legacyVaultId + ':index'), false);
 
   const response = await worker.fetch(accountRequest('/legacy-claim/' + legacyVaultId, {
     body: {},
-    token: 'E'.repeat(43),
+    token: legacyToken,
     legacyUsername: username
   }), env);
-  assert.equal(response.status, 401);
-  assert.equal(coordinatorTouched, false);
-  const registryStorage = env.ACCOUNT_REGISTRY.storageMaps.get('global-account-registry');
-  assert.equal([...registryStorage.keys()].some(key => key.startsWith('auth-rate:legacy-')), false);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await responseJson(response), { ok: true, claimed: true, legacy: true });
+  assert.equal(kvMap.has(legacyVaultId + ':index'), false);
 });
 
 test('Account Registry alarm removes expired auth counters and recovery grants but retains active entries', async () => {
