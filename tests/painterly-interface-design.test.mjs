@@ -58,7 +58,7 @@ test('keyboard focus and reduced-motion preferences are respected throughout the
 });
 
 test('the offline shell version changes when the visual app shell changes', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v18-checklist-return-navigation/);
+  assert.match(serviceWorker, /faith-focus-shell-v20-remove-redundant-garden-room/);
   assert.match(serviceWorker, /\.\/assets\/app\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden-room-background\.jpg/);
