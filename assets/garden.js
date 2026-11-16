@@ -73,11 +73,14 @@ function initializeGarden(root) {
                 room: 'Build and strengthen your armor, one day at a time.',
                 outdoors: 'Your seeds of Hope and Faith grow with the passing days. Watering is a kind moment, never a race.',
                 checklist: 'Small steps strengthen your focus. Move through each card at your own pace.',
-                diary: 'A private place for your thoughts. Your writing is encrypted with your separate passphrase.'
+                diary: 'A private place for your thoughts. Your writing is encrypted with your account key.'
             };
             intro.textContent = descriptions[sceneName] || descriptions.room;
         }
-        const focusTarget = sceneName === 'checklist' ? byId('checklist-page-title') : heading;
+        const dialogLabel = sceneName === 'checklist' ? byId('checklist-page-title') : heading;
+        if (dialogLabel?.id) overlay.setAttribute('aria-labelledby', dialogLabel.id);
+
+        const focusTarget = dialogLabel;
         if (!overlay.classList.contains('hidden')) focusTarget?.focus({ preventScroll: true });
     }
 

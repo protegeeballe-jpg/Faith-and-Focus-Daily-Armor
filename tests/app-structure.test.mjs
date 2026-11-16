@@ -256,8 +256,8 @@ test('Health Checklist header is compact and preserves navigation, date selectio
  const headerEnd=html.indexOf('</header>',headerStart)+9;
  const header=html.slice(headerStart,headerEnd);
  assert.ok(header.includes('My Health Checklist'));
- assert.ok(header.includes('data-page="garden"'));
- assert.ok(header.includes('>Room</button>'));
+ assert.doesNotMatch(header,/data-page="garden"|>Room<\/button>/);
+ assert.match(html,/id="garden-close"[^>]*data-garden-action="back-to-room"[^>]*aria-label="Return to The Forge Room"/);
  assert.ok(header.includes('id="currentDate"'));
  assert.ok(header.includes('data-change-action="handleDateChange"'));
  assert.ok(header.includes('id="device-clock"'));
@@ -843,7 +843,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v16-verified-signin-vault-sync/);
+ assert.match(serviceWorker,/faith-focus-shell-v17-watercolor-adhd-design/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -891,7 +891,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v16-verified-signin-vault-sync/);
+ assert.match(serviceWorker,/faith-focus-shell-v17-watercolor-adhd-design/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{

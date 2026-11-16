@@ -1023,3 +1023,126 @@ body {position:fixed;inset:0;min-width:0;min-height:0 !important;padding-bottom:
     .missed-card-notice-heading {flex-direction:column;gap:.35rem;}
     .missed-card-item {align-items:flex-start;flex-direction:column;}
 }
+
+/* Faith & Focus watercolor design foundation.
+   Keep the paper grain and hand-painted color washes; use these tokens to
+   make controls, surfaces, and focus states feel like one calm environment. */
+:root {
+    color-scheme: light;
+    --ff-paper: #fbf8ef;
+    --ff-paper-light: #fffdf7;
+    --ff-ink: #354a3b;
+    --ff-muted-ink: #647665;
+    --ff-sage: #e7efe2;
+    --ff-sage-ink: #31563e;
+    --ff-honey: #fbf2dc;
+    --ff-honey-ink: #6d542d;
+    --ff-lavender: #f2edf7;
+    --ff-lavender-ink: #59466d;
+    --ff-watercolor-line: rgba(104, 124, 96, .24);
+    --ff-watercolor-shadow: 0 6px 20px rgba(71, 84, 62, .09);
+    --ff-focus: #245b83;
+}
+
+/* A quiet, paper-washed account gate with fields that are easy to read and tap. */
+#view-pin {
+    background-color: var(--ff-paper);
+    background-image:
+        radial-gradient(ellipse at 12% 10%, rgba(247, 205, 183, .28), transparent 32%),
+        radial-gradient(ellipse at 90% 14%, rgba(190, 216, 197, .32), transparent 34%),
+        radial-gradient(ellipse at 52% 96%, rgba(210, 198, 230, .24), transparent 38%);
+}
+#view-pin > .card-yellow {
+    border: 1px solid rgba(183, 155, 91, .34);
+    border-style: solid;
+    border-radius: 1.6rem;
+    background: linear-gradient(145deg, rgba(255, 253, 247, .97), rgba(251, 245, 225, .94));
+    box-shadow: 0 16px 42px rgba(103, 84, 48, .12);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+#view-pin input:not([type="checkbox"]):not([type="radio"]) {
+    box-sizing: border-box;
+    min-height: 48px;
+    border: 1.5px solid rgba(179, 151, 91, .48);
+    border-radius: .85rem;
+    background: rgba(255, 255, 255, .94);
+    color: var(--ff-ink);
+    font-size: 16px;
+    line-height: 1.4;
+}
+#view-pin input::placeholder { color: #8a897d; opacity: 1; }
+#view-pin button { min-height: 44px; border-radius: .85rem; }
+#view-pin button[type="submit"] {
+    min-height: 48px;
+    box-shadow: 0 3px 0 rgba(126, 99, 43, .12);
+    letter-spacing: .035em;
+}
+#view-pin form label {
+    color: #564b37;
+    font-size: .78rem;
+    line-height: 1.35;
+}
+
+/* Two clear destinations; preserve the sage and honey watercolor card identity. */
+#view-launcher {
+    background-color: var(--ff-paper);
+    background-image:
+        radial-gradient(ellipse at 12% 8%, rgba(247, 205, 183, .25), transparent 32%),
+        radial-gradient(ellipse at 90% 15%, rgba(190, 216, 197, .28), transparent 34%),
+        radial-gradient(ellipse at 50% 100%, rgba(210, 198, 230, .2), transparent 38%);
+}
+#view-launcher > .text-center { max-width: 50rem; }
+#view-launcher h1 {
+    max-width: 14ch;
+    margin-inline: auto;
+    font-size: clamp(2.05rem, 5vw, 3.25rem);
+    line-height: 1.08;
+    letter-spacing: -.035em;
+}
+#view-launcher > .grid {
+    width: min(100%, 54rem);
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+    align-items: stretch;
+    gap: 1rem;
+}
+#view-launcher [role="button"] {
+    min-height: 15rem;
+    padding: clamp(1.15rem, 3vw, 2rem);
+    border: 1px solid var(--ff-watercolor-line);
+    border-radius: 1.45rem;
+    box-shadow: var(--ff-watercolor-shadow);
+    text-align: center;
+    transition: transform .18s ease, box-shadow .18s ease;
+}
+#view-launcher [role="button"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(71, 84, 62, .12);
+}
+#view-launcher [role="button"]:active { transform: translateY(0); }
+#view-launcher .card-sage {
+    background-image: linear-gradient(145deg, rgba(255,255,255,.48), rgba(229,239,225,.72));
+    border-color: rgba(112, 147, 109, .34);
+}
+#view-launcher .card-yellow {
+    background-image: linear-gradient(145deg, rgba(255,255,255,.48), rgba(250,241,215,.76));
+    border-color: rgba(183, 155, 91, .34);
+}
+
+/* One consistent keyboard focus language across the application. */
+:where(button, a, input, select, textarea, [role="button"], [tabindex]):focus-visible {
+    outline: 3px solid var(--ff-focus);
+    outline-offset: 3px;
+}
+
+/* Honor the device accessibility setting everywhere, including decorative artwork. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+    }
+}

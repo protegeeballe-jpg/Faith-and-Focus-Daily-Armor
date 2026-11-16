@@ -837,3 +837,178 @@ input[type="reset"] {
         padding:.2rem .65rem;
     }
 }
+
+/* The checklist keeps one page title and uses the shared top-bar Room control. */
+.garden-overlay.garden-checklist-active > .garden-shell > .garden-screen-title,
+.garden-overlay.garden-checklist-active > .garden-shell > .garden-intro {
+    display: none;
+}
+
+/* Shared watercolor surfaces and interaction rhythm.
+   These refinements clarify the hierarchy without removing the paper texture,
+   garden illustration, pastel palette, or translucent painted layers. */
+.garden-topbar {
+    border-color: var(--ff-watercolor-line);
+    border-radius: 1rem;
+    background: rgba(255, 253, 247, .86);
+    box-shadow: 0 3px 12px rgba(71, 84, 62, .08);
+    -webkit-backdrop-filter: blur(9px);
+    backdrop-filter: blur(9px);
+}
+.garden-brand {
+    color: var(--ff-sage-ink);
+    font-size: clamp(.94rem, 2.6vw, 1.25rem);
+    letter-spacing: -.025em;
+}
+.garden-screen-title {
+    color: var(--ff-ink);
+    letter-spacing: -.035em;
+}
+.garden-intro {
+    color: var(--ff-muted-ink);
+    line-height: 1.45;
+}
+.garden-room-card,
+.garden-outdoor-card {
+    border-color: rgba(255, 255, 255, .78);
+    border-radius: 1.45rem;
+    box-shadow: 0 8px 24px rgba(71, 84, 62, .11);
+}
+.garden-planting-panel {
+    border-color: rgba(127, 157, 119, .42);
+    background: rgba(250, 252, 245, .84);
+    box-shadow: 0 3px 12px rgba(71, 84, 62, .06);
+}
+.garden-planting-panel h3,
+.garden-growth-card h3 { color: var(--ff-sage-ink); }
+.garden-planting-panel p,
+.garden-growth-description,
+.garden-growth-foot { color: var(--ff-muted-ink); }
+.garden-growth-card {
+    border-color: rgba(127, 157, 119, .28);
+    border-radius: 1rem;
+    background: rgba(255, 253, 247, .9);
+    box-shadow: 0 3px 12px rgba(71, 84, 62, .055);
+}
+.garden-status {
+    border: 1px solid rgba(127, 157, 119, .24);
+    background: rgba(255, 253, 247, .72);
+    color: var(--ff-ink);
+}
+.garden-room-actions {
+    border-top-color: rgba(255, 255, 255, .64);
+}
+.garden-action-button,
+.garden-small-button,
+.garden-settings-button {
+    min-height: 44px;
+    border-color: rgba(105, 139, 103, .4);
+    border-radius: .85rem;
+    box-shadow: 0 2px 0 rgba(88, 117, 88, .1);
+    line-height: 1.25;
+    transition: transform .16s ease, background-color .16s ease, box-shadow .16s ease;
+}
+.garden-action-button {
+    padding: .62rem .85rem;
+    font-size: .76rem;
+}
+.garden-small-button,
+.garden-settings-button {
+    min-width: 44px;
+}
+.garden-action-button.primary {
+    border-color: rgba(105, 139, 103, .58);
+    background: linear-gradient(145deg, rgba(236, 245, 228, .98), rgba(216, 233, 207, .96));
+    color: #2f563b;
+    box-shadow: 0 2px 0 rgba(73, 111, 76, .14);
+}
+.garden-action-button:hover:not(:disabled),
+.garden-small-button:hover,
+.garden-settings-button:hover {
+    box-shadow: 0 4px 12px rgba(71, 84, 62, .1);
+}
+.garden-action-button:active:not(:disabled),
+.garden-small-button:active,
+.garden-settings-button:active { transform: translateY(0); }
+
+/* The six-card checklist remains the main task surface: clear edges, soft paper,
+   and readable progress without competing decorative effects. */
+.garden-checklist-scene .step-card {
+    border: 1px solid rgba(145, 133, 108, .24);
+    border-radius: 1.2rem;
+    box-shadow: 0 5px 18px rgba(77, 70, 55, .075);
+}
+.garden-checklist-scene .watercolor-progress,
+.garden-checklist-scene .ecosystem-card {
+    border: 1px solid rgba(127, 157, 119, .25);
+    box-shadow: 0 3px 12px rgba(71, 84, 62, .065);
+}
+.garden-checklist-scene .checklist-header-button,
+.garden-checklist-scene .guide-launch {
+    min-height: 44px;
+}
+.garden-checklist-scene .checklist-date-input {
+    min-height: 40px;
+    font-size: 16px;
+}
+.garden-checklist-scene .checklist-header-title {
+    line-height: 1.2;
+    letter-spacing: -.025em;
+}
+
+/* Diary remains a lavender paper space with a comfortable writing surface. */
+#view-diary .card-lavender {
+    border: 1px solid rgba(157, 133, 177, .28);
+    background-image: linear-gradient(145deg, rgba(255,255,255,.32), rgba(241,234,248,.48));
+    box-shadow: 0 7px 22px rgba(89, 70, 109, .09);
+}
+#private-diary-entry {
+    border-color: rgba(157, 133, 177, .42);
+    background-color: rgba(255, 255, 255, .9);
+    color: #40394b;
+    font-size: 16px;
+    line-height: 1.55;
+}
+#view-diary #record-btn,
+#view-diary .diary-notebook-button,
+#view-diary .diary-return-today,
+#view-diary .diary-archive-close,
+#view-diary .diary-archive-back,
+#view-diary .diary-archive-date-button {
+    min-height: 44px;
+}
+
+/* Settings is part of the same calm visual system, not a separate product. */
+.settings-modal {
+    border: 1px solid var(--ff-watercolor-line);
+    border-radius: 1.25rem;
+    background: var(--ff-paper-light);
+    box-shadow: 0 18px 50px rgba(48, 60, 45, .2);
+}
+.settings-modal-header {
+    border-bottom: 1px solid rgba(127, 157, 119, .22);
+    background: linear-gradient(135deg, rgba(241, 247, 235, .96), rgba(255, 249, 231, .94));
+}
+.settings-disclosure {
+    border-color: rgba(127, 157, 119, .28);
+    border-radius: .95rem;
+    background: rgba(255, 255, 255, .72);
+    box-shadow: 0 2px 8px rgba(71, 84, 62, .045);
+}
+.settings-modal button { min-height: 44px; }
+
+@media (max-width: 620px) {
+    .garden-topbar { padding: .45rem .6rem; }
+    .garden-room-actions .garden-action-button { min-height: 44px; }
+    .garden-checklist-scene .step-card { border-radius: 1rem; }
+    #view-diary .card-lavender { border-radius: 1.05rem; }
+}
+
+/* Keep the optional backup actions as easy to reach as the main scene actions. */
+.settings-modal .drive-sync-panel .garden-action-button {
+    min-height: 44px;
+}
+:where(summary):focus-visible {
+    outline: 3px solid var(--ff-focus);
+    outline-offset: 3px;
+}
