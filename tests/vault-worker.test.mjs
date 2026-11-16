@@ -48,13 +48,23 @@ async function createMembershipTicket(vaultId, pepper) {
 
 test('Worker rejects non-GitHub-Pages origins and missing custom client header', async () => {
   const wrongOrigin = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
-    headers: { Origin: 'https://attacker.example', 'X-App-Client': CLIENT }
-  }), {});
+    headers: {
+      Origin: 'https://attacker.example',
+      'X-App-Client': CLIENT,
+      'CF-Connecting-IP': '198.51.100.201'
+    }
+  }), {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters'
+  });
   assert.equal(wrongOrigin.status, 403);
 
   const missingClient = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
-    headers: { Origin: ORIGIN }
-  }), {});
+    headers: { Origin: ORIGIN, 'CF-Connecting-IP': '198.51.100.202' }
+  }), {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters'
+  });
   assert.equal(missingClient.status, 403);
 });
 
@@ -1059,4 +1069,23 @@ test('Account Registry alarm removes expired auth counters and recovery grants b
   assert.equal(map.has('recovery-grant:active'), true);
   assert.ok(alarmAt >= now + 10 * 60 * 1000);
   assert.ok(alarmAt <= now + 15 * 60 * 1000);
+});
+
+
+test('preflight requests use the ingress limiter before returning CORS headers', async () => {
+  const calls = [];
+  const env = {
+    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters',
+    AUTH_IP_RATE_LIMITER: { async limit({key}) { calls.push(key); return {success:false}; } }
+  };
+  const response = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
+    method: 'OPTIONS',
+    headers: {
+      Origin: ORIGIN,
+      'CF-Connecting-IP': '198.51.100.204',
+      'Access-Control-Request-Method': 'GET'
+    }
+  }), env);
+  assert.equal(response.status, 429);
+  assert.equal(calls.length, 1);
 });
