@@ -11,6 +11,7 @@ const WRITE_TOKEN = 'W'.repeat(43);
 const dateString = '2026-11-12';
 
 const EDGE_LIMITERS = {
+  EDGE_RATE_LIMIT_PEPPER: 'worker-test-edge-rate-limit-secret-with-32-characters',
   AUTH_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   SENSITIVE_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   VAULT_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } },
@@ -1075,7 +1076,7 @@ test('Account Registry alarm removes expired auth counters and recovery grants b
 test('preflight requests use the ingress limiter before returning CORS headers', async () => {
   const calls = [];
   const env = {
-    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters',
+    EDGE_RATE_LIMIT_PEPPER: 'worker-test-edge-rate-limit-secret-with-32-characters',
     AUTH_IP_RATE_LIMITER: { async limit({key}) { calls.push(key); return {success:false}; } }
   };
   const response = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
