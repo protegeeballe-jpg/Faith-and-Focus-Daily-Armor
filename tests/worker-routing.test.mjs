@@ -598,7 +598,7 @@ test('account registry routes receive a shared per-location ceiling in addition 
   ), {
     ...limiters,
     MEMBERSHIP_PEPPER: PEPPER,
-    ACCOUNT_REGISTRY: {},
+    ACCOUNT_REGISTRY: null,
     VAULT_COORDINATOR: {}
   });
 
