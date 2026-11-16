@@ -46,6 +46,8 @@ test('shared scenes use consistent painterly surfaces and accessible interactive
   assert.match(gardenCss, /\.garden-checklist-scene \.checklist-header-button,\s*\.garden-checklist-scene \.guide-launch\s*\{\s*min-height:\s*44px/s);
   assert.match(gardenCss, /#private-diary-entry\s*\{[^}]*font-size:\s*16px/s);
   assert.match(gardenCss, /\.settings-disclosure\s*\{[^}]*border-radius:\s*\.95rem/s);
+  assert.match(gardenCss, /\.settings-modal \.drive-sync-panel \.garden-action-button\s*\{\s*min-height:\s*44px/s);
+  assert.match(gardenCss, /:where\(summary\):focus-visible/);
 });
 
 test('keyboard focus and reduced-motion preferences are respected throughout the app', () => {
