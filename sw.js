@@ -8,7 +8,7 @@
  * When the cache list or its behavior changes, increment CACHE_NAME so the
  * old shell is retired cleanly after the new worker activates.
  */
-const CACHE_NAME = 'faith-focus-shell-v21-diary-room-and-compact-controls';
+const CACHE_NAME = 'faith-focus-shell-v22-reliable-offline-shell';
 const CACHE_PREFIX = 'faith-focus-';
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -36,6 +36,7 @@ const PRECACHE_URLS = [
     './assets/vault-sync.js',
     './assets/daily-merge.js',
     './assets/vault-session.js',
+    './assets/device-identity.js',
     './assets/local-backup.js',
     './assets/service-worker-registration.js',
     './assets/location-checkin.js',
@@ -140,38 +141,43 @@ function isSafeAppResponse(request, response) {
         responseUrl.pathname.startsWith(scopeUrl.pathname);
 }
 
-async function networkFirst(request, isNavigation) {
-    const cache = await caches.open(CACHE_NAME);
-
-    try {
-        const response = await fetchWithTimeout(request);
-
+async function cacheFirst(request, isNavigation, event) {
+    // Return the installed shell immediately. Refresh it in the background so
+    // slow connections cannot hold a cached navigation or app module hostage.
+    const cachePromise = caches.open(CACHE_NAME);
+    const refreshPromise = fetchWithTimeout(request).then(async (response) => {
         if (isSafeAppResponse(request, response)) {
             try {
+                const cache = await cachePromise;
                 await cache.put(request, response.clone());
             } catch (cacheError) {
                 // An unavailable/full cache must not prevent online use.
                 console.warn('[Faith & Focus] Could not update the offline cache.', cacheError);
             }
         }
+        return response;
+    }).catch(() => null);
 
-        if (response.ok) return response;
-
-        const savedResponse = await cache.match(request, { ignoreSearch: true });
-        return savedResponse || response;
-    } catch (networkError) {
-        const savedResponse = await cache.match(request, { ignoreSearch: true });
-        if (savedResponse) return savedResponse;
-
-        if (isNavigation) {
-            const offlineHome = await cache.match(
-                new URL('./index.html', self.registration.scope).href
-            );
-            if (offlineHome) return offlineHome;
-        }
-
-        return Response.error();
+    // Keep the refresh alive after the cached response has been returned.
+    if (event && typeof event.waitUntil === 'function') {
+        event.waitUntil(refreshPromise.then(() => undefined));
     }
+
+    const cache = await cachePromise;
+    const savedResponse = await cache.match(request, { ignoreSearch: true });
+    if (savedResponse) return savedResponse;
+
+    const response = await refreshPromise;
+    if (response?.ok) return response;
+
+    if (isNavigation) {
+        const offlineHome = await cache.match(
+            new URL('./index.html', self.registration.scope).href
+        );
+        if (offlineHome) return offlineHome;
+    }
+
+    return response || Response.error();
 }
 
 self.addEventListener('fetch', (event) => {
@@ -185,11 +191,11 @@ self.addEventListener('fetch', (event) => {
     if (!isWithinAppScope(url)) return;
 
     if (request.mode === 'navigate') {
-        event.respondWith(networkFirst(request, true));
+        event.respondWith(cacheFirst(request, true, event));
         return;
     }
 
     if (isStaticAppAsset(url)) {
-        event.respondWith(networkFirst(request, false));
+        event.respondWith(cacheFirst(request, false, event));
     }
 });
