@@ -120,7 +120,7 @@ function getEdgeRateLimitPolicy(request) {
     }
   }
 
-  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
+  const vaultRoute = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
   if (!vaultRoute) return null;
 
   const vaultId = vaultRoute[1];
