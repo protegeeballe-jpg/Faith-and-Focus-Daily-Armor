@@ -834,7 +834,7 @@
                 <div>
                     <p class="settings-modal-eyebrow">YOUR APP PREFERENCES</p>
                     <h2 id="settings-modal-title">Settings &amp; Backups</h2>
-                    <p>Daily changes are saved on this device first. Encrypted vault sync runs automatically; local JSON export is optional.</p>
+                    <p>Daily changes are saved on this device first. Encrypted vault sync starts after a verified sign-in; local JSON export is optional.</p>
                 </div>
                 <button id="settings-close-button" type="button" class="settings-close-button" aria-label="Close Settings" title="Close Settings">×</button>
             </header>
@@ -844,13 +844,13 @@
                         <span class="settings-disclosure-icon" aria-hidden="true">☁</span>
                         <span class="settings-disclosure-copy">
                             <strong>Encrypted Vault Sync</strong>
-                            <small>Automatic daily sync across your devices</small>
+                            <small>Sign-in-triggered encrypted sync across devices</small>
                         </span>
                     </summary>
-                    <section class="drive-sync-panel" aria-label="Automatic encrypted vault synchronization">
+                    <section class="drive-sync-panel" aria-label="Sign-in-triggered encrypted vault synchronization">
                         <div class="drive-sync-copy">
                             <h3>Your daily vault</h3>
-                            <p>Your checklist, Diary, voice notes, location tags, and Garden data are compressed and encrypted on this device. Cloud sync runs after changes and checks for updates while the app is open.</p>
+                            <p>Your checklist, Diary, voice notes, location tags, and Garden data are compressed and encrypted on this device. When a device completes a verified sign-in, the app reconciles encrypted changes with the cloud vault. The app does not continuously poll other devices; sign in again on a device to retrieve changes made elsewhere.</p>
                         </div>
                         <p id="vault-sync-status" class="drive-sync-status" role="status" aria-live="polite">Sign in to connect your encrypted vault.</p>
                         <p class="vault-sync-indicator" aria-live="polite"><span id="vault-sync-indicator" data-state="info">● Waiting for account</span></p>
