@@ -838,9 +838,12 @@ input[type="reset"] {
     }
 }
 
-/* The checklist keeps one page title and uses the shared top-bar Room control. */
+/* Keep the Checklist's return control beside its heading; avoid a duplicate in the shared top bar. */
 .garden-overlay.garden-checklist-active > .garden-shell > .garden-screen-title,
 .garden-overlay.garden-checklist-active > .garden-shell > .garden-intro {
+    display: none;
+}
+.garden-overlay.garden-checklist-active .garden-topbar-actions [data-garden-action="back-to-room"] {
     display: none;
 }
 

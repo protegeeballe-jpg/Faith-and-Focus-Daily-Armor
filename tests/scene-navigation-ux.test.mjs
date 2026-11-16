@@ -13,8 +13,10 @@ test('Checklist uses one visible page heading and the shared Room navigation con
   const checklistHeader = html.slice(headerStart, headerEnd);
 
   assert.match(checklistHeader, /id="checklist-page-title"[^>]*>My Health Checklist/);
-  assert.doesNotMatch(checklistHeader, /data-page="garden"|>Room<\/button>/);
+  assert.match(checklistHeader, /data-garden-action="back-to-room"[^>]*aria-label="Return to The Forge Room"[^>]*>← Room<\/button>/);
   assert.match(html, /id="garden-close"[^>]*data-garden-action="back-to-room"[^>]*aria-label="Return to The Forge Room"/);
+  assert.match(garden, /case 'back-to-room':[\s\S]*?renderRoom\(\);[\s\S]*?setScene\('room'\);/);
+  assert.match(gardenCss, /garden-checklist-active \.garden-topbar-actions \[data-garden-action="back-to-room"\]\s*\{\s*display:\s*none;/);
   assert.match(garden, /overlay\.classList\.toggle\('garden-checklist-active', sceneName === 'checklist'\)/);
   assert.match(gardenCss, /\.garden-overlay\.garden-checklist-active > \.garden-shell > \.garden-screen-title,[\s\S]*?\.garden-overlay\.garden-checklist-active > \.garden-shell > \.garden-intro\s*\{\s*display:\s*none;/);
 });
