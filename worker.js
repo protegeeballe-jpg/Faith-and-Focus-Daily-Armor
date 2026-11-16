@@ -158,6 +158,10 @@ async function enforceEdgeRateLimits(request, env, origin) {
   if (policy.sensitiveRoute) {
     checks.push([env.SENSITIVE_IP_RATE_LIMITER, "sensitive:v1:" + policy.sensitiveRoute + ":" + ipDigest]);
   }
+  if (policy.sensitiveRoute === "legacy-claim") {
+    // Also cap distributed, high-cardinality legacy probes per Cloudflare location.
+    checks.push([env.AUTH_IP_RATE_LIMITER, "legacy-claim-global:v1"]);
+  }
 
   for (const [binding, key] of checks) {
     if (!binding || typeof binding.limit !== "function") {
@@ -944,18 +948,6 @@ export class AccountRegistry {
       }
       if (await this.state.storage.get(this.usernameKey(username))) {
         return jsonResponse({ error: "This username already belongs to a registered account." }, 409);
-      }
-      if (!this.env.VAULT_PACKETS || typeof this.env.VAULT_PACKETS.get !== "function") {
-        return jsonResponse({ error: "The legacy vault index is unavailable." }, 503);
-      }
-      let legacyIndex;
-      try {
-        legacyIndex = await this.env.VAULT_PACKETS.get(vaultId + ":index", "json");
-      } catch {
-        return jsonResponse({ error: "The legacy vault index is temporarily unavailable." }, 503);
-      }
-      if (!legacyIndex || typeof legacyIndex !== "object" || Array.isArray(legacyIndex)) {
-        return jsonResponse({ error: "The legacy account reference is invalid." }, 404);
       }
       return jsonResponse({ ok: true }, 200);
     }
