@@ -58,6 +58,7 @@ function initializeGarden(root) {
     function setScene(sceneName) {
         overlay.classList.toggle('garden-room-home', sceneName === 'room');
         overlay.classList.toggle('garden-checklist-active', sceneName === 'checklist');
+        overlay.classList.toggle('garden-diary-active', sceneName === 'diary');
         root.querySelectorAll('[data-garden-scene]').forEach(scene => {
             scene.classList.toggle('hidden', scene.dataset.gardenScene !== sceneName);
         });

@@ -1012,3 +1012,45 @@ input[type="reset"] {
     outline: 3px solid var(--ff-focus);
     outline-offset: 3px;
 }
+
+
+/* Diary-only Room navigation and compact Forge Room actions. */
+.garden-diary-room-button {
+    display: none;
+    min-width: 0;
+    min-height: 44px;
+    padding: .45rem .65rem;
+    font-size: .72rem;
+    white-space: nowrap;
+}
+.garden-overlay.garden-diary-active .garden-diary-room-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.garden-overlay.garden-room-home .garden-room-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    padding: .5rem .55rem .65rem;
+}
+.garden-overlay.garden-room-home .garden-room-actions .garden-action-button {
+    flex: 0 1 auto;
+    width: auto;
+    min-width: 0;
+    padding: .5rem .85rem;
+    font-size: .72rem;
+    white-space: nowrap;
+}
+@media (max-width: 620px) {
+    .garden-overlay.garden-room-home .garden-room-actions {
+        gap: .35rem;
+        padding: .4rem .25rem .55rem;
+    }
+    .garden-overlay.garden-room-home .garden-room-actions .garden-action-button {
+        padding: .44rem .58rem;
+        font-size: .66rem;
+    }
+}

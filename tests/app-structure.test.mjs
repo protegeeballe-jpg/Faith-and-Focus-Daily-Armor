@@ -290,6 +290,7 @@ test('Health Checklist header is compact and preserves navigation, date selectio
  assert.ok(appCss.includes('padding:.28rem .7rem'));
  assert.ok(appCss.includes('.checklist-header-title'));
  assert.ok(appCss.includes('.checklist-device-clock'));
+ assert.match(appCss, /@media \(min-width: 621px\)\s*\{\s*#view-checklist \.checklist-date-input\s*\{[^}]*font-size: \.75rem !important/s);
  assert.ok(appCss.includes('@media (max-width:620px)'));
 });
 test('guide and finale overlays keep their controls reachable on short screens',()=>{
@@ -857,7 +858,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v20-remove-redundant-garden-room/);
+ assert.match(serviceWorker,/faith-focus-shell-v21-diary-room-and-compact-controls/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -905,7 +906,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v20-remove-redundant-garden-room/);
+ assert.match(serviceWorker,/faith-focus-shell-v21-diary-room-and-compact-controls/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
