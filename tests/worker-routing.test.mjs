@@ -17,6 +17,7 @@ function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write =
   });
   return {
     calls,
+    EDGE_RATE_LIMIT_PEPPER: PEPPER,
     AUTH_IP_RATE_LIMITER: create("auth", auth),
     SENSITIVE_IP_RATE_LIMITER: create("sensitive", sensitive),
     VAULT_ACCOUNT_RATE_LIMITER: create("vault", vault),
@@ -521,4 +522,31 @@ test('unsupported methods are rejected before body parsing and after ingress lim
 
 test('edge limiter test fixtures do not silently satisfy membership secret configuration', () => {
   assert.equal('MEMBERSHIP_PEPPER' in makeEdgeLimiters(), false);
+});
+
+
+test('Worker fails closed when the independent edge rate-limit secret is missing', async () => {
+  const env = makeEdgeLimiters();
+  delete env.EDGE_RATE_LIMIT_PEPPER;
+  let coordinatorTouched = false;
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + 'f'.repeat(64) + '/index',
+    {
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.210'
+      }
+    }
+  ), {
+    ...env,
+    MEMBERSHIP_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+  assert.equal(response.status, 503);
+  assert.equal(coordinatorTouched, false);
 });
