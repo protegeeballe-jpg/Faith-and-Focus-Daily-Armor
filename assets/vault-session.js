@@ -17,6 +17,7 @@ const APP_CLIENT = 'faith-focus-daily-armor-web/1';
 const SESSION_INACTIVITY_MS = 2 * 60 * 1000;
 const SESSION_INACTIVITY_MESSAGE = 'Your account was locked after 2 minutes of inactivity. Please sign in again.';
 let activeCredentials = null;
+let vaultSyncStartupPromise = null;
 let inactivityTimer = null;
 let lastActivityAt = 0;
 let loginInProgress = false;
@@ -169,6 +170,34 @@ function setBusy(buttonId, busy, idleText, busyText) {
   if (!button) return;
   button.disabled = busy;
   button.textContent = busy ? busyText : idleText;
+}
+
+function startVaultSyncInBackground(credentials) {
+  const startup = (async () => {
+    try {
+      await startVaultSync(credentials);
+    } catch (error) {
+      try {
+        await stopVaultSync(credentials);
+      } catch (cleanupError) {
+        console.warn('[Vault Session] Background sync cleanup did not finish.', cleanupError);
+      }
+      if (activeCredentials === credentials && !locking) {
+        setStatus(
+          'vault-login-message',
+          'Your account is open on this device. Cloud sync is temporarily unavailable. Your encrypted changes remain saved locally and can be reconciled after reconnecting and signing in again.',
+          'info'
+        );
+      }
+      console.warn('[Vault Session] Background synchronization did not complete.', error);
+    }
+  })();
+
+  vaultSyncStartupPromise = startup;
+  startup.finally(() => {
+    if (vaultSyncStartupPromise === startup) vaultSyncStartupPromise = null;
+  });
+  return startup;
 }
 
 function showAccountPanel(panelId, focusId) {
@@ -375,11 +404,12 @@ async function submitVaultLogin(event) {
     loginMaterial = null;
     await establishDeviceSession(credentials, unlocked.membershipTicket);
 
-    setStatus('vault-login-message', 'Connecting your Checklist, Diary and Garden…');
-    await startVaultSync(credentials);
     const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
     passphrase = '';
     activeCredentials = credentials;
+    // Start cloud reconciliation before opening the UI so local change hooks
+    // are installed, but do not block the unlocked app on historical sync.
+    startVaultSyncInBackground(credentials);
     if (usernameField) usernameField.value = credentials.username;
     showApplication();
     resetInactivityTimer();
@@ -750,8 +780,11 @@ export async function lockAccount(message = 'Your account is locked. Please sign
       console.warn('[Vault Session] Final local writing save could not be confirmed.', error);
     }
 
+    const pendingSyncStartup = vaultSyncStartupPromise;
     try {
-      await stopVaultSync();
+      await stopVaultSync(credentialsToRevoke);
+      if (pendingSyncStartup) await pendingSyncStartup;
+      await stopVaultSync(credentialsToRevoke);
     } catch (error) {
       syncStopError = error;
       console.warn('[Vault Session] Local vault sync cleanup did not complete cleanly.', error);
