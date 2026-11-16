@@ -1098,5 +1098,6 @@ test('preflight requests use the ingress limiter before returning CORS headers',
     }
   }), env);
   assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), ORIGIN);
   assert.equal(calls.length, 1);
 });
