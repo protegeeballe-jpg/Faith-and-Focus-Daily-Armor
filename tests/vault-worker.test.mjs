@@ -1101,3 +1101,51 @@ test('preflight requests use the ingress limiter before returning CORS headers',
   assert.equal(response.headers.get('Access-Control-Allow-Origin'), ORIGIN);
   assert.equal(calls.length, 1);
 });
+
+
+test('transient cleanup restarts when an earlier-expiring record is inserted before its saved cursor', async () => {
+  const now = Date.now();
+  const cursorKey = 'auth-rate-cleanup-cursor';
+  const expiryKey = 'auth-rate-cleanup-next-expiry';
+  const recordExpiry = now + 60 * 1000;
+  const map = new Map([
+    [cursorKey, 'auth-rate:unlock:zzz'],
+    [expiryKey, now + 5 * 60 * 1000],
+    ['auth-rate:unlock:aaa', {
+      windowStartedAt: now - 14 * 60 * 1000,
+      count: 1,
+      expiresAt: recordExpiry
+    }],
+    ['auth-rate:unlock:zzz', {
+      windowStartedAt: now,
+      count: 1,
+      expiresAt: now + 15 * 60 * 1000
+    }]
+  ]);
+  let alarmAt = now + 5 * 60 * 1000;
+  const storage = {
+    async get(key) { return map.get(key); },
+    async put(key, value) { map.set(key, value); },
+    async delete(key) { return map.delete(key); },
+    async list({ prefix = '', startAfter, limit = Infinity } = {}) {
+      const entries = [...map.entries()]
+        .filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .slice(0, limit);
+      return new Map(entries);
+    },
+    async getAlarm() { return alarmAt; },
+    async setAlarm(value) { alarmAt = value; },
+    async deleteAlarm() { alarmAt = null; }
+  };
+  const registry = new AccountRegistry({ storage }, {
+    RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters'
+  });
+
+  assert.equal(await registry.rateLimitSubject('unlock', 'aaa', 10, 15 * 60 * 1000), true);
+  assert.equal(map.has(cursorKey), false);
+  assert.equal(map.has(expiryKey), false);
+  assert.ok(alarmAt >= recordExpiry);
+  assert.ok(alarmAt <= recordExpiry + 1_000);
+});
