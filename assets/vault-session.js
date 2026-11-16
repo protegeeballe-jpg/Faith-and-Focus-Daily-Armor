@@ -178,7 +178,7 @@ function startVaultSyncInBackground(credentials) {
       await startVaultSync(credentials);
     } catch (error) {
       try {
-        await stopVaultSync(credentials);
+        await stopVaultSync();
       } catch (cleanupError) {
         console.warn('[Vault Session] Background sync cleanup did not finish.', cleanupError);
       }
@@ -782,9 +782,9 @@ export async function lockAccount(message = 'Your account is locked. Please sign
 
     const pendingSyncStartup = vaultSyncStartupPromise;
     try {
-      await stopVaultSync(credentialsToRevoke);
+      await stopVaultSync();
       if (pendingSyncStartup) await pendingSyncStartup;
-      await stopVaultSync(credentialsToRevoke);
+      await stopVaultSync();
     } catch (error) {
       syncStopError = error;
       console.warn('[Vault Session] Local vault sync cleanup did not complete cleanly.', error);
