@@ -17,7 +17,6 @@ function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write =
   });
   return {
     calls,
-    MEMBERSHIP_PEPPER: PEPPER,
     AUTH_IP_RATE_LIMITER: create("auth", auth),
     SENSITIVE_IP_RATE_LIMITER: create("sensitive", sensitive),
     VAULT_ACCOUNT_RATE_LIMITER: create("vault", vault),
@@ -493,7 +492,7 @@ test('unknown POST routes are rate-limited and rejected before body parsing', as
       },
       body: 'not-json'
     }
-  ), limiters);
+  ), { ...limiters, MEMBERSHIP_PEPPER: PEPPER });
 
   assert.equal(response.status, 404);
   assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
@@ -513,7 +512,7 @@ test('unsupported methods are rejected before body parsing and after ingress lim
       },
       body: 'not-json'
     }
-  ), limiters);
+  ), { ...limiters, MEMBERSHIP_PEPPER: PEPPER });
 
   assert.equal(response.status, 405);
   assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
