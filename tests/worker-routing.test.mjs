@@ -550,3 +550,32 @@ test('Worker fails closed when the independent edge rate-limit secret is missing
   assert.equal(response.status, 503);
   assert.equal(coordinatorTouched, false);
 });
+
+
+test('sign-in fails with a configuration response when membership signing secret is missing', async () => {
+  let registryTouched = false;
+  const env = {
+    ...makeEdgeLimiters(),
+    ACCOUNT_REGISTRY: {
+      idFromName() { registryTouched = true; return 'global-account-registry'; },
+      get() { registryTouched = true; throw new Error('registry must not be reached'); }
+    },
+    VAULT_COORDINATOR: {}
+  };
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/account/signin',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.211',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({username:'known.family'})
+    }
+  ), env);
+
+  assert.equal(response.status, 503);
+  assert.equal(registryTouched, false);
+});
