@@ -19,8 +19,8 @@ function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write =
     calls,
     AUTH_IP_RATE_LIMITER: create("auth", auth),
     SENSITIVE_IP_RATE_LIMITER: create("sensitive", sensitive),
-    VAULT_IP_RATE_LIMITER: create("vault", vault),
-    VAULT_WRITE_IP_RATE_LIMITER: create("write", write)
+    VAULT_ACCOUNT_RATE_LIMITER: create("vault", vault),
+    VAULT_WRITE_ACCOUNT_RATE_LIMITER: create("write", write)
   };
 }
 
@@ -385,8 +385,8 @@ test('Cloudflare native edge rate-limit bindings are configured with supported m
   for (const [name, limit] of [
     ['AUTH_IP_RATE_LIMITER', 30],
     ['SENSITIVE_IP_RATE_LIMITER', 5],
-    ['VAULT_IP_RATE_LIMITER', 120],
-    ['VAULT_WRITE_IP_RATE_LIMITER', 20]
+    ['VAULT_ACCOUNT_RATE_LIMITER', 120],
+    ['VAULT_WRITE_ACCOUNT_RATE_LIMITER', 20]
   ]) {
     const start = wrangler.indexOf('name = "' + name + '"');
     assert.ok(start >= 0, 'Missing binding ' + name);
@@ -394,4 +394,57 @@ test('Cloudflare native edge rate-limit bindings are configured with supported m
     assert.match(section, new RegExp('limit = ' + limit + '\\s+period = 60'));
   }
   assert.equal((wrangler.match(/\[\[ratelimits\]\]/g) || []).length, 4);
+});
+
+
+test('authenticated vault edge limits key by vault ID instead of shared client IP', async () => {
+  const limiters = makeEdgeLimiters();
+  const vaultId = 'e'.repeat(64);
+  const ticket = await membershipTicket(vaultId);
+  const dateString = '2026-11-13';
+  const packet = {
+    format: 'faith-focus-encrypted-daily-packet',
+    version: 1,
+    dateString,
+    algorithm: 'AES-256-GCM',
+    compression: 'none',
+    iv: 'AAAAAAAAAAAAAAAA',
+    ciphertext: 'AAAAAAAAAAAAAAAAAAAAAA=='
+  };
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/day/' + dateString,
+    {
+      method: 'PUT',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.121',
+        'X-Vault-Membership': ticket,
+        'X-Device-Session': 's'.repeat(43),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ packet, baseUpdatedAt: null })
+    }
+  ), {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName: () => vaultId,
+      get: () => ({
+        fetch: async () => new Response(JSON.stringify({ ok: true, updatedAt: '2026-11-13T00:00:00.000Z' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      })
+    }
+  });
+
+  assert.equal(response.status, 200);
+  const vaultChecks = limiters.calls.filter(call => call.name === 'vault' || call.name === 'write');
+  assert.deepEqual(vaultChecks, [
+    { name: 'vault', key: 'vault:v1:' + vaultId },
+    { name: 'write', key: 'vault-write:v1:' + vaultId }
+  ]);
+  assert.ok(vaultChecks.every(call => !call.key.includes('198.51.100.121')));
 });

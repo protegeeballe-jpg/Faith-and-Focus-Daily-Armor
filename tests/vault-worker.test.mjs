@@ -13,8 +13,8 @@ const dateString = '2026-11-12';
 const EDGE_LIMITERS = {
   AUTH_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   SENSITIVE_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
-  VAULT_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
-  VAULT_WRITE_IP_RATE_LIMITER: { async limit() { return { success: true }; } }
+  VAULT_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } },
+  VAULT_WRITE_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } }
 };
 const packet = {
   format: 'faith-focus-encrypted-daily-packet',
@@ -860,44 +860,29 @@ test('an expired device session cannot replace an existing cloud packet', async 
 });
 
 
-test('per-vault packet read limits reject excess index reads before KV bootstrap', async () => {
-  const { coordinator, storageMap, failures } = makeCoordinator();
+test('vault packet reads and writes do not create extra Durable Object rate-counter rows', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
   await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
   const device = await createCoordinatorSession(coordinator);
-  failures.get = true;
-  storageMap.set('auth-rate:packet-index-read', {
-    windowStartedAt: Date.now(),
-    count: 120
-  });
 
-  const response = await coordinator.fetch(coordinatorRequest('/index', {
+  const index = await coordinator.fetch(coordinatorRequest('/index', {
     token: null,
     sessionToken: device.sessionToken
   }));
+  assert.equal(index.status, 200);
 
-  assert.equal(response.status, 429);
-  assert.equal(response.headers.get('Retry-After'), '60');
-  assert.equal(storageMap.has('vault-index'), false);
-});
-
-test('per-vault packet write limits reject excess uploads before KV or packet changes', async () => {
-  const { coordinator, storageMap, kvMap } = makeCoordinator();
-  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
-  const device = await createCoordinatorSession(coordinator);
-  storageMap.set('auth-rate:packet-day-write', {
-    windowStartedAt: Date.now(),
-    count: 20
-  });
-
-  const response = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+  const save = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
     method: 'PUT',
     token: null,
     sessionToken: device.sessionToken,
     body: { packet, baseUpdatedAt: null }
   }));
+  assert.equal(save.status, 200);
 
-  assert.equal(response.status, 429);
-  assert.equal(response.headers.get('Retry-After'), '60');
-  assert.equal(storageMap.has('vault-packet:' + dateString), false);
-  assert.equal(kvMap.size, 0);
+  const packetRateKeys = [...storageMap.keys()].filter(key =>
+    key.startsWith('auth-rate:packet-index-read')
+    || key.startsWith('auth-rate:packet-day-read')
+    || key.startsWith('auth-rate:packet-day-write')
+  );
+  assert.deepEqual(packetRateKeys, []);
 });

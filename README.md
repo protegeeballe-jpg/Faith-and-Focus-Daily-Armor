@@ -52,10 +52,16 @@ counters to Workers KV or invoking a separate global rate-limiter Durable Object
 The Worker HMACs the trusted `CF-Connecting-IP` value with a domain-separated use of
 `MEMBERSHIP_PEPPER` before creating edge rate-limit keys. It does not use
 `X-Forwarded-For` as a fallback. The existing per-account limits and the new per-vault
-packet read/write limits remain in Durable Object SQLite storage.
+packet read/write limits use Cloudflare's native rate-limit bindings keyed by the vault ID. This avoids writing a Durable Object SQLite counter on every successful packet request.
 
 The four `ratelimits` namespace IDs in `wrangler.toml` must be unique within the
 Cloudflare account. Check that IDs `94001` through `94004` are unused before deployment.
 Deploy the Worker with Wrangler CLI version 4.36.0 or later. Edge limits are approximate
 and local to each Cloudflare location; they are an abuse-protection layer, not a global
 daily quota or an exact accounting system.
+
+The IP-based edge limits are reserved for account-opening and sensitive authentication
+routes. Authenticated vault traffic is rate-limited by vault ID rather than IP so that
+unrelated people behind the same carrier, household, or public Wi-Fi address are not
+unnecessarily grouped into one quota. The native limits remain approximate and local to
+each Cloudflare location.

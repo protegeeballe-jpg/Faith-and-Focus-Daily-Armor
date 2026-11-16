@@ -41,7 +41,7 @@ limit = 5
 period = 60
 
 [[ratelimits]]
-name = "VAULT_IP_RATE_LIMITER"
+name = "VAULT_ACCOUNT_RATE_LIMITER"
 namespace_id = "94003"
 
 [ratelimits.simple]
@@ -49,7 +49,7 @@ limit = 120
 period = 60
 
 [[ratelimits]]
-name = "VAULT_WRITE_IP_RATE_LIMITER"
+name = "VAULT_WRITE_ACCOUNT_RATE_LIMITER"
 namespace_id = "94004"
 
 [ratelimits.simple]
