@@ -451,10 +451,11 @@ async function callRegistry(env, path, body) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin");
+    const trustedOrigin = origin === APP_ORIGIN ? origin : null;
 
     // Apply the IP ingress limit before Origin, method, or client-header rejection.
     // This does not prevent Worker invocations, but limits downstream processing.
-    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, null);
+    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, trustedOrigin);
     if (edgeLimitResponse) return edgeLimitResponse;
 
     if (origin !== APP_ORIGIN) return jsonResponse({ error: "Origin not allowed." }, 403);
