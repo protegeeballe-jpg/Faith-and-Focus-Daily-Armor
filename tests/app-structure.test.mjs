@@ -118,6 +118,19 @@ test('Forge Room setup is top-aligned and the subtitle remains readable on mobil
  assert.match(html,/type="module" src="\.\/assets\/garden\.js"/);
 });
 
+test('Forge Room keeps its illustration without the decorative window toggle',()=>{
+ const gardenStart=html.indexOf('<section id="little-garden"');
+ const gardenEnd=html.indexOf('<!-- 🌟 ANIMATION MODAL POPUP -->',gardenStart);
+ const gardenMarkup=html.slice(gardenStart,gardenEnd);
+ const roomStart=gardenMarkup.indexOf('<section data-garden-scene="room"');
+ const outdoorStart=gardenMarkup.indexOf('<section data-garden-scene="outdoors"');
+ const roomMarkup=gardenMarkup.slice(roomStart,outdoorStart);
+ assert.match(roomMarkup,/id="garden-window" class="garden-room-scene"/);
+ assert.match(roomMarkup,/data-garden-action="visit-garden"/);
+ assert.doesNotMatch(roomMarkup,/garden-window-button|toggle-window|Open the window|Close the window/i);
+ assert.doesNotMatch(garden,/garden-window-button|toggle-window|windowIsOpen/);
+});
+
 test('account inactivity lock is two minutes and rechecks expired sessions after browser resume',()=>{
  assert.match(vaultSession,/SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
  assert.match(vaultSession,/locked after 2 minutes of inactivity/);
@@ -843,7 +856,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v18-checklist-return-navigation/);
+ assert.match(serviceWorker,/faith-focus-shell-v19-remove-window-toggle/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -891,7 +904,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v18-checklist-return-navigation/);
+ assert.match(serviceWorker,/faith-focus-shell-v19-remove-window-toggle/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
