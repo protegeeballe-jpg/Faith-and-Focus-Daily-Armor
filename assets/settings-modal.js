@@ -1,6 +1,17 @@
-if (dialog && openButton && closeButton && typeof dialog.showModal === 'function') {
+const dialog = document.getElementById('settings-modal');
+const openButton = document.getElementById('settings-open-button');
+const closeButton = document.getElementById('settings-close-button');
+
+if (
+    dialog &&
+    openButton &&
+    closeButton &&
+    typeof dialog.showModal === 'function' &&
+    typeof dialog.close === 'function'
+) {
     openButton.addEventListener('click', () => {
         if (dialog.open) return;
+
         dialog.showModal();
         openButton.setAttribute('aria-expanded', 'true');
         closeButton.focus();
