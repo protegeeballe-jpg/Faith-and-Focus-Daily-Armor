@@ -28,6 +28,7 @@ test('account lock conceals every main application view before awaiting cleanup'
   assert.match(lock, /revokeDeviceSession\(credentialsToRevoke\)/);
   assert.match(lock, /confirmed === true/);
   assert.match(lock, /await stopVaultSync\(\)/);
+  assert.match(lock, /pendingSyncStartup\) await pendingSyncStartup/);
   assert.match(lock, /clearVaultEncryptionKey\(\)/);
   assert.doesNotMatch(lock, /resetInactivityTimer\(\)/);
 });
@@ -68,6 +69,37 @@ test('stopping vault synchronization clears its in-memory context even when flus
   assert.match(stop, /activeVault = null/);
   assert.match(stop, /activeVaultRequestControllers\.clear\(\)/);
   assert.match(stop, /removeEventListener\('faith-focus:local-data-changed'/);
+});
+
+
+test('sign-in opens after local key setup while cloud reconciliation continues separately', () => {
+  const login = extract(
+    session,
+    'async function submitVaultLogin(event) {',
+    'async function submitVaultSignup(event) {'
+  );
+  assert.ok(login.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)')
+    < login.indexOf('startVaultSyncInBackground(credentials)'));
+  assert.ok(login.indexOf('startVaultSyncInBackground(credentials)')
+    < login.indexOf('showApplication()'));
+  assert.doesNotMatch(login, /await\s+startVaultSync\(credentials\)/);
+  assert.match(session, /function startVaultSyncInBackground\(credentials\)/);
+  assert.match(session, /await startVaultSync\(credentials\)/);
+});
+
+test('background synchronization cannot reattach after its account session is locked', () => {
+  assert.match(vaultSync, /let vaultSyncGeneration = 0/);
+  assert.match(vaultSync, /const generation = \+\+vaultSyncGeneration/);
+  assert.match(vaultSync, /if \(!isCurrent\(\)\) return false/);
+  assert.match(vaultSync, /export async function stopVaultSync\(\)/);
+  assert.match(vaultSync, /vaultSyncGeneration \+= 1/);
+});
+
+test('checklist reflection text remains on the encrypted autosave path', () => {
+  assert.match(app, /document\.querySelectorAll\('#private-diary-entry,\.text-input'\)\.forEach\(field=>\{\s*field\.addEventListener\('input',schedulePrivateWritingSave\)/s);
+  assert.match(writing, /function schedulePrivateWritingSave\(\)/);
+  assert.match(writing, /savePrivateWritingForDate\(writingLoadedDate\)/);
+  assert.match(writing, /const PRIVATE_NOTE_IDS=\['note-success','note-priorities','note-gratitude-others','note-gratitude-god'\]/);
 });
 
 test('the account passphrase is reused for Diary migration only after cryptographic verification', () => {
