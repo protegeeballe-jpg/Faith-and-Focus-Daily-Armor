@@ -838,12 +838,9 @@ input[type="reset"] {
     }
 }
 
-/* Keep the Checklist's return control beside its heading; avoid a duplicate in the shared top bar. */
+/* Keep the Checklist heading and its single return control in the Checklist header. */
 .garden-overlay.garden-checklist-active > .garden-shell > .garden-screen-title,
 .garden-overlay.garden-checklist-active > .garden-shell > .garden-intro {
-    display: none;
-}
-.garden-overlay.garden-checklist-active .garden-topbar-actions [data-garden-action="back-to-room"] {
     display: none;
 }
 
