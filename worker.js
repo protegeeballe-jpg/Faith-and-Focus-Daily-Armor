@@ -108,19 +108,19 @@ function getEdgeRateLimitPolicy(request) {
   const { pathname } = new URL(request.url);
 
   if (request.method === "POST") {
-    const accountRoute = /^\\/account\\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(pathname);
+    const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(pathname);
     if (accountRoute) {
       const route = accountRoute[1];
       const sensitive = ["signup", "migrate-legacy", "recover", "complete-recovery"].includes(route);
       return { auth: true, sensitiveRoute: sensitive ? "account:" + route : null };
     }
 
-    if (/^\\/legacy-claim\\/[a-f0-9]{64}$/.test(pathname)) {
+    if (/^\/legacy-claim\/[a-f0-9]{64}$/.test(pathname)) {
       return { auth: true, sensitiveRoute: "legacy-claim" };
     }
   }
 
-  const vaultRoute = /^\\/vault\\/[a-f0-9]{64}\\/(claim|index|day\\/\\d{4}-\\d{2}-\\d{2}|device\\/challenge|device\\/verify|device\\/session\\/revoke)$/.exec(pathname);
+  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
   if (!vaultRoute) return null;
 
   const resource = vaultRoute[1];
@@ -148,7 +148,7 @@ async function enforceEdgeRateLimits(request, env, origin) {
   // For direct requests to this Worker, Cloudflare supplies CF-Connecting-IP.
   // Do not trust X-Forwarded-For or merge untrusted proxy-chain values.
   const clientIp = request.headers.get("CF-Connecting-IP") || "";
-  if (!clientIp || clientIp.length > 64 || /[\\s,]/.test(clientIp)
+  if (!clientIp || clientIp.length > 64 || /[\s,]/.test(clientIp)
       || !/^[0-9a-fA-F:.]+$/.test(clientIp)) {
     return jsonResponse({ error: "The client network identity is unavailable. Please retry." }, 503, origin);
   }
@@ -716,7 +716,7 @@ export class AccountRegistry {
 
   async rateLimitRecovery(request) {
     const ip = request.headers.get("X-Recovery-Client-IP") || "";
-    if (!ip || ip.length > 64 || /[\\s,]/.test(ip)) return false;
+    if (!ip || ip.length > 64 || /[\s,]/.test(ip)) return false;
     const ipDigest = await hmacHex(this.env.RECOVERY_PEPPER, "recovery-ip|" + ip);
     return this.rateLimitSubject("recovery-ip", ipDigest, 5, 15 * 60 * 1000);
   }
