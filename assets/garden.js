@@ -7,7 +7,6 @@ const overlay = document.getElementById('little-garden');
 if (overlay) initializeGarden(overlay);
 
 function initializeGarden(root) {
-    let windowIsOpen = false;
 
     const byId = id => root.querySelector('#' + id);
     let garden = loadSavedGarden();
@@ -123,13 +122,6 @@ function initializeGarden(root) {
             if (seeds) seeds.textContent = tree.name + ' tree and ' + flower.name;
             if (date) date.textContent = garden.plantedOn;
         }
-        const windowButton = byId('garden-window-button');
-        const roomWindow = byId('garden-window');
-        if (windowButton) {
-            windowButton.setAttribute('aria-pressed', String(windowIsOpen));
-            windowButton.textContent = windowIsOpen ? 'Close the window 🍃' : 'Open the window 🍃';
-        }
-        if (roomWindow) roomWindow.classList.toggle('is-open', windowIsOpen);
     }
 
     function updatePlantCard(prefix, stage, name, ageDays, plantedOn) {
@@ -198,7 +190,6 @@ function initializeGarden(root) {
     function openOverlay() {
         overlay.classList.remove('hidden');
         document.body.classList.add('garden-overlay-open');
-        windowIsOpen = false;
         renderRoom();
         setScene('room');
         byId('garden-close')?.focus();
@@ -221,11 +212,6 @@ function initializeGarden(root) {
         switch (action) {
             case 'close-garden':
                 closeOverlay();
-                break;
-            case 'toggle-window':
-                windowIsOpen = !windowIsOpen;
-                renderRoom();
-                showStatus(windowIsOpen ? 'A little fresh air is coming through the window.' : 'The window is closed and the room is cozy.', 'info');
                 break;
             case 'begin-planting': {
                 if (garden) {
@@ -303,7 +289,6 @@ function initializeGarden(root) {
 
     document.addEventListener('garden:reset-for-checklist', () => {
         garden = null;
-        windowIsOpen = false;
         renderRoom();
         setScene('room');
         showStatus('Your Garden setup is ready again. Plant your two seeds to begin a new checklist journey.', 'success');
