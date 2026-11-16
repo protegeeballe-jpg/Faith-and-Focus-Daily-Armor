@@ -98,6 +98,103 @@ function jsonResponse(body, status, origin = null) {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
+function rateLimitedJsonResponse(message, origin = null) {
+  const response = jsonResponse({ error: message }, 429, origin);
+  response.headers.set("Retry-After", "60");
+  return response;
+}
+
+function getEdgeRateLimitPolicy(request) {
+  const { pathname } = new URL(request.url);
+
+  if (request.method === "POST") {
+    const accountRoute = /^\\/account\\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(pathname);
+    if (accountRoute) {
+      const route = accountRoute[1];
+      const sensitive = ["signup", "migrate-legacy", "recover", "complete-recovery"].includes(route);
+      return { auth: true, sensitiveRoute: sensitive ? "account:" + route : null };
+    }
+
+    if (/^\\/legacy-claim\\/[a-f0-9]{64}$/.test(pathname)) {
+      return { auth: true, sensitiveRoute: "legacy-claim" };
+    }
+  }
+
+  const vaultRoute = /^\\/vault\\/[a-f0-9]{64}\\/(claim|index|day\\/\\d{4}-\\d{2}-\\d{2}|device\\/challenge|device\\/verify|device\\/session\\/revoke)$/.exec(pathname);
+  if (!vaultRoute) return null;
+
+  const resource = vaultRoute[1];
+  const methodAllowed = resource === "index" ? request.method === "GET"
+    : resource.startsWith("day/") ? ["GET", "PUT"].includes(request.method)
+      : request.method === "POST";
+  if (!methodAllowed) return null;
+
+  const sensitiveRoute = resource === "device/challenge" ? "device:challenge"
+    : resource === "device/verify" ? "device:verify"
+      : null;
+
+  return {
+    auth: Boolean(sensitiveRoute),
+    vault: true,
+    write: resource.startsWith("day/") && request.method === "PUT",
+    sensitiveRoute
+  };
+}
+
+async function enforceEdgeRateLimits(request, env, origin) {
+  const policy = getEdgeRateLimitPolicy(request);
+  if (!policy) return null;
+
+  // For direct requests to this Worker, Cloudflare supplies CF-Connecting-IP.
+  // Do not trust X-Forwarded-For or merge untrusted proxy-chain values.
+  const clientIp = request.headers.get("CF-Connecting-IP") || "";
+  if (!clientIp || clientIp.length > 64 || /[\\s,]/.test(clientIp)
+      || !/^[0-9a-fA-F:.]+$/.test(clientIp)) {
+    return jsonResponse({ error: "The client network identity is unavailable. Please retry." }, 503, origin);
+  }
+
+  const pepper = env.MEMBERSHIP_PEPPER;
+  if (typeof pepper !== "string" || pepper.length < 32) {
+    return jsonResponse({ error: "Edge rate-limiting security is not configured." }, 503, origin);
+  }
+
+  let ipDigest;
+  try {
+    ipDigest = await hmacHex(pepper, "FaithFocus|edge-rate-limit-ip|v1|" + clientIp);
+  } catch {
+    return jsonResponse({ error: "Edge rate-limiting security is temporarily unavailable." }, 503, origin);
+  }
+
+  const checks = [];
+  if (policy.auth) checks.push([env.AUTH_IP_RATE_LIMITER, "auth:v1:" + ipDigest]);
+  if (policy.sensitiveRoute) {
+    checks.push([env.SENSITIVE_IP_RATE_LIMITER, "sensitive:v1:" + policy.sensitiveRoute + ":" + ipDigest]);
+  }
+  if (policy.vault) checks.push([env.VAULT_IP_RATE_LIMITER, "vault:v1:" + ipDigest]);
+  if (policy.write) checks.push([env.VAULT_WRITE_IP_RATE_LIMITER, "vault-write:v1:" + ipDigest]);
+
+  for (const [binding, key] of checks) {
+    if (!binding || typeof binding.limit !== "function") {
+      return jsonResponse({ error: "Edge rate-limiting service is not configured." }, 503, origin);
+    }
+    let result;
+    try {
+      result = await binding.limit({ key });
+    } catch {
+      // Fail closed: protected routes must not bypass the edge limiter on errors.
+      return jsonResponse({ error: "Edge rate-limiting service is temporarily unavailable." }, 503, origin);
+    }
+    if (!result || typeof result.success !== "boolean") {
+      return jsonResponse({ error: "Edge rate-limiting service returned an invalid response." }, 503, origin);
+    }
+    if (!result.success) {
+      return rateLimitedJsonResponse("Too many requests from this network. Please wait before trying again.", origin);
+    }
+  }
+
+  return null;
+}
+
 function validDate(value) {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) return false;
   const date = new Date(value + "T00:00:00.000Z");
@@ -348,6 +445,9 @@ export default {
     if (request.headers.get("X-App-Client") !== APP_CLIENT) {
       return jsonResponse({ error: "The application client header is required." }, 403, origin);
     }
+
+    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, origin);
+    if (edgeLimitResponse) return edgeLimitResponse;
 
     const url = new URL(request.url);
     const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(url.pathname);
@@ -615,7 +715,8 @@ export class AccountRegistry {
   }
 
   async rateLimitRecovery(request) {
-    const ip = request.headers.get("X-Recovery-Client-IP") || "unknown-client";
+    const ip = request.headers.get("X-Recovery-Client-IP") || "";
+    if (!ip || ip.length > 64 || /[\\s,]/.test(ip)) return false;
     const ipDigest = await hmacHex(this.env.RECOVERY_PEPPER, "recovery-ip|" + ip);
     return this.rateLimitSubject("recovery-ip", ipDigest, 5, 15 * 60 * 1000);
   }
@@ -1285,6 +1386,26 @@ export class VaultCoordinator {
         if (!(await this.authenticateDeviceSession(request, { touch: false }))) {
           return this.unauthorized();
         }
+
+        // These account-scoped limits use the existing per-vault Durable Object
+        // SQLite storage. They do not consume Workers KV writes.
+        let packetLimitAction = null;
+        let packetLimit = 0;
+        if (path === "/index" && request.method === "GET") {
+          packetLimitAction = "packet-index-read";
+          packetLimit = 120;
+        } else if (path.startsWith("/day/") && request.method === "GET") {
+          packetLimitAction = "packet-day-read";
+          packetLimit = 120;
+        } else if (path.startsWith("/day/") && request.method === "PUT") {
+          packetLimitAction = "packet-day-write";
+          packetLimit = 20;
+        }
+        if (packetLimitAction
+            && !(await this.allowRateLimit(packetLimitAction, packetLimit, 60_000))) {
+          return rateLimitedJsonResponse("This account has made too many vault requests. Please wait one minute and retry.");
+        }
+
         if (!this.initialized) {
           this.initialized = (async () => {
             if (!(await this.state.storage.get("vault-index"))) {

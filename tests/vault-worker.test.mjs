@@ -9,6 +9,13 @@ const CLIENT = 'faith-focus-daily-armor-web/1';
 const VAULT_ID = 'a'.repeat(64);
 const WRITE_TOKEN = 'W'.repeat(43);
 const dateString = '2026-11-12';
+
+const EDGE_LIMITERS = {
+  AUTH_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
+  SENSITIVE_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
+  VAULT_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
+  VAULT_WRITE_IP_RATE_LIMITER: { async limit() { return { success: true }; } }
+};
 const packet = {
   format: 'faith-focus-encrypted-daily-packet',
   version: 1,
@@ -41,6 +48,7 @@ test('Worker rejects requests larger than 1 MB before invoking the vault coordin
     headers: {
       Origin: ORIGIN,
       'X-App-Client': CLIENT,
+      'CF-Connecting-IP': '203.0.113.55',
       'X-Write-Token': WRITE_TOKEN,
       'Content-Type': 'application/json',
       'Content-Length': String(1024 * 1024 + 1)
@@ -48,6 +56,8 @@ test('Worker rejects requests larger than 1 MB before invoking the vault coordin
     body: 'x'.repeat(1024 * 1024 + 1)
   });
   const oversized = await worker.fetch(request, {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters',
     VAULT_PACKETS: {},
     VAULT_COORDINATOR: {}
   });
@@ -844,4 +854,47 @@ test('an expired device session cannot replace an existing cloud packet', async 
   assert.equal(rejected.status, 401);
   assert.deepEqual(storageMap.get('vault-packet:' + dateString), storedPacket);
   assert.equal(storageMap.get('vault-index')[dateString], storedUpdatedAt);
+});
+
+
+test('per-vault packet read limits reject excess index reads before KV bootstrap', async () => {
+  const { coordinator, storageMap, failures } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const device = await createCoordinatorSession(coordinator);
+  failures.get = true;
+  storageMap.set('auth-rate:packet-index-read', {
+    windowStartedAt: Date.now(),
+    count: 120
+  });
+
+  const response = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: device.sessionToken
+  }));
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Retry-After'), '60');
+  assert.equal(storageMap.has('vault-index'), false);
+});
+
+test('per-vault packet write limits reject excess uploads before KV or packet changes', async () => {
+  const { coordinator, storageMap, kvMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const device = await createCoordinatorSession(coordinator);
+  storageMap.set('auth-rate:packet-day-write', {
+    windowStartedAt: Date.now(),
+    count: 20
+  });
+
+  const response = await coordinator.fetch(coordinatorRequest('/day/' + dateString, {
+    method: 'PUT',
+    token: null,
+    sessionToken: device.sessionToken,
+    body: { packet, baseUpdatedAt: null }
+  }));
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Retry-After'), '60');
+  assert.equal(storageMap.has('vault-packet:' + dateString), false);
+  assert.equal(kvMap.size, 0);
 });

@@ -1,9 +1,28 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { webcrypto } from 'node:crypto';
 import worker from '../worker.js';
 
 const PEPPER = 'worker-routing-test-secret-with-at-least-32-characters';
+
+function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write = true, throws = [] } = {}) {
+  const calls = [];
+  const create = (name, success) => ({
+    async limit({ key }) {
+      calls.push({ name, key });
+      if (throws.includes(name)) throw new Error("simulated edge limiter failure");
+      return { success };
+    }
+  });
+  return {
+    calls,
+    AUTH_IP_RATE_LIMITER: create("auth", auth),
+    SENSITIVE_IP_RATE_LIMITER: create("sensitive", sensitive),
+    VAULT_IP_RATE_LIMITER: create("vault", vault),
+    VAULT_WRITE_IP_RATE_LIMITER: create("write", write)
+  };
+}
 
 async function membershipTicket(vaultId) {
   const encodedPayload = Buffer.from(JSON.stringify({
@@ -40,6 +59,7 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
   let forwarded = null;
 
   const env = {
+    ...makeEdgeLimiters(),
     RECOVERY_PEPPER: PEPPER,
     MEMBERSHIP_PEPPER: PEPPER,
     VAULT_PACKETS: {},
@@ -70,6 +90,7 @@ test('vault PUT requests forward their JSON body to the Durable Object', async (
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.44',
         'X-Vault-Membership': ticket,
         'X-Device-Session': 's'.repeat(43),
         'Content-Type': 'application/json',
@@ -101,10 +122,12 @@ test('Worker rejects missing membership tickets before creating a vault coordina
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.44',
         'X-Device-Session': 's'.repeat(43)
       }
     }
   ), {
+    ...makeEdgeLimiters(),
     RECOVERY_PEPPER: PEPPER,
     MEMBERSHIP_PEPPER: PEPPER,
     VAULT_PACKETS: {},
@@ -129,6 +152,7 @@ test('Worker rejects malformed ECDSA signatures before invoking the vault coordi
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.44',
         'X-Vault-Membership': ticket,
         'Content-Type': 'application/json'
       },
@@ -139,6 +163,7 @@ test('Worker rejects malformed ECDSA signatures before invoking the vault coordi
       })
     }
   ), {
+    ...makeEdgeLimiters(),
     RECOVERY_PEPPER: PEPPER,
     MEMBERSHIP_PEPPER: PEPPER,
     VAULT_PACKETS: {},
@@ -163,12 +188,14 @@ test('account unlock checks registry membership before waking a vault coordinato
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.44',
         'X-Write-Token': 'w'.repeat(43),
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({ vaultId: 'e'.repeat(64) })
     }
   ), {
+    ...makeEdgeLimiters(),
     RECOVERY_PEPPER: PEPPER,
     MEMBERSHIP_PEPPER: PEPPER,
     ACCOUNT_REGISTRY: {
@@ -207,6 +234,7 @@ test('legacy claims use a separate route and reject a username-to-vault mismatch
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.44',
         'X-Write-Token': 'w'.repeat(43),
         'X-Legacy-Username': username,
         'Content-Type': 'application/json'
@@ -214,6 +242,7 @@ test('legacy claims use a separate route and reject a username-to-vault mismatch
       body: '{}'
     }
   ), {
+    ...makeEdgeLimiters(),
     RECOVERY_PEPPER: PEPPER,
     MEMBERSHIP_PEPPER: PEPPER,
     ACCOUNT_REGISTRY: {
@@ -246,12 +275,14 @@ test('Worker fails closed when the independent membership signing secret is miss
       headers: {
         Origin: 'https://protegeeballe-jpg.github.io',
         'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.44',
         'X-Vault-Membership': ticket,
         'X-Device-Session': 's'.repeat(43)
       }
     }
   ), {
     // Recovery pepper alone must not be reused to sign membership tickets.
+    ...makeEdgeLimiters(),
     RECOVERY_PEPPER: PEPPER,
     VAULT_PACKETS: {},
     VAULT_COORDINATOR: {
@@ -262,4 +293,105 @@ test('Worker fails closed when the independent membership signing secret is miss
 
   assert.equal(response.status, 503);
   assert.equal(coordinatorTouched, false);
+});
+
+
+test('sensitive account routes are edge-limited before reading a request body', async () => {
+  const limiters = makeEdgeLimiters({ sensitive: false });
+  let registryTouched = false;
+  const request = new Request('https://faith-focus-proxy.nine-westhigh.workers.dev/account/signup', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://protegeeballe-jpg.github.io',
+      'X-App-Client': 'faith-focus-daily-armor-web/1',
+      'CF-Connecting-IP': '198.51.100.77',
+      'Content-Type': 'application/json',
+      'Content-Length': String(1024 * 1024 + 1)
+    },
+    body: 'x'.repeat(1024 * 1024 + 1)
+  });
+  const response = await worker.fetch(request, {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    ACCOUNT_REGISTRY: {
+      idFromName() { registryTouched = true; return 'global-account-registry'; },
+      get() { registryTouched = true; throw new Error('account registry must not be reached'); }
+    },
+    VAULT_COORDINATOR: {}
+  });
+
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Retry-After'), '60');
+  assert.equal(registryTouched, false);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['auth', 'sensitive']);
+  assert.ok(limiters.calls.every(call => !call.key.includes('198.51.100.77')));
+});
+
+test('the edge IP key requires CF-Connecting-IP and never falls back to X-Forwarded-For', async () => {
+  const limiters = makeEdgeLimiters();
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/account/recover',
+    {
+      method: 'POST',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'X-Forwarded-For': '198.51.100.88',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ questionAnswers: [] })
+    }
+  ), {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    ACCOUNT_REGISTRY: {},
+    VAULT_COORDINATOR: {}
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(limiters.calls.length, 0);
+});
+
+test('edge limiter failures fail closed before a vault Durable Object is reached', async () => {
+  const limiters = makeEdgeLimiters({ throws: ['vault'] });
+  let coordinatorTouched = false;
+  const vaultId = 'd'.repeat(64);
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/index',
+    {
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '198.51.100.99'
+      }
+    }
+  ), {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName() { coordinatorTouched = true; throw new Error('must not create coordinator'); },
+      get() { coordinatorTouched = true; throw new Error('must not wake coordinator'); }
+    }
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(coordinatorTouched, false);
+  assert.deepEqual(limiters.calls.map(call => call.name), ['vault']);
+});
+
+test('Cloudflare native edge rate-limit bindings are configured with supported minute windows', () => {
+  const wrangler = readFileSync(new URL('../wrangler.toml', import.meta.url), 'utf8');
+  for (const [name, limit] of [
+    ['AUTH_IP_RATE_LIMITER', 30],
+    ['SENSITIVE_IP_RATE_LIMITER', 5],
+    ['VAULT_IP_RATE_LIMITER', 120],
+    ['VAULT_WRITE_IP_RATE_LIMITER', 20]
+  ]) {
+    const start = wrangler.indexOf('name = "' + name + '"');
+    assert.ok(start >= 0, 'Missing binding ' + name);
+    const section = wrangler.slice(start);
+    assert.match(section, new RegExp('limit = ' + limit + '\\s+period = 60'));
+  }
+  assert.equal((wrangler.match(/\[\[ratelimits\]\]/g) || []).length, 4);
 });

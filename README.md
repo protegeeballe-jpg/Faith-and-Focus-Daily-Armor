@@ -41,3 +41,21 @@ node --test tests/*.test.mjs
 - [Open the application](./home.html)
 - [Privacy Policy](./privacy.html)
 - [Terms of Service](./terms.html)
+
+
+## Cloudflare abuse protection
+
+The Worker uses Cloudflare's native Rate Limiting bindings configured in `wrangler.toml`.
+These provide approximate, per-Cloudflare-location limits without writing high-frequency
+counters to Workers KV or invoking a separate global rate-limiter Durable Object.
+
+The Worker HMACs the trusted `CF-Connecting-IP` value with a domain-separated use of
+`MEMBERSHIP_PEPPER` before creating edge rate-limit keys. It does not use
+`X-Forwarded-For` as a fallback. The existing per-account limits and the new per-vault
+packet read/write limits remain in Durable Object SQLite storage.
+
+The four `ratelimits` namespace IDs in `wrangler.toml` must be unique within the
+Cloudflare account. Check that IDs `94001` through `94004` are unused before deployment.
+Deploy the Worker with Wrangler CLI version 4.36.0 or later. Edge limits are approximate
+and local to each Cloudflare location; they are an abuse-protection layer, not a global
+daily quota or an exact accounting system.

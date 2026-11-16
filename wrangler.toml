@@ -21,3 +21,37 @@ new_sqlite_classes = ["VaultCoordinator"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["AccountRegistry"]
+
+
+# Approximate per-location edge limits. Per-account exact limits remain in Durable Objects.
+[[ratelimits]]
+name = "AUTH_IP_RATE_LIMITER"
+namespace_id = "94001"
+
+[ratelimits.simple]
+limit = 30
+period = 60
+
+[[ratelimits]]
+name = "SENSITIVE_IP_RATE_LIMITER"
+namespace_id = "94002"
+
+[ratelimits.simple]
+limit = 5
+period = 60
+
+[[ratelimits]]
+name = "VAULT_IP_RATE_LIMITER"
+namespace_id = "94003"
+
+[ratelimits.simple]
+limit = 120
+period = 60
+
+[[ratelimits]]
+name = "VAULT_WRITE_IP_RATE_LIMITER"
+namespace_id = "94004"
+
+[ratelimits.simple]
+limit = 20
+period = 60
