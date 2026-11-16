@@ -256,8 +256,8 @@ test('Health Checklist header is compact and preserves navigation, date selectio
  const headerEnd=html.indexOf('</header>',headerStart)+9;
  const header=html.slice(headerStart,headerEnd);
  assert.ok(header.includes('My Health Checklist'));
- assert.ok(header.includes('data-page="garden"'));
- assert.ok(header.includes('>Room</button>'));
+ assert.doesNotMatch(header,/data-page="garden"|>Room<\/button>/);
+ assert.match(html,/id="garden-close"[^>]*data-garden-action="back-to-room"[^>]*aria-label="Return to The Forge Room"/);
  assert.ok(header.includes('id="currentDate"'));
  assert.ok(header.includes('data-change-action="handleDateChange"'));
  assert.ok(header.includes('id="device-clock"'));
