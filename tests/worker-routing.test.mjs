@@ -517,3 +517,8 @@ test('unsupported methods are rejected before body parsing and after ingress lim
   assert.equal(response.status, 405);
   assert.deepEqual(limiters.calls.map(call => call.name), ['auth']);
 });
+
+
+test('edge limiter test fixtures do not silently satisfy membership secret configuration', () => {
+  assert.equal('MEMBERSHIP_PEPPER' in makeEdgeLimiters(), false);
+});
