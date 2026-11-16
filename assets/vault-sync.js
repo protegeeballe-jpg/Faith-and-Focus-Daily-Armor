@@ -794,8 +794,7 @@ function flushLocalVaultChanges() {
   return localFlushPromise;
 }
 
-export async function stopVaultSync(expectedCredentials = null) {
-  if (expectedCredentials && activeVault !== expectedCredentials) return;
+export async function stopVaultSync() {
   // Invalidate in-flight startup before aborting requests or awaiting local flushes.
   vaultSyncGeneration += 1;
   try {
