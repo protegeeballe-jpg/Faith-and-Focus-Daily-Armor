@@ -23,13 +23,13 @@ tag = "v2"
 new_sqlite_classes = ["AccountRegistry"]
 
 
-# Approximate per-location edge limits. Per-account exact limits remain in Durable Objects.
+# Approximate per-location ingress and route limits. Per-account limits are applied after membership verification.
 [[ratelimits]]
 name = "AUTH_IP_RATE_LIMITER"
 namespace_id = "94001"
 
 [ratelimits.simple]
-limit = 30
+limit = 120
 period = 60
 
 [[ratelimits]]

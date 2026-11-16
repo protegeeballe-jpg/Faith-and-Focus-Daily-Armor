@@ -111,3 +111,16 @@ test('the sign-in route always conceals the app and does not expose a translucen
   assert.match(showLogin, /view-pin.*classList\.remove\('hidden'\)/s);
   assert.match(html, /bg-amber-50 z-50/);
 });
+
+
+test('legacy vault upgrade remains available after uniform sign-in responses', () => {
+  const login = extract(
+    session,
+    'async function submitVaultLogin(event) {',
+    'async function submitVaultSignup(event) {'
+  );
+  assert.match(login, /const beginLegacyUpgrade = async/);
+  assert.match(login, /if \(unlockError\.status !== 401\)/);
+  assert.match(login, /await beginLegacyUpgrade\(\)/);
+  assert.match(login, /redirect: 'error'/);
+});

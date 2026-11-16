@@ -11,6 +11,7 @@ const WRITE_TOKEN = 'W'.repeat(43);
 const dateString = '2026-11-12';
 
 const EDGE_LIMITERS = {
+  EDGE_RATE_LIMIT_PEPPER: 'worker-test-edge-rate-limit-secret-with-32-characters',
   AUTH_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   SENSITIVE_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   VAULT_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } },
@@ -30,15 +31,41 @@ function responseJson(response) {
   return response.json();
 }
 
+async function createMembershipTicket(vaultId, pepper) {
+  const encodedPayload = Buffer.from(JSON.stringify({
+    version: 1,
+    vaultId,
+    expiresAt: Date.now() + 60 * 60 * 1000
+  })).toString('base64url');
+  const key = await webcrypto.subtle.importKey(
+    'raw', Buffer.from(pepper), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = new Uint8Array(await webcrypto.subtle.sign(
+    'HMAC', key, new TextEncoder().encode('FaithFocus|vault-membership|v1|' + encodedPayload)
+  ));
+  const hex = Array.from(signature, byte => byte.toString(16).padStart(2, '0')).join('');
+  return encodedPayload + '.' + hex;
+}
+
 test('Worker rejects non-GitHub-Pages origins and missing custom client header', async () => {
   const wrongOrigin = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
-    headers: { Origin: 'https://attacker.example', 'X-App-Client': CLIENT }
-  }), {});
+    headers: {
+      Origin: 'https://attacker.example',
+      'X-App-Client': CLIENT,
+      'CF-Connecting-IP': '198.51.100.201'
+    }
+  }), {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters'
+  });
   assert.equal(wrongOrigin.status, 403);
 
   const missingClient = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
-    headers: { Origin: ORIGIN }
-  }), {});
+    headers: { Origin: ORIGIN, 'CF-Connecting-IP': '198.51.100.202' }
+  }), {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: 'worker-test-membership-secret-with-at-least-32-characters'
+  });
   assert.equal(missingClient.status, 403);
 });
 
@@ -49,6 +76,9 @@ test('Worker rejects requests larger than 1 MB before invoking the vault coordin
       Origin: ORIGIN,
       'X-App-Client': CLIENT,
       'CF-Connecting-IP': '203.0.113.55',
+      'X-Vault-Membership': await createMembershipTicket(
+        VAULT_ID, 'worker-test-membership-secret-with-at-least-32-characters'
+      ),
       'X-Write-Token': WRITE_TOKEN,
       'Content-Type': 'application/json',
       'Content-Length': String(1024 * 1024 + 1)
@@ -222,8 +252,12 @@ function makeDurableNamespace(DurableClass, env) {
           async get(key) { return map.get(key); },
           async put(key, value) { map.set(key, value); },
           async delete(key) { return map.delete(key); },
-          async list({ prefix = "" } = {}) {
-            return new Map([...map.entries()].filter(([key]) => String(key).startsWith(prefix)));
+          async list({ prefix = "", startAfter, limit = Infinity } = {}) {
+            const entries = [...map.entries()]
+              .filter(([key]) => String(key).startsWith(prefix) && (!startAfter || key > startAfter))
+              .sort(([left], [right]) => left.localeCompare(right))
+              .slice(0, limit);
+            return new Map(entries);
           },
           async transaction(callback) {
             const transaction = {
@@ -233,6 +267,7 @@ function makeDurableNamespace(DurableClass, env) {
             };
             return callback(transaction);
           },
+          async getAlarm() { return this.alarmAt ?? null; },
           async setAlarm(timestamp) { this.alarmAt = timestamp; },
           async deleteAlarm() { this.alarmAt = null; }
         };
@@ -427,7 +462,8 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
   const oldUsername = await worker.fetch(accountRequest('/account/signin', {
     body: { username: 'family.vault' }
   }), env);
-  assert.equal(oldUsername.status, 401);
+  assert.equal(oldUsername.status, 200);
+  assert.equal((await responseJson(oldUsername)).username, 'family.vault');
 
   const newUsername = await worker.fetch(accountRequest('/account/signin', {
     body: { username: 'family.renamed' }
@@ -885,4 +921,231 @@ test('vault packet reads and writes do not create extra Durable Object rate-coun
     || key.startsWith('auth-rate:packet-day-write')
   );
   assert.deepEqual(packetRateKeys, []);
+});
+
+
+test('sign-in lookup uses the same status and response shape for known and unknown usernames', async () => {
+  const kvMap = new Map();
+  const env = {
+    ...EDGE_LIMITERS,
+    RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters',
+    VAULT_PACKETS: {
+      async get(key) { return kvMap.get(key) ?? null; },
+      async put(key, value) { kvMap.set(key, value); }
+    }
+  };
+  env.VAULT_COORDINATOR = makeDurableNamespace(VaultCoordinator, env);
+  env.ACCOUNT_REGISTRY = makeDurableNamespace(AccountRegistry, env);
+
+  const vaultId = 'e'.repeat(64);
+  const writeToken = 'C'.repeat(43);
+  const envelope = {
+    version: 1,
+    algorithm: 'AES-256-GCM',
+    iv: btoa(String.fromCharCode(...new Uint8Array(12).fill(11))),
+    ciphertext: btoa(String.fromCharCode(...new Uint8Array(48).fill(12)))
+  };
+  const signup = await worker.fetch(accountRequest('/account/signup', {
+    body: {
+      username: 'known.family',
+      vaultId,
+      passphraseSalt: btoa(String.fromCharCode(...new Uint8Array(16).fill(13))),
+      passphraseIterations: 600000,
+      passphraseEnvelope: envelope,
+      recoverySalt: btoa(String.fromCharCode(...new Uint8Array(16).fill(14))),
+      recoveryIterations: 1200000,
+      recoveryEnvelope: envelope,
+      questionAnswers: [
+        { questionId: 4, answer: 'Harbor' },
+        { questionId: 8, answer: 'Cedar' },
+        { questionId: 19, answer: 'Morning' }
+      ],
+      writeToken
+    }
+  }), env);
+  assert.equal(signup.status, 201);
+
+  const knownResponse = await worker.fetch(accountRequest('/account/signin', {
+    body: { username: 'known.family' }
+  }), env);
+  const unknownResponse = await worker.fetch(accountRequest('/account/signin', {
+    body: { username: 'missing.family' }
+  }), env);
+  assert.equal(knownResponse.status, 200);
+  assert.equal(unknownResponse.status, 200);
+
+  const known = await responseJson(knownResponse);
+  const unknown = await responseJson(unknownResponse);
+  assert.deepEqual(Object.keys(unknown).sort(), Object.keys(known).sort());
+  assert.equal(unknown.username, 'missing.family');
+  assert.match(unknown.vaultId, /^[a-f0-9]{64}$/);
+  assert.equal(Buffer.from(unknown.passphraseSalt, 'base64').length, 16);
+  assert.equal(unknown.passphraseIterations, known.passphraseIterations);
+  assert.notEqual(unknown.vaultId, known.vaultId);
+
+  const unknownUnlock = await worker.fetch(accountRequest('/account/unlock', {
+    body: { vaultId: unknown.vaultId },
+    token: 'D'.repeat(43)
+  }), env);
+  const knownBadUnlock = await worker.fetch(accountRequest('/account/unlock', {
+    body: { vaultId },
+    token: 'D'.repeat(43)
+  }), env);
+  assert.equal(unknownUnlock.status, 401);
+  assert.equal(knownBadUnlock.status, 401);
+  assert.deepEqual(await responseJson(unknownUnlock), await responseJson(knownBadUnlock));
+
+  const registryStorage = env.ACCOUNT_REGISTRY.storageMaps.get('global-account-registry');
+  const authRateKeys = [...registryStorage.keys()].filter(key => key.startsWith('auth-rate:'));
+  assert.ok(authRateKeys.every(key => key.startsWith('auth-rate:unlock:')));
+});
+
+test('local-only legacy accounts can upgrade without a cloud packet index', async () => {
+  const username = 'local.only.family';
+  const digest = new Uint8Array(await webcrypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode('FaithFocus|VaultID|v1|' + username)
+  ));
+  const legacyVaultId = Array.from(digest, byte => byte.toString(16).padStart(2, '0')).join('');
+  const legacyToken = 'E'.repeat(43);
+  const kvMap = new Map();
+  const env = {
+    ...EDGE_LIMITERS,
+    RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters',
+    VAULT_PACKETS: { async get(key) { return kvMap.get(key) ?? null; } }
+  };
+  env.VAULT_COORDINATOR = makeDurableNamespace(VaultCoordinator, env);
+  env.ACCOUNT_REGISTRY = makeDurableNamespace(AccountRegistry, env);
+
+  const initialized = await env.VAULT_COORDINATOR.get(legacyVaultId).fetch(new Request(
+    'https://vault-coordinator.internal/admin/initialize',
+    {
+      method: 'POST',
+      headers: {
+        'X-Vault-Id': legacyVaultId,
+        'X-Write-Token': legacyToken,
+        'Content-Type': 'application/json'
+      },
+      body: '{}'
+    }
+  ));
+  assert.equal(initialized.status, 200);
+  assert.equal(kvMap.has(legacyVaultId + ':index'), false);
+
+  const response = await worker.fetch(accountRequest('/legacy-claim/' + legacyVaultId, {
+    body: {},
+    token: legacyToken,
+    legacyUsername: username
+  }), env);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await responseJson(response), { ok: true, claimed: true, legacy: true });
+  assert.equal(kvMap.has(legacyVaultId + ':index'), false);
+});
+
+test('Account Registry alarm removes expired auth counters and recovery grants but retains active entries', async () => {
+  const now = Date.now();
+  const map = new Map([
+    ['auth-rate:unlock:expired', { windowStartedAt: now - 16 * 60 * 1000, count: 10 }],
+    ['auth-rate:unlock:active', { windowStartedAt: now, count: 1, expiresAt: now + 15 * 60 * 1000 }],
+    ['recovery-grant:expired', { vaultId: 'a'.repeat(64), expiresAt: now - 1 }],
+    ['recovery-grant:active', { vaultId: 'b'.repeat(64), expiresAt: now + 10 * 60 * 1000 }]
+  ]);
+  let alarmAt = null;
+  const storage = {
+    async get(key) { return map.get(key); },
+    async put(key, value) { map.set(key, value); },
+    async delete(key) { return map.delete(key); },
+    async list({ prefix = '', startAfter, limit = Infinity } = {}) {
+      const entries = [...map.entries()]
+        .filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .slice(0, limit);
+      return new Map(entries);
+    },
+    async getAlarm() { return alarmAt; },
+    async setAlarm(value) { alarmAt = value; },
+    async deleteAlarm() { alarmAt = null; }
+  };
+  const registry = new AccountRegistry({ storage }, {
+    RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters'
+  });
+
+  await registry.alarm();
+  assert.equal(map.has('auth-rate:unlock:expired'), false);
+  assert.equal(map.has('recovery-grant:expired'), false);
+  assert.equal(map.has('auth-rate:unlock:active'), true);
+  assert.equal(map.has('recovery-grant:active'), true);
+  assert.ok(alarmAt >= now + 10 * 60 * 1000);
+  assert.ok(alarmAt <= now + 15 * 60 * 1000);
+});
+
+
+test('preflight requests use the ingress limiter before returning CORS headers', async () => {
+  const calls = [];
+  const env = {
+    EDGE_RATE_LIMIT_PEPPER: 'worker-test-edge-rate-limit-secret-with-32-characters',
+    AUTH_IP_RATE_LIMITER: { async limit({key}) { calls.push(key); return {success:false}; } }
+  };
+  const response = await worker.fetch(new Request('https://worker.example/vault/' + VAULT_ID + '/index', {
+    method: 'OPTIONS',
+    headers: {
+      Origin: ORIGIN,
+      'CF-Connecting-IP': '198.51.100.204',
+      'Access-Control-Request-Method': 'GET'
+    }
+  }), env);
+  assert.equal(response.status, 429);
+  assert.equal(response.headers.get('Access-Control-Allow-Origin'), ORIGIN);
+  assert.equal(calls.length, 1);
+});
+
+
+test('transient cleanup restarts when an earlier-expiring record is inserted before its saved cursor', async () => {
+  const now = Date.now();
+  const cursorKey = 'auth-rate-cleanup-cursor';
+  const expiryKey = 'auth-rate-cleanup-next-expiry';
+  const recordExpiry = now + 60 * 1000;
+  const map = new Map([
+    [cursorKey, 'auth-rate:unlock:zzz'],
+    [expiryKey, now + 5 * 60 * 1000],
+    ['auth-rate:unlock:aaa', {
+      windowStartedAt: now - 14 * 60 * 1000,
+      count: 1,
+      expiresAt: recordExpiry
+    }],
+    ['auth-rate:unlock:zzz', {
+      windowStartedAt: now,
+      count: 1,
+      expiresAt: now + 15 * 60 * 1000
+    }]
+  ]);
+  let alarmAt = now + 5 * 60 * 1000;
+  const storage = {
+    async get(key) { return map.get(key); },
+    async put(key, value) { map.set(key, value); },
+    async delete(key) { return map.delete(key); },
+    async list({ prefix = '', startAfter, limit = Infinity } = {}) {
+      const entries = [...map.entries()]
+        .filter(([key]) => key.startsWith(prefix) && (!startAfter || key > startAfter))
+        .sort(([left], [right]) => left.localeCompare(right))
+        .slice(0, limit);
+      return new Map(entries);
+    },
+    async getAlarm() { return alarmAt; },
+    async setAlarm(value) { alarmAt = value; },
+    async deleteAlarm() { alarmAt = null; }
+  };
+  const registry = new AccountRegistry({ storage }, {
+    RECOVERY_PEPPER: 'test-only-recovery-pepper-with-more-than-32-characters',
+    MEMBERSHIP_PEPPER: 'test-only-membership-pepper-with-more-than-32-characters'
+  });
+
+  assert.equal(await registry.rateLimitSubject('unlock', 'aaa', 10, 15 * 60 * 1000), true);
+  assert.equal(map.has(cursorKey), false);
+  assert.equal(map.has(expiryKey), false);
+  assert.ok(alarmAt >= recordExpiry);
+  assert.ok(alarmAt <= recordExpiry + 1_000);
 });

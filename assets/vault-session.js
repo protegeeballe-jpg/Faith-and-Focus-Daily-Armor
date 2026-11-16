@@ -310,11 +310,7 @@ async function submitVaultLogin(event) {
   let credentials = null;
 
   try {
-    let account;
-    try {
-      account = await accountRequest('/account/signin', { username: usernameResult.normalized });
-    } catch (lookupError) {
-      if (lookupError.status !== 401) throw lookupError;
+    const beginLegacyUpgrade = async () => {
       setStatus('vault-login-message', 'Checking whether this is an existing vault that needs a one-time security upgrade…');
       const legacy = await deriveLegacyVaultCredentials(usernameResult.normalized, passphrase);
       try {
@@ -322,6 +318,7 @@ async function submitVaultLogin(event) {
           method: 'POST',
           cache: 'no-store',
           credentials: 'omit',
+          redirect: 'error',
           headers: {
             'Content-Type': 'application/json',
             'X-App-Client': APP_CLIENT,
@@ -346,6 +343,14 @@ async function submitVaultLogin(event) {
       byId('legacy-upgrade-username').textContent = usernameResult.normalized;
       showAccountPanel('vault-legacy-upgrade-panel', 'legacy-question-1');
       setStatus('vault-legacy-upgrade-message', 'We verified your existing vault. Choose three recovery questions to keep your current encrypted records and complete the account upgrade.', 'success');
+    };
+
+    let account;
+    try {
+      account = await accountRequest('/account/signin', { username: usernameResult.normalized });
+    } catch (lookupError) {
+      if (lookupError.status !== 401) throw lookupError;
+      await beginLegacyUpgrade();
       return;
     }
 
@@ -354,9 +359,18 @@ async function submitVaultLogin(event) {
     passphraseField.value = '';
 
     setStatus('vault-login-message', 'Unlocking your encrypted account…');
-    const unlocked = await accountRequest('/account/unlock', { vaultId: account.vaultId }, {
-      'X-Write-Token': encodeBase64Url(loginMaterial.writeToken)
-    });
+    let unlocked;
+    try {
+      unlocked = await accountRequest('/account/unlock', { vaultId: account.vaultId }, {
+        'X-Write-Token': encodeBase64Url(loginMaterial.writeToken)
+      });
+    } catch (unlockError) {
+      if (unlockError.status !== 401) throw unlockError;
+      wipeWriteToken(loginMaterial.writeToken);
+      loginMaterial = null;
+      await beginLegacyUpgrade();
+      return;
+    }
     credentials = await finishVaultLogin(account, loginMaterial, unlocked.passphraseEnvelope);
     loginMaterial = null;
     await establishDeviceSession(credentials, unlocked.membershipTicket);

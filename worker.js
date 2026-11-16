@@ -107,80 +107,60 @@ function rateLimitedJsonResponse(message, origin = null) {
 function getEdgeRateLimitPolicy(request) {
   const { pathname } = new URL(request.url);
 
-  if (request.method === "POST") {
-    const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(pathname);
-    if (accountRoute) {
-      const route = accountRoute[1];
-      const sensitive = ["signup", "migrate-legacy", "recover", "complete-recovery"].includes(route);
-      return { auth: true, sensitiveRoute: sensitive ? "account:" + route : null };
-    }
-
-    if (/^\/legacy-claim\/[a-f0-9]{64}$/.test(pathname)) {
-      return { auth: true, sensitiveRoute: "legacy-claim" };
-    }
+  const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(pathname);
+  if (accountRoute) {
+    const route = accountRoute[1];
+    const sensitive = ["signup", "migrate-legacy", "recover", "complete-recovery"].includes(route);
+    return { ipLimited: true, accountRegistry: true, sensitiveRoute: sensitive ? "account:" + route : null };
   }
 
-  const vaultRoute = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
-  if (!vaultRoute) return null;
+  if (/^\/legacy-claim\/[a-f0-9]{64}$/.test(pathname)) {
+    return { ipLimited: true, accountRegistry: true, sensitiveRoute: "legacy-claim" };
+  }
 
-  const vaultId = vaultRoute[1];
-  const resource = vaultRoute[2];
-  const methodAllowed = resource === "index" ? request.method === "GET"
-    : resource.startsWith("day/") ? ["GET", "PUT"].includes(request.method)
-      : request.method === "POST";
-  if (!methodAllowed) return null;
+  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
+  if (vaultRoute) {
+    const resource = vaultRoute[1];
+    const sensitiveRoute = resource === "device/challenge" ? "device:challenge"
+      : resource === "device/verify" ? "device:verify"
+        : null;
+    return { ipLimited: true, sensitiveRoute };
+  }
 
-  const sensitiveRoute = resource === "device/challenge" ? "device:challenge"
-    : resource === "device/verify" ? "device:verify"
-      : null;
-
-  return {
-    auth: Boolean(sensitiveRoute),
-    vaultId,
-    write: resource.startsWith("day/") && request.method === "PUT",
-    sensitiveRoute
-  };
+  return { ipLimited: true, unmatched: true };
 }
 
 async function enforceEdgeRateLimits(request, env, origin) {
   const policy = getEdgeRateLimitPolicy(request);
-  if (!policy) return null;
+  if (!policy.ipLimited) return null;
 
-  const checks = [];
-  const needsIpSignal = policy.auth || Boolean(policy.sensitiveRoute);
-
-  if (needsIpSignal) {
-    // For direct requests to this Worker, Cloudflare supplies CF-Connecting-IP.
-    // Never trust X-Forwarded-For or a client-supplied proxy chain.
-    const clientIp = request.headers.get("CF-Connecting-IP") || "";
-    if (!clientIp || clientIp.length > 64 || /[\\s,]/.test(clientIp)
-        || !/^[0-9a-fA-F:.]+$/.test(clientIp)) {
-      return jsonResponse({ error: "The client network identity is unavailable. Please retry." }, 503, origin);
-    }
-
-    const pepper = env.MEMBERSHIP_PEPPER;
-    if (typeof pepper !== "string" || pepper.length < 32) {
-      return jsonResponse({ error: "Edge rate-limiting security is not configured." }, 503, origin);
-    }
-
-    let ipDigest;
-    try {
-      ipDigest = await hmacHex(pepper, "FaithFocus|edge-rate-limit-ip|v1|" + clientIp);
-    } catch {
-      return jsonResponse({ error: "Edge rate-limiting security is temporarily unavailable." }, 503, origin);
-    }
-
-    if (policy.auth) checks.push([env.AUTH_IP_RATE_LIMITER, "auth:v1:" + ipDigest]);
-    if (policy.sensitiveRoute) {
-      checks.push([env.SENSITIVE_IP_RATE_LIMITER, "sensitive:v1:" + policy.sensitiveRoute + ":" + ipDigest]);
-    }
+  // Cloudflare supplies CF-Connecting-IP for direct Worker requests.
+  // Never trust X-Forwarded-For or a client-supplied proxy chain.
+  const clientIp = request.headers.get("CF-Connecting-IP") || "";
+  if (!clientIp || clientIp.length > 64 || /[\s,]/.test(clientIp)
+      || !/^[0-9a-fA-F:.]+$/.test(clientIp)) {
+    return jsonResponse({ error: "The client network identity is unavailable. Please retry." }, 503, origin);
   }
 
-  // Authenticated vault traffic is keyed by the high-entropy vault ID.
-  // This avoids throttling unrelated people who share a mobile/carrier IP.
-  if (policy.vaultId) checks.push([env.VAULT_ACCOUNT_RATE_LIMITER, "vault:v1:" + policy.vaultId]);
-  if (policy.write) {
-    checks.push([env.VAULT_WRITE_ACCOUNT_RATE_LIMITER, "vault-write:v1:" + policy.vaultId]);
+  const pepper = env.EDGE_RATE_LIMIT_PEPPER;
+  if (typeof pepper !== "string" || pepper.length < 32) {
+    return jsonResponse({ error: "Independent edge rate-limiting security is not configured." }, 503, origin);
+  }
+
+  let ipDigest;
+  try {
+    ipDigest = await hmacHex(pepper, "FaithFocus|edge-rate-limit-ip|v1|" + clientIp);
+  } catch {
+    return jsonResponse({ error: "Edge rate-limiting security is temporarily unavailable." }, 503, origin);
+  }
+
+  const checks = [[env.AUTH_IP_RATE_LIMITER, "ingress:v1:" + ipDigest]];
+  if (policy.sensitiveRoute) {
+    checks.push([env.SENSITIVE_IP_RATE_LIMITER, "sensitive:v1:" + policy.sensitiveRoute + ":" + ipDigest]);
+  }
+  if (policy.accountRegistry) {
+    // Cap distributed requests to the single serialized registry per Cloudflare location.
+    checks.push([env.AUTH_IP_RATE_LIMITER, "account-registry-global:v1"]);
   }
 
   for (const [binding, key] of checks) {
@@ -191,7 +171,6 @@ async function enforceEdgeRateLimits(request, env, origin) {
     try {
       result = await binding.limit({ key });
     } catch {
-      // Fail closed: protected routes must not bypass the edge limiter on errors.
       return jsonResponse({ error: "Edge rate-limiting service is temporarily unavailable." }, 503, origin);
     }
     if (!result || typeof result.success !== "boolean") {
@@ -199,6 +178,31 @@ async function enforceEdgeRateLimits(request, env, origin) {
     }
     if (!result.success) {
       return rateLimitedJsonResponse("Too many requests from this network. Please wait before trying again.", origin);
+    }
+  }
+
+  return null;
+}
+
+async function enforceVaultAccountRateLimits(vaultId, isWrite, env, origin) {
+  const checks = [[env.VAULT_ACCOUNT_RATE_LIMITER, "vault:v1:" + vaultId]];
+  if (isWrite) checks.push([env.VAULT_WRITE_ACCOUNT_RATE_LIMITER, "vault-write:v1:" + vaultId]);
+
+  for (const [binding, key] of checks) {
+    if (!binding || typeof binding.limit !== "function") {
+      return jsonResponse({ error: "Edge rate-limiting service is not configured." }, 503, origin);
+    }
+    let result;
+    try {
+      result = await binding.limit({ key });
+    } catch {
+      return jsonResponse({ error: "Edge rate-limiting service is temporarily unavailable." }, 503, origin);
+    }
+    if (!result || typeof result.success !== "boolean") {
+      return jsonResponse({ error: "Edge rate-limiting service returned an invalid response." }, 503, origin);
+    }
+    if (!result.success) {
+      return rateLimitedJsonResponse("Too many requests for this account. Please wait before trying again.", origin);
     }
   }
 
@@ -434,15 +438,12 @@ async function callCoordinator(env, vaultId, path, { token, oldToken, sessionTok
   }));
 }
 
-async function callRegistry(env, path, body, request) {
+async function callRegistry(env, path, body) {
   const id = env.ACCOUNT_REGISTRY.idFromName("global-account-registry");
   const stub = env.ACCOUNT_REGISTRY.get(id);
-  const headers = new Headers({ "Content-Type": "application/json" });
-  const ip = request.headers.get("CF-Connecting-IP");
-  if (ip) headers.set("X-Recovery-Client-IP", ip);
   return stub.fetch(new Request("https://account-registry.internal" + path, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
   }));
 }
@@ -450,19 +451,55 @@ async function callRegistry(env, path, body, request) {
 export default {
   async fetch(request, env) {
     const origin = request.headers.get("Origin");
+    const trustedOrigin = origin === APP_ORIGIN ? origin : null;
+
+    // Apply the IP ingress limit before Origin, method, or client-header rejection.
+    // This does not prevent Worker invocations, but limits downstream processing.
+    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, trustedOrigin);
+    if (edgeLimitResponse) return edgeLimitResponse;
+
     if (origin !== APP_ORIGIN) return jsonResponse({ error: "Origin not allowed." }, 403);
     if (request.method === "OPTIONS") return withCorsPreflight();
     if (request.headers.get("X-App-Client") !== APP_CLIENT) {
       return jsonResponse({ error: "The application client header is required." }, 403, origin);
     }
 
-    const edgeLimitResponse = await enforceEdgeRateLimits(request, env, origin);
-    if (edgeLimitResponse) return edgeLimitResponse;
-
     const url = new URL(request.url);
     const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(url.pathname);
+    const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
+    const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
+    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
+    const knownRoute = Boolean(accountRoute || legacyClaim || match);
+
+    if (!knownRoute) return jsonResponse({ error: "Route not found." }, 404, origin);
+    if (url.search) return jsonResponse({ error: "Unexpected query parameters are not allowed." }, 400, origin);
+    if (accountRoute && request.method !== "POST") {
+      return jsonResponse({ error: "Method not allowed." }, 405, origin);
+    }
+    if (legacyClaim && request.method !== "POST") {
+      return jsonResponse({ error: "Method not allowed." }, 405, origin);
+    }
+    if (legacyClaim && !legacyUsernameHeader) {
+      return jsonResponse({ error: "Route not found." }, 404, origin);
+    }
+    if (match) {
+      const resource = match[2];
+      const expectedMethods = resource === "index" ? ["GET"]
+        : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
+      if (!expectedMethods.includes(request.method)) {
+        return jsonResponse({ error: "Method not allowed." }, 405, origin);
+      }
+      if (match[3] && !validDate(match[3])) {
+        return jsonResponse({ error: "Invalid calendar date." }, 400, origin);
+      }
+    }
+    if (!["GET", "POST", "PUT"].includes(request.method)) {
+      return jsonResponse({ error: "Method not allowed." }, 405, origin);
+    }
+
     let bodyText = "";
-    if (request.method === "POST" || request.method === "PUT") {
+    const readJsonBody = async () => {
+      if (request.method !== "POST" && request.method !== "PUT") return null;
       const contentType = (request.headers.get("Content-Type") || "").split(";")[0].trim().toLowerCase();
       if (contentType !== "application/json") {
         return jsonResponse({ error: "Requests with a body must use Content-Type: application/json." }, 415, origin);
@@ -473,7 +510,8 @@ export default {
         return jsonResponse({ error: "The request body could not be read safely." }, 400, origin);
       }
       if (bodyText === null) return jsonResponse({ error: "Request payload exceeds the 1 MB limit." }, 413, origin);
-    }
+      return null;
+    };
 
     if (accountRoute) {
       if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, origin);
@@ -485,10 +523,12 @@ export default {
           && (!env.RECOVERY_PEPPER || String(env.RECOVERY_PEPPER).length < 32)) {
         return jsonResponse({ error: "Account security is not configured. Please contact the app maintainer." }, 503, origin);
       }
-      if (["signup", "migrate-legacy", "unlock", "complete-recovery"].includes(route)
+      if (["signup", "migrate-legacy", "signin", "unlock", "complete-recovery"].includes(route)
           && (!env.MEMBERSHIP_PEPPER || String(env.MEMBERSHIP_PEPPER).length < 32)) {
         return jsonResponse({ error: "Device membership signing is not configured. Please contact the app maintainer." }, 503, origin);
       }
+      const bodyError = await readJsonBody();
+      if (bodyError) return bodyError;
       const payload = await parseJsonBody(bodyText);
       if (!payload) return jsonResponse({ error: "Invalid JSON request body." }, 400, origin);
 
@@ -502,14 +542,10 @@ export default {
 
         // Confirm the account mapping before continuing.
         const membershipResponse = await callRegistry(
-          env, "/vault-membership", { vaultId, action: "unlock" }, request
+          env, "/vault-membership", { vaultId, action: "unlock" }
         );
         if (!membershipResponse.ok) {
-          return jsonResponse(
-            { error: "The username or passphrase was not accepted." },
-            membershipResponse.status === 429 ? 429 : 401,
-            origin
-          );
+          return jsonResponse({ error: "The username or passphrase was not accepted." }, 401, origin);
         }
 
         const claimResponse = await callCoordinator(env, vaultId, "/claim", { token });
@@ -524,7 +560,7 @@ export default {
         return jsonResponse({ ...metadata, membershipTicket }, 200, origin);
       }
 
-      const registryResponse = await callRegistry(env, "/" + route, payload, request);
+      const registryResponse = await callRegistry(env, "/" + route, payload);
       const responseText = await registryResponse.text();
       if (registryResponse.ok && ["signup", "migrate-legacy", "complete-recovery"].includes(route)) {
         let result;
@@ -548,16 +584,14 @@ export default {
     }
 
     // Validate the legacy account reference.
-    const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
-    const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
-    if (legacyClaim && legacyUsernameHeader) {
-      if (url.search) return jsonResponse({ error: "Unexpected query parameters are not allowed." }, 400, origin);
-      if (request.method !== "POST") return jsonResponse({ error: "Method not allowed." }, 405, origin);
+    if (legacyClaim) {
       const username = validUsername(legacyUsernameHeader);
       const token = request.headers.get("X-Write-Token") || "";
       if (!username || !TOKEN_PATTERN.test(token)) {
         return jsonResponse({ error: "The existing vault credentials were not accepted." }, 401, origin);
       }
+      const legacyBodyError = await readJsonBody();
+      if (legacyBodyError) return legacyBodyError;
       const expectedVaultId = await sha256Hex(LEGACY_VAULT_ID_DOMAIN + username);
       if (!constantTimeEqual(expectedVaultId, legacyClaim[1])) {
         return jsonResponse({ error: "The legacy account reference is invalid." }, 400, origin);
@@ -566,7 +600,7 @@ export default {
         return jsonResponse({ error: "The account registry services are not configured." }, 503, origin);
       }
       const eligibility = await callRegistry(
-        env, "/legacy-eligibility", { username, vaultId: legacyClaim[1] }, request
+        env, "/legacy-eligibility", { username, vaultId: legacyClaim[1] }
       );
       if (!eligibility.ok) {
         return jsonResponse(
@@ -582,8 +616,7 @@ export default {
       return jsonResponse({ ok: true, claimed: true, legacy: true }, 200, origin);
     }
 
-    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
-    if (!match || url.search || !VAULT_ID_PATTERN.test(match[1])) {
+    if (!match || !VAULT_ID_PATTERN.test(match[1])) {
       return jsonResponse({ error: "Route not found." }, 404, origin);
     }
     if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR
@@ -604,11 +637,22 @@ export default {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
 
-    // Validate the supplied membership ticket.
+    // Validate membership before consuming the request body or account rate-limit bucket.
     const membershipTicket = request.headers.get("X-Vault-Membership") || "";
     if (!(await verifyVaultMembershipTicket(membershipTicket, vaultId, env.MEMBERSHIP_PEPPER))) {
       return jsonResponse({ error: "A valid account membership ticket is required. Please sign in again." }, 403, origin);
     }
+
+    const accountLimitResponse = await enforceVaultAccountRateLimits(
+      vaultId,
+      resource.startsWith("day/") && request.method === "PUT",
+      env,
+      origin
+    );
+    if (accountLimitResponse) return accountLimitResponse;
+
+    const vaultBodyError = await readJsonBody();
+    if (vaultBodyError) return vaultBodyError;
 
     let payload = null;
     if (bodyText) {
@@ -708,27 +752,170 @@ export class AccountRegistry {
     return hmacHex(this.env.RECOVERY_PEPPER, canonicalRecoveryAnswers(answers));
   }
 
+  async scheduleTransientCleanup(expiresAt, prefix) {
+    const storage = this.state.storage;
+    if (!Number.isFinite(expiresAt) || typeof storage.setAlarm !== "function") return;
+
+    // A new earlier-expiring key may sort before a saved pagination cursor.
+    // Restart that prefix's sweep so the inserted record cannot be skipped.
+    const cleanupState = prefix === "auth-rate:"
+      ? ["auth-rate-cleanup-cursor", "auth-rate-cleanup-next-expiry"]
+      : prefix === "recovery-grant:"
+        ? ["recovery-grant-cleanup-cursor", "recovery-grant-cleanup-next-expiry"]
+        : null;
+    if (cleanupState) {
+      const [cursor, scannedExpiry] = await Promise.all([
+        storage.get(cleanupState[0]),
+        storage.get(cleanupState[1])
+      ]);
+      if (cursor && Number.isFinite(scannedExpiry) && expiresAt < scannedExpiry) {
+        await storage.delete(cleanupState[0]);
+        await storage.delete(cleanupState[1]);
+      }
+    }
+
+    const currentAlarm = typeof storage.getAlarm === "function" ? await storage.getAlarm() : null;
+    if (Number.isFinite(currentAlarm) && currentAlarm <= expiresAt) return;
+    await storage.setAlarm(Math.max(Date.now() + 1_000, expiresAt));
+  }
+
   async rateLimitSubject(action, subject, limit, windowMs) {
     const key = "auth-rate:" + action + ":" + subject;
     const now = Date.now();
     let record = await this.state.storage.get(key);
+    const legacyExpiry = Number.isFinite(record?.windowStartedAt)
+      ? record.windowStartedAt + windowMs : 0;
+    const expiresAt = Number.isFinite(record?.expiresAt) ? record.expiresAt : legacyExpiry;
     if (!record || !Number.isFinite(record.windowStartedAt)
-        || now - record.windowStartedAt >= windowMs || now < record.windowStartedAt) {
+        || !Number.isSafeInteger(record.count) || record.count < 0
+        || now < record.windowStartedAt || expiresAt <= now) {
       record = { windowStartedAt: now, count: 0 };
     }
-    if (record.count >= limit) return false;
+    const nextExpiry = record.windowStartedAt + windowMs;
+    if (record.count >= limit) {
+      await this.scheduleTransientCleanup(nextExpiry, "auth-rate:");
+      return false;
+    }
     await this.state.storage.put(key, {
       windowStartedAt: record.windowStartedAt,
-      count: record.count + 1
+      count: record.count + 1,
+      expiresAt: nextExpiry
     });
+    await this.scheduleTransientCleanup(nextExpiry, "auth-rate:");
     return true;
   }
 
-  async rateLimitRecovery(request) {
-    const ip = request.headers.get("X-Recovery-Client-IP") || "";
-    if (!ip || ip.length > 64 || /[\s,]/.test(ip)) return false;
-    const ipDigest = await hmacHex(this.env.RECOVERY_PEPPER, "recovery-ip|" + ip);
-    return this.rateLimitSubject("recovery-ip", ipDigest, 5, 15 * 60 * 1000);
+  async ensureTransientCleanupScheduled() {
+    const storage = this.state.storage;
+    if (typeof storage.setAlarm !== "function" || typeof storage.list !== "function") return;
+    if (typeof storage.getAlarm === "function" && Number.isFinite(await storage.getAlarm())) return;
+    const [rateRecords, grantRecords] = await Promise.all([
+      storage.list({ prefix: "auth-rate:", limit: 1 }),
+      storage.list({ prefix: "recovery-grant:", limit: 1 })
+    ]);
+    if (rateRecords.size || grantRecords.size) await storage.setAlarm(Date.now() + 60_000);
+  }
+
+  async cleanupTransientPrefix(prefix, cursorKey, expiryKey, defaultWindowMs, now) {
+    const storage = this.state.storage;
+    let cursor = await storage.get(cursorKey) || null;
+    let nextExpiry = await storage.get(expiryKey);
+    if (!Number.isFinite(nextExpiry) || nextExpiry <= now) {
+      cursor = null;
+      nextExpiry = null;
+      await storage.delete(cursorKey);
+      await storage.delete(expiryKey);
+    }
+    let scanned = 0;
+
+    while (scanned < 1_000) {
+      const options = { prefix, limit: 250 };
+      if (cursor) options.startAfter = cursor;
+      const records = await storage.list(options);
+      if (records.size === 0) {
+        cursor = null;
+        break;
+      }
+
+      for (const [key, record] of records) {
+        cursor = key;
+        scanned += 1;
+        const expiry = Number.isFinite(record?.expiresAt) ? record.expiresAt
+          : Number.isFinite(record?.windowStartedAt) ? record.windowStartedAt + defaultWindowMs
+            : 0;
+        if (expiry <= now) {
+          await storage.delete(key);
+        } else if (nextExpiry === null || expiry < nextExpiry) {
+          nextExpiry = expiry;
+        }
+      }
+
+      if (records.size < 250) {
+        cursor = null;
+        break;
+      }
+    }
+
+    if (cursor !== null) {
+      await storage.put(cursorKey, cursor);
+      if (nextExpiry !== null) await storage.put(expiryKey, nextExpiry);
+      return { more: true, nextExpiry };
+    }
+
+    await storage.delete(cursorKey);
+    await storage.delete(expiryKey);
+    return { more: false, nextExpiry };
+  }
+
+  async alarm() {
+    return this.serialized(async () => {
+      const now = Date.now();
+      const rateLimits = await this.cleanupTransientPrefix(
+        "auth-rate:", "auth-rate-cleanup-cursor", "auth-rate-cleanup-next-expiry",
+        15 * 60 * 1000, now
+      );
+      const recoveryGrants = await this.cleanupTransientPrefix(
+        "recovery-grant:", "recovery-grant-cleanup-cursor", "recovery-grant-cleanup-next-expiry",
+        10 * 60 * 1000, now
+      );
+
+      if (rateLimits.more || recoveryGrants.more) {
+        const earliestPendingExpiry = [rateLimits.nextExpiry, recoveryGrants.nextExpiry]
+          .filter(Number.isFinite)
+          .reduce((earliest, expiry) => earliest === null || expiry < earliest ? expiry : earliest, null);
+        const nextSweep = Date.now() + 60_000;
+        await this.state.storage.setAlarm(
+          earliestPendingExpiry === null
+            ? nextSweep
+            : Math.min(nextSweep, Math.max(Date.now() + 1_000, earliestPendingExpiry))
+        );
+        return;
+      }
+
+      const nextExpiry = [rateLimits.nextExpiry, recoveryGrants.nextExpiry]
+        .filter(Number.isFinite)
+        .reduce((earliest, expiry) => earliest === null || expiry < earliest ? expiry : earliest, null);
+      if (nextExpiry !== null) {
+        await this.state.storage.setAlarm(Math.max(Date.now() + 1_000, nextExpiry));
+      } else if (typeof this.state.storage.deleteAlarm === "function") {
+        await this.state.storage.deleteAlarm();
+      }
+    });
+  }
+
+  async createSigninDecoy(username) {
+    const pepper = this.env.MEMBERSHIP_PEPPER;
+    if (typeof pepper !== "string" || pepper.length < 32) {
+      throw new Error("Membership signing is not configured.");
+    }
+    const vaultId = await hmacHex(pepper, "FaithFocus|signin-decoy-vault|v1|" + username);
+    const saltHex = await hmacHex(pepper, "FaithFocus|signin-decoy-salt|v1|" + username);
+    return {
+      username,
+      vaultId,
+      passphraseSalt: toBase64(fromHex(saltHex).subarray(0, 16)),
+      passphraseIterations: 600000
+    };
   }
 
   async initializeVault(vaultId, writeToken) {
@@ -737,7 +924,10 @@ export class AccountRegistry {
   }
 
   async fetch(request) {
-    return this.serialized(() => this.handle(request));
+    return this.serialized(async () => {
+      await this.ensureTransientCleanupScheduled();
+      return this.handle(request);
+    });
   }
 
   async handle(request) {
@@ -772,11 +962,12 @@ export class AccountRegistry {
       if (!username || !VAULT_ID_PATTERN.test(vaultId || "")) {
         return jsonResponse({ error: "The legacy account reference is invalid." }, 400);
       }
+      const expectedVaultId = await sha256Hex(LEGACY_VAULT_ID_DOMAIN + username);
+      if (!constantTimeEqual(expectedVaultId, vaultId)) {
+        return jsonResponse({ error: "The legacy account reference is invalid." }, 400);
+      }
       if (await this.state.storage.get(this.usernameKey(username))) {
         return jsonResponse({ error: "This username already belongs to a registered account." }, 409);
-      }
-      if (!(await this.rateLimitSubject("legacy-upgrade", username, 5, 15 * 60 * 1000))) {
-        return jsonResponse({ error: "Too many legacy upgrade attempts. Please try again later." }, 429);
       }
       return jsonResponse({ ok: true }, 200);
     }
@@ -792,9 +983,6 @@ export class AccountRegistry {
           || payload.recoveryIterations !== 1200000 || !validEnvelope(payload.recoveryEnvelope)
           || !validQuestionAnswers(answers) || !TOKEN_PATTERN.test(payload.writeToken || "")) {
         return jsonResponse({ error: "The sign-up information is incomplete or invalid." }, 400);
-      }
-      if (!(await this.rateLimitSubject("signup", username, 5, 15 * 60 * 1000))) {
-        return jsonResponse({ error: "Too many account creation attempts. Please try again later." }, 429);
       }
       const usernameIndexKey = this.usernameKey(username);
       if (await this.state.storage.get(usernameIndexKey)) {
@@ -850,9 +1038,6 @@ export class AccountRegistry {
           || !TOKEN_PATTERN.test(payload.legacyWriteToken || "")) {
         return jsonResponse({ error: "The legacy account upgrade information is incomplete or invalid." }, 400);
       }
-      if (!(await this.rateLimitSubject("legacy-migrate", username, 5, 15 * 60 * 1000))) {
-        return jsonResponse({ error: "Too many legacy migration attempts. Please try again later." }, 429);
-      }
       if (await this.state.storage.get(this.usernameKey(username))) {
         return jsonResponse({ error: "This username already has a registered account." }, 409);
       }
@@ -899,14 +1084,20 @@ export class AccountRegistry {
 
     if (path === "/signin") {
       const username = validUsername(payload.username);
-      if (!username) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
-      if (!(await this.rateLimitSubject("signin", username, 30, 15 * 60 * 1000))) {
-        return jsonResponse({ error: "Too many sign-in attempts. Please try again later." }, 429);
+      const decoyUsername = username
+        || (typeof payload.username === "string" ? normalizeUsername(payload.username).slice(0, 32) : "")
+        || "invalid";
+      const decoy = await this.createSigninDecoy(decoyUsername);
+      const mappedVaultId = username
+        ? await this.state.storage.get(this.usernameKey(username))
+        : null;
+      const record = await this.state.storage.get(this.accountKey(mappedVaultId || decoy.vaultId));
+
+      // Registered and unregistered usernames receive the same status and response shape.
+      if (!username || !mappedVaultId || !record
+          || record.username !== username || record.vaultId !== mappedVaultId) {
+        return jsonResponse(decoy, 200);
       }
-      const vaultId = await this.state.storage.get(this.usernameKey(username));
-      if (!vaultId) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
-      const record = await this.state.storage.get(this.accountKey(vaultId));
-      if (!record) return jsonResponse({ error: "The username or passphrase was not accepted." }, 401);
       return jsonResponse({
         username: record.username,
         vaultId: record.vaultId,
@@ -928,9 +1119,6 @@ export class AccountRegistry {
     }
 
     if (path === "/recover") {
-      if (!(await this.rateLimitRecovery(request))) {
-        return jsonResponse({ error: "Too many recovery attempts. Please try again in 15 minutes." }, 429);
-      }
       if (!validQuestionAnswers(payload.questionAnswers)) {
         return jsonResponse({ error: "Choose the same three questions and enter each one-word answer exactly as during sign-up." }, 400);
       }
@@ -955,10 +1143,12 @@ export class AccountRegistry {
       const grantBytes = crypto.getRandomValues(new Uint8Array(32));
       const grant = encodeBase64Url(grantBytes);
       const grantHash = await sha256Hex(grant);
+      const grantExpiresAt = Date.now() + 10 * 60 * 1000;
       await this.state.storage.put("recovery-grant:" + grantHash, {
         vaultId,
-        expiresAt: Date.now() + 10 * 60 * 1000
+        expiresAt: grantExpiresAt
       });
+      await this.scheduleTransientCleanup(grantExpiresAt, "recovery-grant:");
       return jsonResponse({
         grant,
         username: record.username,
