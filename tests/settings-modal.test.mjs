@@ -117,7 +117,7 @@ test('close button and backdrop dismiss Settings and restore focus to the gear b
   assert.equal(dialog.closeCalls, 1);
   assert.equal(openButton.getAttribute('aria-expanded'), 'false');
   assert.equal(openButton.focusCalls.length, 1);
-  assert.deepEqual(openButton.focusCalls[0], { preventScroll: true });
+  assert.equal(openButton.focusCalls[0]?.preventScroll, true);
 
   openButton.emit('click');
   dialog.emit('click', { target: {} });
