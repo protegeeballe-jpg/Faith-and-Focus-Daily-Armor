@@ -142,9 +142,9 @@ async function enforceEdgeRateLimits(request, env, origin) {
     return jsonResponse({ error: "The client network identity is unavailable. Please retry." }, 503, origin);
   }
 
-  const pepper = env.MEMBERSHIP_PEPPER;
+  const pepper = env.EDGE_RATE_LIMIT_PEPPER;
   if (typeof pepper !== "string" || pepper.length < 32) {
-    return jsonResponse({ error: "Edge rate-limiting security is not configured." }, 503, origin);
+    return jsonResponse({ error: "Independent edge rate-limiting security is not configured." }, 503, origin);
   }
 
   let ipDigest;
