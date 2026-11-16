@@ -752,9 +752,28 @@ export class AccountRegistry {
     return hmacHex(this.env.RECOVERY_PEPPER, canonicalRecoveryAnswers(answers));
   }
 
-  async scheduleTransientCleanup(expiresAt) {
+  async scheduleTransientCleanup(expiresAt, prefix) {
     const storage = this.state.storage;
     if (!Number.isFinite(expiresAt) || typeof storage.setAlarm !== "function") return;
+
+    // A new earlier-expiring key may sort before a saved pagination cursor.
+    // Restart that prefix's sweep so the inserted record cannot be skipped.
+    const cleanupState = prefix === "auth-rate:"
+      ? ["auth-rate-cleanup-cursor", "auth-rate-cleanup-next-expiry"]
+      : prefix === "recovery-grant:"
+        ? ["recovery-grant-cleanup-cursor", "recovery-grant-cleanup-next-expiry"]
+        : null;
+    if (cleanupState) {
+      const [cursor, scannedExpiry] = await Promise.all([
+        storage.get(cleanupState[0]),
+        storage.get(cleanupState[1])
+      ]);
+      if (cursor && Number.isFinite(scannedExpiry) && expiresAt < scannedExpiry) {
+        await storage.delete(cleanupState[0]);
+        await storage.delete(cleanupState[1]);
+      }
+    }
+
     const currentAlarm = typeof storage.getAlarm === "function" ? await storage.getAlarm() : null;
     if (Number.isFinite(currentAlarm) && currentAlarm <= expiresAt) return;
     await storage.setAlarm(Math.max(Date.now() + 1_000, expiresAt));
@@ -774,7 +793,7 @@ export class AccountRegistry {
     }
     const nextExpiry = record.windowStartedAt + windowMs;
     if (record.count >= limit) {
-      await this.scheduleTransientCleanup(nextExpiry);
+      await this.scheduleTransientCleanup(nextExpiry, "auth-rate:");
       return false;
     }
     await this.state.storage.put(key, {
@@ -782,7 +801,7 @@ export class AccountRegistry {
       count: record.count + 1,
       expiresAt: nextExpiry
     });
-    await this.scheduleTransientCleanup(nextExpiry);
+    await this.scheduleTransientCleanup(nextExpiry, "auth-rate:");
     return true;
   }
 
@@ -1129,7 +1148,7 @@ export class AccountRegistry {
         vaultId,
         expiresAt: grantExpiresAt
       });
-      await this.scheduleTransientCleanup(grantExpiresAt);
+      await this.scheduleTransientCleanup(grantExpiresAt, "recovery-grant:");
       return jsonResponse({
         grant,
         username: record.username,
