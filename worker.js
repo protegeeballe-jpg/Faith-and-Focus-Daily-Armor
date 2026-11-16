@@ -523,7 +523,7 @@ export default {
           && (!env.RECOVERY_PEPPER || String(env.RECOVERY_PEPPER).length < 32)) {
         return jsonResponse({ error: "Account security is not configured. Please contact the app maintainer." }, 503, origin);
       }
-      if (["signup", "migrate-legacy", "unlock", "complete-recovery"].includes(route)
+      if (["signup", "migrate-legacy", "signin", "unlock", "complete-recovery"].includes(route)
           && (!env.MEMBERSHIP_PEPPER || String(env.MEMBERSHIP_PEPPER).length < 32)) {
         return jsonResponse({ error: "Device membership signing is not configured. Please contact the app maintainer." }, 503, origin);
       }
