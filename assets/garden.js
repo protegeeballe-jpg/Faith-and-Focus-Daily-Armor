@@ -192,14 +192,12 @@ function initializeGarden(root) {
         document.body.classList.add('garden-overlay-open');
         renderRoom();
         setScene('room');
-        byId('garden-close')?.focus();
     }
 
     function closeOverlay() {
-        // Escape and the Room control return to the Forge Room, the app home.
+        // Escape returns focus to the Forge Room, the app home.
         renderRoom();
         setScene('room');
-        byId('garden-close')?.focus();
     }
 
     function handleAction(action, trigger) {
