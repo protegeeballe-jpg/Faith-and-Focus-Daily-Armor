@@ -46,6 +46,7 @@ test('the offline shell includes every page and runtime dependency needed by the
         './assets/vault-storage.js',
         './assets/vault-sync.js',
         './assets/vault-session.js',
+        './assets/device-identity.js',
         './assets/local-backup.js',
         './assets/service-worker-registration.js',
         './assets/location-checkin.js',
@@ -63,10 +64,35 @@ test('the offline shell includes every page and runtime dependency needed by the
     }
 });
 
+
+test('the offline shell precaches the full transitive JavaScript module graph', () => {
+    const queue = [...html.matchAll(/<script\s+type="module"\s+src="\.\/([^"]+)"/g)]
+        .map(match => match[1]);
+    const visited = new Set();
+
+    while (queue.length) {
+        const modulePath = queue.shift();
+        if (visited.has(modulePath)) continue;
+        visited.add(modulePath);
+
+        const source = readFileSync(new URL('../' + modulePath, import.meta.url), 'utf8');
+        for (const match of source.matchAll(/(?:from\s*|import\s*\(?\s*)['"](\.\/[^'"]+)['"]/g)) {
+            const directory = modulePath.slice(0, modulePath.lastIndexOf('/') + 1);
+            queue.push(directory + match[1].slice(2));
+        }
+    }
+
+    for (const modulePath of visited) {
+        assert.ok(worker.includes("'./" + modulePath + "'"), 'Missing offline module: ' + modulePath);
+    }
+});
+
 test('the worker is scoped to safe GET requests and does not cache cloud or private data', () => {
     assert.match(worker, /request\.method !== 'GET'/);
     assert.match(worker, /!isWithinAppScope\(url\)/);
     assert.match(worker, /request\.mode === 'navigate'/);
+    assert.match(worker, /async function cacheFirst/);
+    assert.match(worker, /event\.waitUntil\(refreshPromise\.then\(\(\) => undefined\)\)/);
     assert.match(worker, /isStaticAppAsset\(url\)/);
     assert.match(worker, /Cache-Control/);
     assert.match(worker, /ignoreSearch:\s*true/);
