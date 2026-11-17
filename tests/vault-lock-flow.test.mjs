@@ -78,11 +78,14 @@ test('sign-in opens after local key setup while cloud reconciliation continues s
     'async function submitVaultLogin(event) {',
     'async function submitVaultSignup(event) {'
   );
-  assert.ok(login.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)')
-    < login.indexOf('startVaultSyncInBackground(credentials)'));
-  assert.ok(login.indexOf('startVaultSyncInBackground(credentials)')
-    < login.indexOf('showApplication()'));
-  assert.doesNotMatch(login, /await\s+startVaultSync\(credentials\)/);
+  const onlineLogin = login.slice(
+    login.indexOf('await establishDeviceSession(credentials, unlocked.membershipTicket);')
+  );
+  assert.ok(onlineLogin.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)')
+    < onlineLogin.indexOf('startVaultSyncInBackground(credentials)'));
+  assert.ok(onlineLogin.indexOf('startVaultSyncInBackground(credentials)')
+    < onlineLogin.indexOf('showApplication()'));
+  assert.doesNotMatch(onlineLogin, /await\s+startVaultSync\(credentials\)/);
   assert.match(session, /function startVaultSyncInBackground\(credentials\)/);
   assert.match(session, /await startVaultSync\(credentials\)/);
 });
@@ -108,9 +111,12 @@ test('the account passphrase is reused for Diary migration only after cryptograp
     'async function submitVaultLogin(event) {',
     'async function submitVaultSignup(event) {'
   );
-  const deriveAt = login.indexOf('deriveVaultLoginMaterial(account, passphrase)');
-  const adoptAt = login.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)');
-  const clearAt = login.indexOf("passphrase = ''", adoptAt);
+  const onlineLogin = login.slice(
+    login.indexOf('credentials = await finishVaultLogin(account, loginMaterial, unlocked.passphraseEnvelope);')
+  );
+  const deriveAt = onlineLogin.indexOf('finishVaultLogin(account, loginMaterial, unlocked.passphraseEnvelope)');
+  const adoptAt = onlineLogin.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)');
+  const clearAt = onlineLogin.indexOf("passphrase = ''", adoptAt);
   assert.ok(deriveAt >= 0 && adoptAt > deriveAt && clearAt > adoptAt);
 
   const verify = extract(
