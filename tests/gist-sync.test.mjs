@@ -16,7 +16,7 @@ test('GitHub Gist and Google Drive credential integrations are not loaded by the
   assert.match(html, /id="vault-sync-settings"/);
 });
 
-test('vault packets remain local until verified sign-in reconciliation', () => {
+test('ordinary vault packet edits remain local while completed voice notes use targeted sync', () => {
   assert.match(storage, /indexedDB\.open/);
   assert.match(sync, /putLocalDailyPacket/);
   assert.doesNotMatch(sync, /scheduleCloudPush|setInterval|addEventListener\('online'/);
@@ -25,7 +25,8 @@ test('vault packets remain local until verified sign-in reconciliation', () => {
   assert.match(sync, /window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
   assert.match(sync, /function synchronizeVault\(/);
   assert.match(sync, /function performVaultSync\(/);
-  assert.equal((sync.match(/await synchronizeVault\(\)/g) || []).length, 2);
+  assert.match(sync, /queueCompletedVoiceNoteSync/);
+  assert.equal((sync.match(/await synchronizeVault\(\)/g) || []).length, 3);
   assert.match(session, /SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });
 

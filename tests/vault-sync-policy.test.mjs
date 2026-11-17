@@ -57,9 +57,11 @@ test('local packets remain dirty until the cloud accepts their upload', () => {
   assert.match(syncSource, /deviceSessionExpiresAt <= Date\.now\(\)/);
 });
 
-test('there is no background sync trigger after the sign-in reconciliation', () => {
+test('completed voice notes use a targeted sync path without periodic background sync', () => {
   assert.doesNotMatch(syncSource, /installVaultSyncRefresh|setInterval|scheduleCloudPush|cloudDebounceTimer|pendingCloudDates|handleOnline|refreshVaultFromForeground/);
-  assert.equal((syncSource.match(/await synchronizeVault\(\)/g) || []).length, 2);
+  assert.equal((syncSource.match(/await synchronizeVault\(\)/g) || []).length, 3);
+  assert.match(syncSource, /queueCompletedVoiceNoteSync/);
+  assert.match(syncSource, /event\?\.detail\?\.voiceNote === true/);
   assert.match(syncSource, /window\.addEventListener\('faith-focus:local-data-changed', handleLocalDataChanged\)/);
   assert.match(syncSource, /window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
 
