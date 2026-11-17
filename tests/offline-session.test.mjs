@@ -148,7 +148,7 @@ test('offline edits continue through the compressed encrypted local packet path'
   assert.match(capture, /encryptDailyBundle\(bundle, activeVault\.encryptionKey, compressData\)/);
   assert.match(capture, /await putLocalDailyPacket\(/);
   assert.match(capture, /dirty: true/);
-  assert.match(sync, /if \\(activeVault\\.offlineOnly === true\\) scheduleCapture\\(dateString\\)/);
+  assert.match(sync, /if \(activeVault\.offlineOnly === true\) scheduleCapture\(dateString\)/);
   assert.match(session, /startLocalVaultStorage\(credentials\)/);
 });
 
