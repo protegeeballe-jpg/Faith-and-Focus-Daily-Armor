@@ -127,7 +127,7 @@ test('offline-only mode cannot create or use cloud sessions', () => {
     sync.indexOf('export async function startLocalVaultStorage('),
     sync.indexOf('export async function startVaultSync(')
   );
-  assert.match(localStart, /credentials\.offlineOnly !== true/);
+  assert.match(localStart, /credentials\?\.offlineOnly !== true/);
   assert.match(localStart, /\|\| credentials\.writeToken/);
   assert.match(localStart, /\|\| credentials\.vaultMembershipTicket/);
   assert.match(localStart, /\|\| credentials\.deviceSessionToken/);
