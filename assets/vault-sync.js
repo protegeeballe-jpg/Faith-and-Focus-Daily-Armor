@@ -10,7 +10,7 @@ import {
   exportEncryptedVoiceNotes, exportEncryptedVoiceNotesForDate, exportEncryptedVoiceNotesForDateFull,
   restoreEncryptedVoiceNotesForDate, getEncryptedVoiceNoteRecord, markEncryptedVoiceNoteUploaded,
   saveEncryptedVoiceNoteRecord, createVoiceNoteAttachmentManifest, validateEncryptedVoiceNoteRecord,
-  VOICE_NOTE_ATTACHMENT_CHUNK_CHARS
+  VOICE_NOTE_ATTACHMENT_CHUNK_CHARS, MAX_VOICE_NOTE_ATTACHMENT_CHUNKS
 } from './voice-note-store.js';
 import { GARDEN_STORAGE_KEY, GARDEN_DAILY_SYNC_PREFIX, mergeGardenStates, validateGardenState } from './garden-model.js';
 import { mergeDailyBundles } from './daily-merge.js';
@@ -34,6 +34,7 @@ let activeVault = null;
 let vaultSyncGeneration = 0;
 let applyingRemotePacket = 0;
 let syncQueue = Promise.resolve();
+let voiceNoteSyncQueue = Promise.resolve();
 let localCaptureQueues = new Map();
 let localChangeVersions = new Map();
 let lastStatus = '';
@@ -331,7 +332,7 @@ async function requestVoiceNoteAttachment(dateString, id, {
   if (!activeVault || activeVault.offlineOnly === true) {
     throw new Error('Voice-note cloud access requires an active online device session.');
   }
-  if (!Number.isSafeInteger(index) || index < 0 || index >= 64) {
+  if (!Number.isSafeInteger(index) || index < 0 || index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS) {
     throw new TypeError('The encrypted voice-note chunk index is invalid.');
   }
   const headers = await getCredentialHeaders();
@@ -814,6 +815,29 @@ function synchronizeVault() {
   return operation;
 }
 
+function queueCompletedVoiceNoteSync(dateString) {
+  if (!activeVault || activeVault.offlineOnly === true || !isValidDateString(dateString)) return;
+  const session = activeVault;
+  const generation = vaultSyncGeneration;
+  const operation = voiceNoteSyncQueue.catch(() => {}).then(async () => {
+    if (activeVault !== session || vaultSyncGeneration !== generation) return;
+    await captureDailyPacket(dateString);
+    if (activeVault !== session || vaultSyncGeneration !== generation) return;
+    await uploadPendingVoiceNoteAttachments(dateString);
+    if (activeVault !== session || vaultSyncGeneration !== generation) return;
+    await synchronizeVault();
+  });
+  voiceNoteSyncQueue = operation.catch(error => {
+    if (activeVault === session && vaultSyncGeneration === generation) {
+      console.warn('[Vault Sync] A completed voice note remains saved locally; its cloud upload will retry at the next verified sign-in.', {
+        dateString,
+        error
+      });
+      status('Your voice note is saved securely on this device. Cloud sync could not finish; it will retry at your next verified sign-in.', 'info');
+    }
+  });
+}
+
 async function performVaultSync() {
   if (!activeVault || activeVault.offlineOnly === true) return;
   try {
@@ -966,7 +990,14 @@ export async function startVaultSync(credentials) {
 }
 
 function handleLocalDataChanged(event) {
-  if (activeVault) scheduleCapture(event?.detail?.dateString || getCurrentDateString());
+  if (!activeVault) return;
+  const dateString = event?.detail?.dateString || getCurrentDateString();
+  if (event?.detail?.voiceNote === true) {
+    if (activeVault.offlineOnly === true) scheduleCapture(dateString);
+    else queueCompletedVoiceNoteSync(dateString);
+    return;
+  }
+  scheduleCapture(dateString);
 }
 
 function handleVisibilityChange() {
