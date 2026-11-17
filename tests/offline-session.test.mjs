@@ -185,3 +185,14 @@ test('IndexedDB upgrades recover cleanly after another tab releases the database
   assert.match(storage, /request\.onblocked = \(\) => \{\s*if \(settled\) return;\s*settled = true;\s*databasePromise = null;\s*reject\(/);
   assert.match(storage, /request\.onerror = \(\) => \{\s*if \(settled\) return;\s*settled = true;\s*databasePromise = null;/);
 });
+
+test('offline fallback does not override explicit client or authentication rejection', () => {
+  const classifier = session.slice(
+    session.indexOf('function isOfflineFallbackEligible('),
+    session.indexOf('async function unlockOfflineVault(')
+  );
+  assert.match(classifier, /if \(Number\.isFinite\(status\) && status > 0\) return status >= 500/);
+  assert.match(classifier, /window\.navigator\?\.onLine === false/);
+  assert.match(classifier, /\['TypeError', 'NetworkError', 'AbortError'\]/);
+  assert.doesNotMatch(classifier, /status >= 400/);
+});
