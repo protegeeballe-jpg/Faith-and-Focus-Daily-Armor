@@ -859,7 +859,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v24-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v25-stable-app/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -893,9 +893,21 @@ test('vault synchronization starts after verified sign-in and keeps later change
  assert.doesNotMatch(sync,/installVaultSyncRefresh|foregroundRefreshCleanup|setInterval|scheduleCloudPush|cloudDebounceTimer|handleOnline/);
  assert.match(sync,/dirty:\s*true/);
  assert.match(sync,/Your next verified sign-in will reconcile this packet/);
- assert.equal((sync.match(/await synchronizeVault\(\)/g)||[]).length,2);
+ assert.equal((sync.match(/await synchronizeVault\(\)/g)||[]).length,3);
  assert.match(vaultSession,/await establishDeviceSession\(credentials, unlocked\.membershipTicket\);[\s\S]*?await startVaultSync\(credentials\);/);
  assert.equal((vaultSession.match(/await startVaultSync\(credentials\)/g)||[]).length,3);
+});
+
+test('completed voice notes upload encrypted attachments and publish their manifests to the shared vault',()=>{
+ assert.equal((voiceNoteStore.match(/voiceNote: true/g)||[]).length,2);
+ assert.match(vaultSync,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
+ assert.match(vaultSync,/index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
+ assert.match(vaultSync,/function queueCompletedVoiceNoteSync\\(dateString\\)/);
+ assert.match(vaultSync,/await captureDailyPacket\\(dateString\\)/);
+ assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\\(dateString\\)/);
+ assert.match(vaultSync,/await synchronizeVault\\(\\)/);
+ assert.match(vaultSync,/event\\?\\.detail\\?\\.voiceNote === true/);
+ assert.match(voiceNoteStore,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100/);
 });
 
 test('Diary migration recognizes account-key records and converts only legacy-key entries',()=>{
@@ -907,7 +919,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v24-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v25-stable-app/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
