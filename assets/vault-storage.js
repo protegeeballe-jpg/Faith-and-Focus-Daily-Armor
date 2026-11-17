@@ -15,6 +15,7 @@ function openDatabase() {
   }
   if (databasePromise) return databasePromise;
   databasePromise = new Promise((resolve, reject) => {
+    let settled = false;
     const request = indexedDB.open(DATABASE_NAME, DATABASE_VERSION);
     request.onupgradeneeded = () => {
       const database = request.result;
@@ -28,12 +29,31 @@ function openDatabase() {
         profiles.createIndex('vaultId', 'vaultId', { unique: false });
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const database = request.result;
+      if (settled) {
+        database.close();
+        return;
+      }
+      settled = true;
+      database.onversionchange = () => {
+        database.close();
+        databasePromise = null;
+      };
+      resolve(database);
+    };
     request.onerror = () => {
+      if (settled) return;
+      settled = true;
       databasePromise = null;
       reject(request.error || new Error('Could not open local encrypted vault storage.'));
     };
-    request.onblocked = () => reject(new Error('Local vault storage is busy in another tab.'));
+    request.onblocked = () => {
+      if (settled) return;
+      settled = true;
+      databasePromise = null;
+      reject(new Error('Local vault storage is busy in another tab. Close or reload the other App tab, then retry.'));
+    };
   });
   return databasePromise;
 }

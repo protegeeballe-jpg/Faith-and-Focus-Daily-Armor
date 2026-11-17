@@ -245,9 +245,9 @@ function showLogin(message = 'Log in to your existing account and open all of it
 
 function isOfflineFallbackEligible(error) {
   const status = Number(error?.status);
+  if (Number.isFinite(status) && status > 0) return status >= 500;
   return window.navigator?.onLine === false
-    || ['TypeError', 'NetworkError', 'AbortError'].includes(error?.name)
-    || status >= 500;
+    || ['TypeError', 'NetworkError', 'AbortError'].includes(error?.name);
 }
 
 async function unlockOfflineVault(username, passphrase) {
@@ -480,7 +480,15 @@ async function submitVaultLogin(event) {
       await openOfflineSession();
       return;
     }
-    await establishDeviceSession(credentials, unlocked.membershipTicket);
+    try {
+      await establishDeviceSession(credentials, unlocked.membershipTicket);
+    } catch (sessionError) {
+      if (isOfflineFallbackEligible(sessionError)) {
+        await openOfflineSession();
+        return;
+      }
+      throw sessionError;
+    }
 
     offlineProfileSaved = await cacheOfflineVaultProfile({
       username: account.username,
