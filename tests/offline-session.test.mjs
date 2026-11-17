@@ -114,7 +114,12 @@ test('offline sign-in uses only the saved envelope and discards online credentia
   assert.ok(deviceVerification >= 0);
   const migrationAt = login.indexOf('const migration =', deviceVerification);
   assert.ok(migrationAt > deviceVerification);
-  assert.doesNotMatch(login.slice(deviceVerification, migrationAt), /openOfflineSession\(/);
+  const deviceVerificationFlow = login.slice(deviceVerification, migrationAt);
+  assert.match(deviceVerificationFlow, /try\s*\{\s*await establishDeviceSession/);
+  assert.match(deviceVerificationFlow, /catch \(sessionError\)/);
+  assert.match(deviceVerificationFlow, /isOfflineFallbackEligible\(sessionError\)/);
+  assert.match(deviceVerificationFlow, /await openOfflineSession\(\)/);
+  assert.match(deviceVerificationFlow, /throw sessionError/);
   assert.match(login, /offlineProfileSaved = await cacheOfflineVaultProfile\(/);
 });
 
@@ -171,4 +176,12 @@ test('the service worker installs the updated offline-capable app shell', () => 
   for (const resource of ['./assets/vault-storage.js', './assets/vault-sync.js', './assets/vault-session.js']) {
     assert.ok(worker.includes("'" + resource + "'"), 'Missing offline resource: ' + resource);
   }
+});
+
+test('IndexedDB upgrades recover cleanly after another tab releases the database', () => {
+  assert.match(storage, /let settled = false/);
+  assert.match(storage, /if \(settled\) \{\s*database\.close\(\);\s*return;/);
+  assert.match(storage, /database\.onversionchange = \(\) => \{\s*database\.close\(\);\s*databasePromise = null;/);
+  assert.match(storage, /request\.onblocked = \(\) => \{\s*if \(settled\) return;\s*settled = true;\s*databasePromise = null;\s*reject\(/);
+  assert.match(storage, /request\.onerror = \(\) => \{\s*if \(settled\) return;\s*settled = true;\s*databasePromise = null;/);
 });
