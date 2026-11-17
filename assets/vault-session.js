@@ -387,6 +387,7 @@ async function submitVaultLogin(event) {
       await startLocalVaultStorage(credentials);
       activeCredentials = credentials;
       passphrase = '';
+      if (passphraseField) passphraseField.value = '';
       if (usernameField) usernameField.value = credentials.username;
       showApplication();
       resetInactivityTimer();
@@ -732,6 +733,11 @@ async function submitLegacyUpgrade(event) {
 async function submitRecoveryAnswers(event) {
   event.preventDefault();
   if (loginInProgress || activeCredentials) return;
+  if (window.navigator?.onLine === false) {
+    setStatus('vault-recovery-message', 'Account recovery requires an internet connection. Offline access cannot change account credentials.', 'error');
+    clearAnswerFields('recovery');
+    return;
+  }
   const answers = collectAnswers('recovery');
   const validation = validateRecoveryAnswers(answers);
   if (!validation.valid) {
@@ -764,6 +770,10 @@ async function submitRecoveryAnswers(event) {
 async function completeRecovery(event) {
   event.preventDefault();
   if (loginInProgress || !recoverySession) return;
+  if (window.navigator?.onLine === false) {
+    setStatus('vault-recovery-message', 'Username and passphrase changes require an internet connection. No account changes were made.', 'error');
+    return;
+  }
 
   const newUsernameRaw = byId('recovery-new-username')?.value || '';
   const newUsername = newUsernameRaw ? validateVaultUsername(newUsernameRaw) : { valid: true, normalized: '' };
