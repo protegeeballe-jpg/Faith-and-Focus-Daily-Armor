@@ -1,6 +1,12 @@
 const DATABASE_NAME = 'faith_focus_vault_packets_v1';
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const PACKET_STORE = 'dailyPackets';
+const OFFLINE_PROFILE_STORE = 'offlineProfiles';
+const OFFLINE_PROFILE_VERSION = 1;
+
+import {
+  VAULT_KDF_ITERATIONS, isValidKeyEnvelope, validateVaultUsername
+} from './vault-crypto.js';
 
 let databasePromise = null;
 
@@ -17,6 +23,10 @@ function openDatabase() {
         const store = database.createObjectStore(PACKET_STORE, { keyPath: 'dateString' });
         store.createIndex('dirty', 'dirty', { unique: false });
         store.createIndex('remoteUpdatedAt', 'remoteUpdatedAt', { unique: false });
+      }
+      if (!database.objectStoreNames.contains(OFFLINE_PROFILE_STORE)) {
+        const profiles = database.createObjectStore(OFFLINE_PROFILE_STORE, { keyPath: 'username' });
+        profiles.createIndex('vaultId', 'vaultId', { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -79,6 +89,94 @@ export async function putLocalDailyPacket(record) {
     remoteUpdatedAt: record.remoteUpdatedAt || null,
     dirty: record.dirty
   });
+  await done;
+}
+ 
+function isValidOfflineVaultProfile(profile) {
+  const username = validateVaultUsername(profile?.username);
+  return Boolean(profile && typeof profile === 'object' && !Array.isArray(profile)
+    && profile.version === OFFLINE_PROFILE_VERSION
+    && username.valid && username.normalized === profile.username
+    && typeof profile.vaultId === 'string' && /^[a-f0-9]{64}$/.test(profile.vaultId)
+    && typeof profile.passphraseSalt === 'string'
+    && /^[A-Za-z0-9+/]{22}==$/.test(profile.passphraseSalt)
+    && profile.passphraseIterations === VAULT_KDF_ITERATIONS
+    && isValidKeyEnvelope(profile.passphraseEnvelope));
+}
+
+export async function saveOfflineVaultProfile(profile) {
+  const username = validateVaultUsername(profile?.username);
+  const safeProfile = {
+    version: OFFLINE_PROFILE_VERSION,
+    username: username.normalized,
+    vaultId: profile?.vaultId,
+    passphraseSalt: profile?.passphraseSalt,
+    passphraseIterations: profile?.passphraseIterations,
+    passphraseEnvelope: profile?.passphraseEnvelope ? {
+      version: profile.passphraseEnvelope.version,
+      algorithm: profile.passphraseEnvelope.algorithm,
+      iv: profile.passphraseEnvelope.iv,
+      ciphertext: profile.passphraseEnvelope.ciphertext
+    } : null,
+    updatedAt: Date.now()
+  };
+  if (!username.valid || !isValidOfflineVaultProfile(safeProfile)) {
+    throw new TypeError('The local sign-in record is invalid.');
+  }
+
+  const database = await openDatabase();
+  const transaction = database.transaction(OFFLINE_PROFILE_STORE, 'readwrite');
+  const done = transactionDone(transaction);
+  const store = transaction.objectStore(OFFLINE_PROFILE_STORE);
+  const cursorRequest = store.index('vaultId').openCursor(safeProfile.vaultId);
+  cursorRequest.onsuccess = () => {
+    const cursor = cursorRequest.result;
+    if (!cursor) return;
+    if (cursor.value.username !== safeProfile.username) cursor.delete();
+    cursor.continue();
+  };
+  store.put(safeProfile);
+  await done;
+  return true;
+}
+
+export async function getOfflineVaultProfile(usernameValue) {
+  const username = validateVaultUsername(usernameValue);
+  if (!username.valid) return null;
+
+  const database = await openDatabase();
+  const transaction = database.transaction(OFFLINE_PROFILE_STORE, 'readonly');
+  const done = transactionDone(transaction);
+  const profile = await requestResult(transaction.objectStore(OFFLINE_PROFILE_STORE).get(username.normalized));
+  await done;
+  if (!isValidOfflineVaultProfile(profile)) return null;
+  return {
+    version: profile.version,
+    username: profile.username,
+    vaultId: profile.vaultId,
+    passphraseSalt: profile.passphraseSalt,
+    passphraseIterations: profile.passphraseIterations,
+    passphraseEnvelope: {
+      version: profile.passphraseEnvelope.version,
+      algorithm: profile.passphraseEnvelope.algorithm,
+      iv: profile.passphraseEnvelope.iv,
+      ciphertext: profile.passphraseEnvelope.ciphertext
+    }
+  };
+}
+
+export async function deleteOfflineVaultProfilesForVault(vaultId) {
+  if (typeof vaultId !== 'string' || !/^[a-f0-9]{64}$/.test(vaultId)) return;
+  const database = await openDatabase();
+  const transaction = database.transaction(OFFLINE_PROFILE_STORE, 'readwrite');
+  const done = transactionDone(transaction);
+  const cursorRequest = transaction.objectStore(OFFLINE_PROFILE_STORE).index('vaultId').openCursor(vaultId);
+  cursorRequest.onsuccess = () => {
+    const cursor = cursorRequest.result;
+    if (!cursor) return;
+    cursor.delete();
+    cursor.continue();
+  };
   await done;
 }
 
