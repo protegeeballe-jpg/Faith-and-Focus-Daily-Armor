@@ -414,7 +414,7 @@ export async function finalizeEncryptedVoiceNoteDraft(draftId, key) {
     }
     if (globalThis.window?.dispatchEvent && globalThis.CustomEvent) {
         globalThis.window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed', {
-            detail: { dateString: draft.dateString }
+            detail: { dateString: draft.dateString, voiceNote: true }
         }));
     }
     return { id: record.id, dateString: record.dateString, capturedAt: record.capturedAt };
@@ -471,7 +471,7 @@ export async function saveEncryptedVoiceNote(dateString, blob, key) {
         await completed;
         if (globalThis.window?.dispatchEvent && globalThis.CustomEvent) {
             globalThis.window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed', {
-                detail: { dateString: record.dateString }
+                detail: { dateString: record.dateString, voiceNote: true }
             }));
         }
         return { id: record.id, dateString: record.dateString, capturedAt: record.capturedAt };
