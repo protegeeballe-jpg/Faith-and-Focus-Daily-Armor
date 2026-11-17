@@ -2,12 +2,11 @@ const DATABASE_NAME = 'faith_focus_vault_packets_v1';
 const DATABASE_VERSION = 2;
 const PACKET_STORE = 'dailyPackets';
 const OFFLINE_PROFILE_STORE = 'offlineProfiles';
-const OFFLINE_PROFILE_VERSION = 1;
-
 import {
   VAULT_KDF_ITERATIONS, isValidKeyEnvelope, validateVaultUsername
 } from './vault-crypto.js';
 
+const OFFLINE_PROFILE_VERSION = 1;
 let databasePromise = null;
 
 function openDatabase() {
