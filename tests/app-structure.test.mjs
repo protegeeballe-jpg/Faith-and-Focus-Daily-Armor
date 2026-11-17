@@ -902,11 +902,11 @@ test('completed voice notes upload encrypted attachments and publish their manif
  assert.equal((voiceNoteStore.match(/voiceNote: true/g)||[]).length,2);
  assert.match(vaultSync,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
  assert.match(vaultSync,/index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
- assert.match(vaultSync,/function queueCompletedVoiceNoteSync\\(dateString\\)/);
- assert.match(vaultSync,/await captureDailyPacket\\(dateString\\)/);
- assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\\(dateString\\)/);
- assert.match(vaultSync,/await synchronizeVault\\(\\)/);
- assert.match(vaultSync,/event\\?\\.detail\\?\\.voiceNote === true/);
+ assert.match(vaultSync,/function queueCompletedVoiceNoteSync\(dateString\)/);
+ assert.match(vaultSync,/await captureDailyPacket\(dateString\)/);
+ assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\(dateString\)/);
+ assert.match(vaultSync,/await synchronizeVault\(\)/);
+ assert.match(vaultSync,/event\?\.detail\?\.voiceNote === true/);
  assert.match(voiceNoteStore,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100/);
 });
 
