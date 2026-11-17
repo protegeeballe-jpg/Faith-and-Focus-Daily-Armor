@@ -1577,7 +1577,12 @@ export class VaultCoordinator {
     const tokenHash = await sha256Hex(token);
     const key = this.deviceSessionKey(tokenHash);
     const session = await this.state.storage.get(key);
-    if (!session || session.vaultId !== this.vaultId || session.deviceId !== payload.deviceId) {
+    if (!session) {
+      // Revocation is idempotent: an already-expired or previously revoked
+      // token has no remaining authority and is safe to acknowledge.
+      return jsonResponse({ ok: true, revoked: false, alreadyRevoked: true }, 200);
+    }
+    if (session.vaultId !== this.vaultId || session.deviceId !== payload.deviceId) {
       return jsonResponse({ error: "The device session is already expired or no longer valid." }, 401);
     }
     await this.state.storage.delete(key);

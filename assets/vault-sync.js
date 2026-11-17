@@ -34,7 +34,15 @@ let activeVault = null;
 let vaultSyncGeneration = 0;
 let applyingRemotePacket = 0;
 let syncQueue = Promise.resolve();
-let voiceNoteSyncQueue = Promise.resolve();
+let localChangeSyncQueue = Promise.resolve();
+let pendingDailySyncDates = new Set();
+let dailySyncTimer = null;
+let pendingFullVaultRefresh = false;
+let lastCloudSyncStartedAt = 0;
+let lastForegroundSyncAt = 0;
+const DAILY_SYNC_DEBOUNCE_MS = 1200;
+const DAILY_SYNC_MIN_INTERVAL_MS = 3500;
+const FOREGROUND_SYNC_MIN_INTERVAL_MS = 5000;
 let localCaptureQueues = new Map();
 let localChangeVersions = new Map();
 let lastStatus = '';
@@ -490,7 +498,10 @@ async function captureDailyPacket(dateString) {
       });
       repeat = localChangeVersions.get(dateString) !== snapshotVersion;
       if (!repeat) {
-        status('Saved and encrypted locally. Your next verified sign-in will reconcile this packet.', 'success');
+        status(activeVault.offlineOnly === true
+          ? 'Saved and encrypted locally. Sign in online to synchronize this device.'
+          : 'Saved and encrypted locally. Cloud synchronization is queued.',
+          'info');
       }
     }
   });
@@ -504,8 +515,16 @@ async function captureDailyPacket(dateString) {
 
 function scheduleCapture(dateString = getCurrentDateString()) {
   if (!activeVault || applyingRemotePacket || !isValidDateString(dateString)) return;
-  captureDailyPacket(dateString).catch(error => {
-    status(error.message || 'The daily packet could not be stored locally.', 'error');
+  const session = activeVault;
+  const generation = vaultSyncGeneration;
+  captureDailyPacket(dateString).then(() => {
+    if (activeVault !== session || vaultSyncGeneration !== generation
+        || session.offlineOnly === true) return;
+    queueVaultSync({ dateString });
+  }).catch(error => {
+    if (activeVault === session && vaultSyncGeneration === generation) {
+      status(error.message || 'The daily packet could not be stored locally.', 'error');
+    }
   });
 }
 
@@ -815,27 +834,61 @@ function synchronizeVault() {
   return operation;
 }
 
-function queueCompletedVoiceNoteSync(dateString) {
-  if (!activeVault || activeVault.offlineOnly === true || !isValidDateString(dateString)) return;
+function queueVaultSync({ dateString = null, refreshAll = false, immediate = false } = {}) {
+  if (!activeVault || activeVault.offlineOnly === true) return;
+  if (isValidDateString(dateString)) pendingDailySyncDates.add(dateString);
+  if (refreshAll) pendingFullVaultRefresh = true;
+
   const session = activeVault;
   const generation = vaultSyncGeneration;
-  const operation = voiceNoteSyncQueue.catch(() => {}).then(async () => {
-    if (activeVault !== session || vaultSyncGeneration !== generation) return;
-    await captureDailyPacket(dateString);
-    if (activeVault !== session || vaultSyncGeneration !== generation) return;
-    await uploadPendingVoiceNoteAttachments(dateString);
-    if (activeVault !== session || vaultSyncGeneration !== generation) return;
-    await synchronizeVault();
-  });
-  voiceNoteSyncQueue = operation.catch(error => {
-    if (activeVault === session && vaultSyncGeneration === generation) {
-      console.warn('[Vault Sync] A completed voice note remains saved locally; its cloud upload will retry at the next verified sign-in.', {
-        dateString,
-        error
-      });
-      status('Your voice note is saved securely on this device. Cloud sync could not finish; it will retry at your next verified sign-in.', 'info');
-    }
-  });
+  if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
+
+  const minimumWait = Math.max(0, DAILY_SYNC_MIN_INTERVAL_MS - (Date.now() - lastCloudSyncStartedAt));
+  const delay = Math.max(immediate ? 0 : DAILY_SYNC_DEBOUNCE_MS, minimumWait);
+  dailySyncTimer = window.setTimeout(() => {
+    dailySyncTimer = null;
+    const isCurrent = () => activeVault === session
+      && vaultSyncGeneration === generation
+      && session.offlineOnly !== true;
+    if (!isCurrent()) return;
+
+    const dates = [...pendingDailySyncDates].sort();
+    pendingDailySyncDates.clear();
+    const shouldRefreshAll = pendingFullVaultRefresh;
+    pendingFullVaultRefresh = false;
+
+    const operation = localChangeSyncQueue.catch(() => {}).then(async () => {
+      if (!isCurrent()) return;
+      lastCloudSyncStartedAt = Date.now();
+
+      if (shouldRefreshAll) {
+        await captureExistingLocalDates();
+        if (!isCurrent()) return;
+        await uploadAllPendingVoiceNoteAttachments();
+      } else {
+        for (const pendingDate of dates) {
+          if (!isCurrent()) return;
+          await uploadPendingVoiceNoteAttachments(pendingDate);
+        }
+      }
+
+      if (!isCurrent()) return;
+      await synchronizeVault();
+    });
+
+    localChangeSyncQueue = operation.catch(error => {
+      if (isCurrent()) {
+        console.warn('[Vault Sync] Encrypted Diary changes remain saved locally; cloud reconciliation will retry after connectivity or foreground returns.', {
+          dates,
+          error
+        });
+        status(
+          'Your encrypted Diary entries and voice notes remain saved on this device. Cloud sync could not finish; it will retry when the connection returns, the app is reopened, or you sign in again.',
+          'error'
+        );
+      }
+    });
+  }, delay);
 }
 
 async function performVaultSync() {
@@ -867,7 +920,7 @@ async function performVaultSync() {
       const pendingDates = pendingRecords.map(record => record.dateString).sort();
       status(
         'Some encrypted local packets remain queued: ' + pendingDates.join(', ') +
-        '. They remain saved on this device and will be reconciled at the next verified sign-in.',
+        '. They remain saved securely on this device and will retry when the connection returns, the app returns to the foreground, or you sign in again.',
         'error'
       );
     } else if (restored) {
@@ -985,23 +1038,31 @@ export async function startVaultSync(credentials) {
 
   document.addEventListener('visibilitychange', handleVisibilityChange);
   window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
+  window.addEventListener('online', handleOnline);
   window.addEventListener('pagehide', flushLocalVaultChanges);
   return true;
 }
 
 function handleLocalDataChanged(event) {
   if (!activeVault) return;
-  const dateString = event?.detail?.dateString || getCurrentDateString();
-  if (event?.detail?.voiceNote === true) {
-    if (activeVault.offlineOnly === true) scheduleCapture(dateString);
-    else queueCompletedVoiceNoteSync(dateString);
-    return;
-  }
-  scheduleCapture(dateString);
+  scheduleCapture(event?.detail?.dateString || getCurrentDateString());
+}
+
+function handleOnline() {
+  if (!activeVault || activeVault.offlineOnly === true) return;
+  queueVaultSync({ refreshAll: true, immediate: true });
 }
 
 function handleVisibilityChange() {
-  if (document.visibilityState === 'hidden') flushLocalVaultChanges();
+  if (document.visibilityState === 'hidden') {
+    flushLocalVaultChanges();
+    return;
+  }
+  if (document.visibilityState !== 'visible' || !activeVault || activeVault.offlineOnly === true) return;
+  const now = Date.now();
+  if (now - lastForegroundSyncAt < FOREGROUND_SYNC_MIN_INTERVAL_MS) return;
+  lastForegroundSyncAt = now;
+  queueVaultSync({ refreshAll: true, immediate: true });
 }
 
 function flushLocalVaultChanges() {
@@ -1027,6 +1088,10 @@ function flushLocalVaultChanges() {
 export async function stopVaultSync() {
   // Invalidate in-flight startup before aborting requests or awaiting local flushes.
   vaultSyncGeneration += 1;
+  if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
+  dailySyncTimer = null;
+  pendingDailySyncDates.clear();
+  pendingFullVaultRefresh = false;
   try {
     if (activeVault) {
       activeVaultRequestControllers.forEach(controller => {
@@ -1037,8 +1102,13 @@ export async function stopVaultSync() {
   } finally {
     // Never retain the in-memory vault context if a local flush or cleanup fails.
     activeVaultRequestControllers.clear();
+    if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
+    dailySyncTimer = null;
+    pendingDailySyncDates.clear();
+    pendingFullVaultRefresh = false;
     document.removeEventListener('visibilitychange', handleVisibilityChange);
     window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
+    window.removeEventListener('online', handleOnline);
     window.removeEventListener('pagehide', flushLocalVaultChanges);
     activeVault = null;
   }

@@ -16,16 +16,18 @@ test('GitHub Gist and Google Drive credential integrations are not loaded by the
   assert.match(html, /id="vault-sync-settings"/);
 });
 
-test('ordinary vault packet edits remain local while completed voice notes use targeted sync', () => {
+test('Diary packet edits and voice notes share authenticated cloud synchronization', () => {
   assert.match(storage, /indexedDB\.open/);
   assert.match(sync, /putLocalDailyPacket/);
-  assert.doesNotMatch(sync, /scheduleCloudPush|setInterval|addEventListener\('online'/);
+  assert.doesNotMatch(sync, /setInterval/);
   assert.match(sync, /hasVerifiedDeviceSession\(credentials\)/);
   assert.match(sync, /document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
+  assert.match(sync, /window\.addEventListener\('online', handleOnline\)/);
   assert.match(sync, /window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
+  assert.match(sync, /function scheduleCapture[\s\S]*?queueVaultSync\(\{ dateString \}\)/);
+  assert.match(sync, /function queueVaultSync\(/);
   assert.match(sync, /function synchronizeVault\(/);
   assert.match(sync, /function performVaultSync\(/);
-  assert.match(sync, /queueCompletedVoiceNoteSync/);
   assert.equal((sync.match(/await synchronizeVault\(\)/g) || []).length, 3);
   assert.match(session, /SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });

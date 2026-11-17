@@ -148,7 +148,8 @@ test('offline edits continue through the compressed encrypted local packet path'
   assert.match(capture, /encryptDailyBundle\(bundle, activeVault\.encryptionKey, compressData\)/);
   assert.match(capture, /await putLocalDailyPacket\(/);
   assert.match(capture, /dirty: true/);
-  assert.match(sync, /if \(activeVault\.offlineOnly === true\) scheduleCapture\(dateString\)/);
+  assert.match(sync, /session\.offlineOnly === true\) return/);
+  assert.match(sync, /if \(!activeVault \|\| activeVault\.offlineOnly === true\) return/);
   assert.match(session, /startLocalVaultStorage\(credentials\)/);
 });
 
@@ -172,7 +173,7 @@ test('the local profile store keeps a narrow allow-list and expires stale aliase
 });
 
 test('the service worker installs the updated offline-capable app shell', () => {
-  assert.match(worker, /faith-focus-shell-v25-stable-app/);
+  assert.match(worker, /faith-focus-shell-v26-stable-app/);
   for (const resource of ['./assets/vault-storage.js', './assets/vault-sync.js', './assets/vault-session.js']) {
     assert.ok(worker.includes("'" + resource + "'"), 'Missing offline resource: ' + resource);
   }
