@@ -66,7 +66,9 @@ function status(message, state = 'info') {
   const indicator = byId('vault-sync-indicator');
   if (indicator) {
     indicator.dataset.state = state;
-    indicator.textContent = state === 'success' ? '● Synced' : state === 'error' ? '● Sync error / offline' : '● Syncing…';
+    indicator.textContent = activeVault?.offlineOnly === true
+      ? '● Saved locally'
+      : state === 'success' ? '● Synced' : state === 'error' ? '● Sync error / offline' : '● Syncing…';
     indicator.setAttribute('aria-label', indicator.textContent.trim());
   }
   console.log('[Vault Sync] Status:', state, message, activeVault ? { vaultId: activeVault.vaultId } : { vaultId: null });
@@ -259,6 +261,9 @@ async function getCredentialHeaders() {
 }
 
 async function vaultRequest(path, { method = 'GET', body = null, baseUpdatedAt } = {}) {
+  if (activeVault?.offlineOnly === true) {
+    throw new Error('Cloud access is unavailable in local-only mode.');
+  }
   const headers = await getCredentialHeaders();
   let bodyText = null;
   if (body !== null) {
@@ -665,14 +670,14 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
 }
 
 function synchronizeVault() {
-  if (!activeVault) return Promise.resolve();
+  if (!activeVault || activeVault.offlineOnly === true) return Promise.resolve();
   const operation = syncQueue.catch(() => {}).then(() => performVaultSync());
   syncQueue = operation.catch(() => {});
   return operation;
 }
 
 async function performVaultSync() {
-  if (!activeVault) return;
+  if (!activeVault || activeVault.offlineOnly === true) return;
   try {
     status('Checking your encrypted vault…');
     const index = await fetchRemoteIndex();
@@ -721,6 +726,45 @@ async function captureExistingLocalDates() {
   const voiceNotes = await exportEncryptedVoiceNotes();
   voiceNotes.forEach(record => dates.add(record.dateString));
   for (const dateString of [...dates].sort()) await captureDailyPacket(dateString);
+}
+
+
+export async function startLocalVaultStorage(credentials) {
+  if (credentials?.offlineOnly !== true
+      || !/^[a-f0-9]{64}$/.test(credentials.vaultId || '')
+      || !credentials.encryptionKey
+      || credentials.writeToken
+      || credentials.vaultMembershipTicket
+      || credentials.deviceSessionToken) {
+    throw new TypeError('A device-local encrypted session is required.');
+  }
+  if (activeVault) await stopVaultSync();
+
+  activeVault = credentials;
+  const generation = ++vaultSyncGeneration;
+  const isCurrent = () => activeVault === credentials && vaultSyncGeneration === generation;
+  installLocalStorageHooks();
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
+  window.addEventListener('pagehide', flushLocalVaultChanges);
+
+  try {
+    await captureExistingLocalDates();
+    if (!isCurrent()) return false;
+    status(
+      'Offline mode is active on this device only. Your encrypted changes are saved locally and will sync after your next online sign-in.',
+      'info'
+    );
+    return true;
+  } catch (error) {
+    if (isCurrent()) {
+      activeVault = null;
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
+      window.removeEventListener('pagehide', flushLocalVaultChanges);
+    }
+    throw error;
+  }
 }
 
 export async function startVaultSync(credentials) {

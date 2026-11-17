@@ -1,11 +1,14 @@
 import {
-  createVaultAccount, deriveVaultLoginMaterial, finishVaultLogin,
+  createVaultAccount, deriveVaultLoginMaterial, finishVaultLogin, unlockVaultAccount,
   deriveLegacyVaultCredentials, createLegacyVaultUpgrade,
   prepareVaultPassphraseReset, recoverVaultMasterKey,
   validateVaultUsername, validateVaultPassphrase, validateRecoveryAnswers,
   encodeBase64Url, wipeWriteToken
 } from './vault-crypto.js';
-import { startVaultSync, stopVaultSync } from './vault-sync.js';
+import { startVaultSync, startLocalVaultStorage, stopVaultSync } from './vault-sync.js';
+import {
+  getOfflineVaultProfile, saveOfflineVaultProfile, deleteOfflineVaultProfilesForVault
+} from './vault-storage.js';
 import { getOrCreateDeviceIdentity, signDeviceMessage } from './device-identity.js';
 import {
   adoptVaultEncryptionKey, clearVaultEncryptionKey,
@@ -240,6 +243,35 @@ function showLogin(message = 'Log in to your existing account and open all of it
   setStatus('vault-login-message', message, 'info');
 }
 
+function isOfflineFallbackEligible(error) {
+  const status = Number(error?.status);
+  return window.navigator?.onLine === false
+    || ['TypeError', 'NetworkError', 'AbortError'].includes(error?.name)
+    || status >= 500;
+}
+
+async function unlockOfflineVault(username, passphrase) {
+  const profile = await getOfflineVaultProfile(username);
+  if (!profile) {
+    throw new Error('Offline sign-in has not yet been prepared on this device. Connect to the internet and complete one successful online sign-in first.');
+  }
+  const credentials = await unlockVaultAccount(profile, passphrase);
+  wipeWriteToken(credentials.writeToken);
+  credentials.writeToken = null;
+  credentials.offlineOnly = true;
+  return credentials;
+}
+
+async function cacheOfflineVaultProfile(profile) {
+  try {
+    await saveOfflineVaultProfile(profile);
+    return true;
+  } catch (error) {
+    console.warn('[Vault Session] Device-local sign-in could not be prepared.', error);
+    return false;
+  }
+}
+
 function scheduleInactivityCheck() {
   if (!activeCredentials || locking || !lastActivityAt) return;
   if (inactivityTimer) clearTimeout(inactivityTimer);
@@ -337,8 +369,42 @@ async function submitVaultLogin(event) {
   setStatus('vault-login-message', 'Looking up your account…');
   let loginMaterial = null;
   let credentials = null;
+  let offlineProfileSaved = false;
 
   try {
+    const openOfflineSession = async () => {
+      if (loginMaterial) {
+        wipeWriteToken(loginMaterial.writeToken);
+        loginMaterial = null;
+      }
+      if (credentials?.writeToken) {
+        wipeWriteToken(credentials.writeToken);
+        credentials = null;
+      }
+
+      credentials = await unlockOfflineVault(usernameResult.normalized, passphrase);
+      const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
+      await startLocalVaultStorage(credentials);
+      activeCredentials = credentials;
+      passphrase = '';
+      if (passphraseField) passphraseField.value = '';
+      if (usernameField) usernameField.value = credentials.username;
+      showApplication();
+      resetInactivityTimer();
+      setStatus(
+        'vault-login-message',
+        migration.legacyMigrationRequired
+          ? 'Offline mode is active on this device only. Some older Diary records still need the previous Diary passphrase. Encrypted changes will sync after an online sign-in.'
+          : 'Offline mode is active on this device only. Your Checklist and Diary changes are saved locally and will sync after an online sign-in.',
+        'info'
+      );
+    };
+
+    if (window.navigator?.onLine === false) {
+      await openOfflineSession();
+      return;
+    }
+
     const beginLegacyUpgrade = async () => {
       setStatus('vault-login-message', 'Checking whether this is an existing vault that needs a one-time security upgrade…');
       const legacy = await deriveLegacyVaultCredentials(usernameResult.normalized, passphrase);
@@ -378,6 +444,10 @@ async function submitVaultLogin(event) {
     try {
       account = await accountRequest('/account/signin', { username: usernameResult.normalized });
     } catch (lookupError) {
+      if (isOfflineFallbackEligible(lookupError)) {
+        await openOfflineSession();
+        return;
+      }
       if (lookupError.status !== 401) throw lookupError;
       await beginLegacyUpgrade();
       return;
@@ -394,6 +464,10 @@ async function submitVaultLogin(event) {
         'X-Write-Token': encodeBase64Url(loginMaterial.writeToken)
       });
     } catch (unlockError) {
+      if (isOfflineFallbackEligible(unlockError)) {
+        await openOfflineSession();
+        return;
+      }
       if (unlockError.status !== 401) throw unlockError;
       wipeWriteToken(loginMaterial.writeToken);
       loginMaterial = null;
@@ -402,7 +476,19 @@ async function submitVaultLogin(event) {
     }
     credentials = await finishVaultLogin(account, loginMaterial, unlocked.passphraseEnvelope);
     loginMaterial = null;
+    if (window.navigator?.onLine === false) {
+      await openOfflineSession();
+      return;
+    }
     await establishDeviceSession(credentials, unlocked.membershipTicket);
+
+    offlineProfileSaved = await cacheOfflineVaultProfile({
+      username: account.username,
+      vaultId: account.vaultId,
+      passphraseSalt: account.passphraseSalt,
+      passphraseIterations: account.passphraseIterations,
+      passphraseEnvelope: unlocked.passphraseEnvelope
+    });
 
     const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
     passphrase = '';
@@ -414,10 +500,13 @@ async function submitVaultLogin(event) {
     showApplication();
     resetInactivityTimer();
 
+    const offlineNotice = offlineProfileSaved
+      ? ''
+      : ' Device-local sign-in could not be prepared on this device.';
     if (migration.legacyMigrationRequired) {
-      setStatus('vault-login-message', 'Your account is open. This device has older Diary records that need a one-time migration using the previous Diary passphrase.', 'info');
+      setStatus('vault-login-message', 'Your account is open. This device has older Diary records that need a one-time migration using the previous Diary passphrase.' + offlineNotice, 'info');
     } else {
-      setStatus('vault-login-message', 'Your account is open. Your Checklist, Diary and Garden share one account.', 'success');
+      setStatus('vault-login-message', 'Your account is open. Your Checklist, Diary and Garden share one account.' + offlineNotice, offlineProfileSaved ? 'success' : 'info');
     }
   } catch (error) {
     if (credentials?.deviceSessionToken) {
@@ -492,6 +581,7 @@ async function submitVaultSignup(event) {
     const registered = await accountRequest('/account/signup', payload);
     accountCreated = true;
     await establishDeviceSession(credentials, registered.membershipTicket);
+    await cacheOfflineVaultProfile(credentials.accountRecord);
 
     // Only clear the form after the server confirms that registration succeeded.
     credentials.accountRecord.questionAnswers.forEach(item => { item.answer = ''; });
@@ -584,6 +674,7 @@ async function submitLegacyUpgrade(event) {
     const migrated = await accountRequest('/account/migrate-legacy', payload);
     accountMigrated = true;
     await establishDeviceSession(credentials, migrated.membershipTicket);
+    await cacheOfflineVaultProfile(credentials.accountRecord);
 
     // Clear the one-time migration material after successful completion.
     wipeWriteToken(credentials.legacyWriteToken);
@@ -638,6 +729,11 @@ async function submitLegacyUpgrade(event) {
 async function submitRecoveryAnswers(event) {
   event.preventDefault();
   if (loginInProgress || activeCredentials) return;
+  if (window.navigator?.onLine === false) {
+    setStatus('vault-recovery-message', 'Account recovery requires an internet connection. Offline access cannot change account credentials.', 'error');
+    clearAnswerFields('recovery');
+    return;
+  }
   const answers = collectAnswers('recovery');
   const validation = validateRecoveryAnswers(answers);
   if (!validation.valid) {
@@ -670,6 +766,10 @@ async function submitRecoveryAnswers(event) {
 async function completeRecovery(event) {
   event.preventDefault();
   if (loginInProgress || !recoverySession) return;
+  if (window.navigator?.onLine === false) {
+    setStatus('vault-recovery-message', 'Username and passphrase changes require an internet connection. No account changes were made.', 'error');
+    return;
+  }
 
   const newUsernameRaw = byId('recovery-new-username')?.value || '';
   const newUsername = newUsernameRaw ? validateVaultUsername(newUsernameRaw) : { valid: true, normalized: '' };
@@ -727,6 +827,11 @@ async function completeRecovery(event) {
     }
     const saved = await accountRequest('/account/complete-recovery', payload);
     const recoveredUsername = saved.username;
+    try {
+      await deleteOfflineVaultProfilesForVault(recoverySession.vaultId);
+    } catch (cacheError) {
+      console.warn('[Vault Session] The previous device-local sign-in record could not be cleared.', cacheError);
+    }
     clearRecoverySession();
     if (byId('vault-username')) byId('vault-username').value = recoveredUsername;
     if (newPassphraseField) newPassphraseField.value = '';
@@ -761,12 +866,14 @@ export async function lockAccount(message = 'Your account is locked. Please sign
   setBusy('vault-login-submit', true, 'LOG IN', 'Locking account…');
 
   // Revoke the server session concurrently with the local encrypted flush.
-  const revocationPromise = revokeDeviceSession(credentialsToRevoke)
-    .then(confirmed => ({
-      confirmed: confirmed === true,
-      error: confirmed === true ? null : new Error('The server did not confirm device-session revocation.')
-    }))
-    .catch(error => ({ confirmed: false, error }));
+  const revocationPromise = credentialsToRevoke.offlineOnly === true
+    ? Promise.resolve({ confirmed: false, skipped: true, error: null })
+    : revokeDeviceSession(credentialsToRevoke)
+      .then(confirmed => ({
+        confirmed: confirmed === true,
+        error: confirmed === true ? null : new Error('The server did not confirm device-session revocation.')
+      }))
+      .catch(error => ({ confirmed: false, error }));
 
   let localSaveError = null;
   let syncStopError = null;
@@ -791,7 +898,7 @@ export async function lockAccount(message = 'Your account is locked. Please sign
     }
 
     revocation = await revocationPromise;
-    if (!revocation.confirmed) {
+    if (credentialsToRevoke.offlineOnly !== true && !revocation.confirmed) {
       console.warn('[Vault Session] Server device-session revocation was not confirmed; the server-side expiry remains the fallback.', revocation.error);
     }
   } finally {
@@ -810,7 +917,9 @@ export async function lockAccount(message = 'Your account is locked. Please sign
   const warnings = [];
   if (localSaveError) warnings.push('The final local Diary save could not be confirmed; previously saved encrypted records remain on this device.');
   if (syncStopError) warnings.push('Local sync cleanup could not be confirmed.');
-  if (!revocation.confirmed) warnings.push('The server did not confirm session revocation; its session expiry remains the fallback.');
+  if (credentialsToRevoke.offlineOnly !== true && !revocation.confirmed) {
+    warnings.push('The server did not confirm session revocation; its session expiry remains the fallback.');
+  }
   if (warnings.length) setStatus('vault-login-message', message + ' ' + warnings.join(' '), 'error');
 }
 
