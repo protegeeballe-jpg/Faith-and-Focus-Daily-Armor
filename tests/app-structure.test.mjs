@@ -488,7 +488,8 @@ test('unified vault login derives separate credentials and synchronizes encrypte
  assert.match(session,/recoverVaultMasterKey/);
  assert.match(session,/wipeWriteToken/);
  assert.doesNotMatch(session,/sessionStorage/);
- assert.doesNotMatch(sync,/scheduleCloudPush|setInterval|addEventListener\('online'/);
+ assert.doesNotMatch(sync,/scheduleCloudPush|setInterval/);
+ assert.match(sync,/window\.addEventListener\('online', handleOnline\)/);
  assert.match(sync,/document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
  assert.match(sync,/window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
  assert.match(sync,/X-App-Client/);
@@ -859,7 +860,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v25-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v26-stable-app/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -870,7 +871,7 @@ test('vault sync retries date-level conditional-write conflicts and Settings has
  assert.match(sync,/attempt <= MAX_DATE_RECONCILE_ATTEMPTS/);
  assert.match(sync,/error\.code !== 'VAULT_CONFLICT'/);
  assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt\)/);
- assert.match(sync,/next verified sign-in/);
+ assert.match(sync,/when the connection returns/);
  assert.match(sync,/await reconcileDay\(record\.dateString, null\)/);
  assert.match(sync,/const pendingRecords = finalLocalRecords\.filter\(record => record\.dirty\)/);
  assert.match(sync,/expectedPacket: unchangedSinceSnapshot \? local\.packet : null/);
@@ -884,16 +885,18 @@ test('vault sync retries date-level conditional-write conflicts and Settings has
  assert.match(vaultSession,/SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });
 
-test('vault synchronization starts after verified sign-in and keeps later changes local',()=>{
+test('vault synchronization starts after verified sign-in and automatically syncs later Diary changes',()=>{
  const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
  assert.match(sync,/hasVerifiedDeviceSession\(credentials\)/);
  assert.match(sync,/deviceSessionExpiresAt <= Date\.now\(\)/);
+ assert.match(sync,/function scheduleCapture[\s\S]*?queueVaultSync\(\{ dateString \}\)/);
  assert.match(sync,/window\.addEventListener\('faith-focus:local-data-changed', handleLocalDataChanged\)/);
+ assert.match(sync,/window\.addEventListener\('online', handleOnline\)/);
  assert.match(sync,/window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
- assert.doesNotMatch(sync,/installVaultSyncRefresh|foregroundRefreshCleanup|setInterval|scheduleCloudPush|cloudDebounceTimer|handleOnline/);
+ assert.doesNotMatch(sync,/setInterval/);
  assert.match(sync,/dirty:\s*true/);
- assert.match(sync,/Your next verified sign-in will reconcile this packet/);
- assert.equal((sync.match(/await synchronizeVault\(\)/g)||[]).length,3);
+ assert.match(sync,/Cloud synchronization is queued/);
+ assert.match(sync,/when the connection returns/);
  assert.match(vaultSession,/await establishDeviceSession\(credentials, unlocked\.membershipTicket\);[\s\S]*?await startVaultSync\(credentials\);/);
  assert.equal((vaultSession.match(/await startVaultSync\(credentials\)/g)||[]).length,3);
 });
@@ -902,11 +905,10 @@ test('completed voice notes upload encrypted attachments and publish their manif
  assert.equal((voiceNoteStore.match(/voiceNote: true/g)||[]).length,2);
  assert.match(vaultSync,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
  assert.match(vaultSync,/index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
- assert.match(vaultSync,/function queueCompletedVoiceNoteSync\(dateString\)/);
- assert.match(vaultSync,/await captureDailyPacket\(dateString\)/);
- assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\(dateString\)/);
+ assert.match(vaultSync,/function queueVaultSync\(/);
+ assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
  assert.match(vaultSync,/await synchronizeVault\(\)/);
- assert.match(vaultSync,/event\?\.detail\?\.voiceNote === true/);
+ assert.match(vaultSync,/function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
  assert.match(voiceNoteStore,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100/);
 });
 
@@ -919,7 +921,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v25-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v26-stable-app/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{

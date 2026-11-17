@@ -57,16 +57,24 @@ test('local packets remain dirty until the cloud accepts their upload', () => {
   assert.match(syncSource, /deviceSessionExpiresAt <= Date\.now\(\)/);
 });
 
-test('completed voice notes use a targeted sync path without periodic background sync', () => {
-  assert.doesNotMatch(syncSource, /installVaultSyncRefresh|setInterval|scheduleCloudPush|cloudDebounceTimer|pendingCloudDates|handleOnline|refreshVaultFromForeground/);
-  assert.equal((syncSource.match(/await synchronizeVault\(\)/g) || []).length, 3);
-  assert.match(syncSource, /queueCompletedVoiceNoteSync/);
-  assert.match(syncSource, /event\?\.detail\?\.voiceNote === true/);
-  assert.match(syncSource, /window\.addEventListener\('faith-focus:local-data-changed', handleLocalDataChanged\)/);
-  assert.match(syncSource, /window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
+test('Diary writes and voice notes share a debounced cloud queue with guarded foreground refresh', () => {
+  assert.doesNotMatch(syncSource, /installVaultSyncRefresh|setInterval|scheduleCloudPush|cloudDebounceTimer|refreshVaultFromForeground/);
+  assert.match(syncSource, /const DAILY_SYNC_DEBOUNCE_MS = 1200/);
+  assert.match(syncSource, /const DAILY_SYNC_MIN_INTERVAL_MS = 3500/);
+  assert.ok(syncSource.includes('queueVaultSync({ dateString });'));
+  assert.match(syncSource, /function queueVaultSync\(/);
+  assert.match(syncSource, /await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
+  assert.match(syncSource, /await uploadAllPendingVoiceNoteAttachments\(\)/);
+  assert.match(syncSource, /await synchronizeVault\(\)/);
+  assert.match(syncSource, /function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
+  assert.match(syncSource, /function handleOnline\(\)/);
+  assert.ok(syncSource.includes("window.addEventListener('online', handleOnline);"));
+  assert.ok(syncSource.includes("window.removeEventListener('online', handleOnline);"));
+  assert.ok(syncSource.includes("queueVaultSync({ refreshAll: true, immediate: true });"));
 
   const flushStart = syncSource.indexOf('function flushLocalVaultChanges()');
   const flushEnd = syncSource.indexOf('export async function stopVaultSync()', flushStart);
   const flushSource = syncSource.slice(flushStart, flushEnd);
   assert.doesNotMatch(flushSource, /synchronizeVault|vaultRequest\(/);
+  assert.match(syncSource.slice(flushEnd), /clearTimeout\(dailySyncTimer\)/);
 });

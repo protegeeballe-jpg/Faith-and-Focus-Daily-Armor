@@ -553,6 +553,14 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
   }), env);
   assert.equal(indexResponse.status, 200);
 
+  const wrongDeviceRevokeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/session/revoke', {
+    body: { deviceId: Buffer.alloc(32, 9).toString('base64url') },
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(wrongDeviceRevokeResponse.status, 401);
+  assert.equal([...coordinatorStorage.keys()].some(key => key.startsWith('device-session:')), true);
+
   const revokeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/session/revoke', {
     body: { deviceId },
     membershipTicket: unlockData.membershipTicket,
@@ -560,6 +568,16 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
   }), env);
   assert.equal(revokeResponse.status, 200);
   assert.equal([...coordinatorStorage.keys()].some(key => key.startsWith('device-session:')), false);
+
+  const repeatedRevokeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/session/revoke', {
+    body: { deviceId },
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(repeatedRevokeResponse.status, 200);
+  assert.deepEqual(await responseJson(repeatedRevokeResponse), {
+    ok: true, revoked: false, alreadyRevoked: true
+  });
 
   const revokedSessionRequest = await worker.fetch(accountRequest('/vault/' + vaultId + '/index', {
     method: 'GET',
