@@ -476,15 +476,11 @@ async function submitVaultLogin(event) {
     }
     credentials = await finishVaultLogin(account, loginMaterial, unlocked.passphraseEnvelope);
     loginMaterial = null;
-    try {
-      await establishDeviceSession(credentials, unlocked.membershipTicket);
-    } catch (deviceError) {
-      if (isOfflineFallbackEligible(deviceError)) {
-        await openOfflineSession();
-        return;
-      }
-      throw deviceError;
+    if (window.navigator?.onLine === false) {
+      await openOfflineSession();
+      return;
     }
+    await establishDeviceSession(credentials, unlocked.membershipTicket);
 
     offlineProfileSaved = await cacheOfflineVaultProfile({
       username: account.username,
