@@ -24,7 +24,8 @@ test('ordinary vault packet edits remain local while completed voice notes use t
   assert.match(sync, /document\.addEventListener\('visibilitychange', handleVisibilityChange\)/);
   assert.match(sync, /window\.addEventListener\('pagehide', flushLocalVaultChanges\)/);
   assert.match(sync, /function synchronizeVault\(/);
-  assert.match(sync, /function performVaultSync\(/);\n  assert.match(sync, /queueCompletedVoiceNoteSync/);
+  assert.match(sync, /function performVaultSync\(/);
+  assert.match(sync, /queueCompletedVoiceNoteSync/);
   assert.equal((sync.match(/await synchronizeVault\(\)/g) || []).length, 3);
   assert.match(session, /SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });
