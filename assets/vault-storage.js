@@ -1,11 +1,11 @@
-const DATABASE_NAME = 'faith_focus_vault_packets_v1';
-const DATABASE_VERSION = 2;
-const PACKET_STORE = 'dailyPackets';
-const OFFLINE_PROFILE_STORE = 'offlineProfiles';
 import {
   VAULT_KDF_ITERATIONS, isValidKeyEnvelope, validateVaultUsername
 } from './vault-crypto.js';
 
+const DATABASE_NAME = 'faith_focus_vault_packets_v1';
+const DATABASE_VERSION = 2;
+const PACKET_STORE = 'dailyPackets';
+const OFFLINE_PROFILE_STORE = 'offlineProfiles';
 const OFFLINE_PROFILE_VERSION = 1;
 let databasePromise = null;
 
@@ -90,7 +90,7 @@ export async function putLocalDailyPacket(record) {
   });
   await done;
 }
- 
+
 function isValidOfflineVaultProfile(profile) {
   const username = validateVaultUsername(profile?.username);
   return Boolean(profile && typeof profile === 'object' && !Array.isArray(profile)
