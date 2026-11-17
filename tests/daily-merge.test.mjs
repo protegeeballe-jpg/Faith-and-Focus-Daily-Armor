@@ -165,3 +165,20 @@ test('invalid voice-note data blocks the merge safely', () => {
         /Both device copies remain preserved/
     );
 });
+
+
+test('legacy full voice-note records and attachment manifests merge as the same recording', () => {
+    const full = voiceNote('c', '2026-11-13T03:00:00.000Z');
+    const manifest = { ...full };
+    delete manifest.ciphertext;
+    manifest.attachmentVersion = 1;
+    manifest.ciphertextBytes = Buffer.from(full.ciphertext, 'base64').byteLength;
+    manifest.ciphertextLength = full.ciphertext.length;
+    manifest.attachmentChunkCount = 1;
+
+    const merged = mergeEncryptedVoiceNoteRecords([full], [manifest], dateString);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0].id, full.id);
+    assert.equal(merged[0].ciphertext, full.ciphertext);
+    assert.equal(Object.hasOwn(merged[0], 'attachmentVersion'), false);
+});

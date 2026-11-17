@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import {
+    createVoiceNoteAttachmentManifest,
     decryptVoiceNoteRecord,
+    decryptVoiceNoteSegment,
     encryptVoiceNoteBlob,
+    encryptVoiceNoteSegment,
+    isVoiceNoteAttachmentManifest,
     validateEncryptedVoiceNoteBackup,
     validateEncryptedVoiceNoteRecord
 } from '../assets/voice-note-store.js';
@@ -69,4 +74,75 @@ test('voice-note backup validation rejects malformed records and duplicate ident
     assert.equal(validateEncryptedVoiceNoteBackup([valid, valid]), false);
     assert.equal(validateEncryptedVoiceNoteBackup([{ ...valid, ciphertext: 'not base64!' }]), false);
     assert.equal(validateEncryptedVoiceNoteBackup({ records: [valid] }), false);
+});
+
+
+test('daily sync manifests omit audio ciphertext but retain authenticated attachment metadata', async () => {
+    const key = await createKey();
+    const full = await encryptVoiceNoteBlob(
+        new Blob(['encrypted audio fixture bytes'], { type: 'audio/webm;codecs=opus' }),
+        key,
+        DATE,
+        ID,
+        '2026-11-10T12:00:00.000Z'
+    );
+    const manifest = createVoiceNoteAttachmentManifest(full);
+
+    assert.equal(Object.hasOwn(manifest, 'ciphertext'), false);
+    assert.equal(manifest.attachmentVersion, 1);
+    assert.equal(manifest.ciphertextBytes, Buffer.from(full.ciphertext, 'base64').byteLength);
+    assert.equal(manifest.ciphertextLength, full.ciphertext.length);
+    assert.equal(manifest.attachmentChunkCount, 1);
+    assert.equal(validateEncryptedVoiceNoteRecord(manifest), true);
+    assert.equal(isVoiceNoteAttachmentManifest(manifest), true);
+    assert.equal(validateEncryptedVoiceNoteBackup([manifest]), false);
+    assert.equal(validateEncryptedVoiceNoteBackup([full]), true);
+});
+
+test('oversized voice-note manifests and ciphertext are rejected', () => {
+    const base = {
+        id: ID,
+        dateString: DATE,
+        version: 1,
+        algorithm: 'AES-256-GCM',
+        mimeType: 'audio/webm',
+        capturedAt: '2026-11-10T12:00:00.000Z',
+        iv: 'AAAAAAAAAAAAAAAA'
+    };
+    assert.equal(validateEncryptedVoiceNoteRecord({
+        ...base,
+        attachmentVersion: 1,
+        ciphertextBytes: 16 * 1024 * 1024 + 17
+    }), false);
+});
+
+
+test('progressive voice-note segments are encrypted independently and bound to their order', async () => {
+    const key = await createKey();
+    const draft = { id: ID, dateString: DATE, mimeType: 'audio/webm;codecs=opus' };
+    const original = new Blob([new Uint8Array([1, 2, 3, 4, 5, 6])], { type: draft.mimeType });
+    const encrypted = await encryptVoiceNoteSegment(original, key, draft, 7, draft.mimeType);
+
+    assert.equal(encrypted.segmentId, ID + '-000007');
+    assert.notEqual(encrypted.ciphertext, Buffer.from(await original.arrayBuffer()).toString('base64'));
+    const restored = await decryptVoiceNoteSegment(encrypted, key);
+    assert.deepEqual(
+        new Uint8Array(await restored.arrayBuffer()),
+        new Uint8Array(await original.arrayBuffer())
+    );
+    await assert.rejects(
+        decryptVoiceNoteSegment({ ...encrypted, sequence: 8, segmentId: ID + '-000008' }, key)
+    );
+    await assert.rejects(
+        decryptVoiceNoteSegment({ ...encrypted, voiceNoteId: DATE + '-ffffffffffffffffffffffffffffffff' }, key)
+    );
+});
+
+test('recording drafts are indexed separately from completed voice notes', () => {
+    const source = readFileSync(new URL('../assets/voice-note-store.js', import.meta.url), 'utf8');
+    assert.match(source, /const VOICE_NOTE_DB_VERSION = 3/);
+    assert.match(source, /createObjectStore\(RECORDING_DRAFT_STORE_NAME/);
+    assert.match(source, /createObjectStore\(RECORDING_SEGMENT_STORE_NAME/);
+    assert.match(source, /recoverEncryptedVoiceNoteDrafts/);
+    assert.match(source, /VOICE_NOTE_DRAFT_RECOVERY_AGE_MS = 2 \* 60 \* 1000/);
 });

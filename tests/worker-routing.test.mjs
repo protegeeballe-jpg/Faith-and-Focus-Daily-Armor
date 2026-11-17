@@ -6,7 +6,7 @@ import worker from '../worker.js';
 
 const PEPPER = 'worker-routing-test-secret-with-at-least-32-characters';
 
-function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write = true, throws = [] } = {}) {
+function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write = true, voiceWrite = true, throws = [] } = {}) {
   const calls = [];
   const create = (name, success) => ({
     async limit({ key }) {
@@ -21,7 +21,8 @@ function makeEdgeLimiters({ auth = true, sensitive = true, vault = true, write =
     AUTH_IP_RATE_LIMITER: create("auth", auth),
     SENSITIVE_IP_RATE_LIMITER: create("sensitive", sensitive),
     VAULT_ACCOUNT_RATE_LIMITER: create("vault", vault),
-    VAULT_WRITE_ACCOUNT_RATE_LIMITER: create("write", write)
+    VAULT_WRITE_ACCOUNT_RATE_LIMITER: create("write", write),
+    VOICE_NOTE_WRITE_ACCOUNT_RATE_LIMITER: create("voice-write", voiceWrite)
   };
 }
 
@@ -387,16 +388,72 @@ test('Cloudflare native edge rate-limit bindings are configured with supported m
     ['AUTH_IP_RATE_LIMITER', 120],
     ['SENSITIVE_IP_RATE_LIMITER', 5],
     ['VAULT_ACCOUNT_RATE_LIMITER', 120],
-    ['VAULT_WRITE_ACCOUNT_RATE_LIMITER', 20]
+    ['VAULT_WRITE_ACCOUNT_RATE_LIMITER', 20],
+    ['VOICE_NOTE_WRITE_ACCOUNT_RATE_LIMITER', 100]
   ]) {
     const start = wrangler.indexOf('name = "' + name + '"');
     assert.ok(start >= 0, 'Missing binding ' + name);
     const section = wrangler.slice(start);
     assert.match(section, new RegExp('limit = ' + limit + '\\s+period = 60'));
   }
-  assert.equal((wrangler.match(/\[\[ratelimits\]\]/g) || []).length, 4);
+  assert.equal((wrangler.match(/\[\[ratelimits\]\]/g) || []).length, 5);
 });
 
+
+test('voice-note chunk uploads use their separate account write ceiling', async () => {
+  const limiters = makeEdgeLimiters({ write: false, voiceWrite: true });
+  const vaultId = 'a'.repeat(64);
+  const dateString = '2026-11-13';
+  const voiceId = dateString + '-0123456789abcdef0123456789abcdef';
+  const ticket = await membershipTicket(vaultId);
+  let forwardedPath = null;
+  const payload = {
+    id: voiceId,
+    dateString,
+    index: 0,
+    totalChunks: 1,
+    ciphertextLength: 24,
+    ciphertextChunk: 'AAAAAAAAAAAAAAAAAAAAAAAA'
+  };
+  const env = {
+    ...limiters,
+    MEMBERSHIP_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName: id => id,
+      get: () => ({
+        fetch: async request => {
+          forwardedPath = new URL(request.url).pathname;
+          return new Response(JSON.stringify({ ok: true, stored: true }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      })
+    }
+  };
+  const response = await worker.fetch(new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId
+      + '/voice-note/' + dateString + '/' + voiceId + '/0',
+    {
+      method: 'PUT',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'X-App-Client': 'faith-focus-daily-armor-web/1',
+        'CF-Connecting-IP': '203.0.113.51',
+        'X-Vault-Membership': ticket,
+        'X-Device-Session': 's'.repeat(43),
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    }
+  ), env);
+
+  assert.equal(response.status, 200);
+  assert.equal(forwardedPath, '/voice-note/' + dateString + '/' + voiceId + '/0');
+  assert.ok(limiters.calls.some(call => call.name === 'voice-write'));
+  assert.equal(limiters.calls.some(call => call.name === 'write'), false);
+});
 
 test('authenticated vault edge limits key by vault ID instead of shared client IP', async () => {
   const limiters = makeEdgeLimiters();

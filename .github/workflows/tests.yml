@@ -39,5 +39,7 @@ jobs:
           node --check assets/gist-sync.js
           node --check assets/location-checkin.js
           node --check assets/voice-note-store.js
+      - name: Validate Worker configuration and bundle
+        run: npx --yes wrangler@4.134.0 deploy --dry-run --outdir=/tmp/faith-focus-worker
       - name: Run regression and security tests
         run: node --test tests/*.test.mjs

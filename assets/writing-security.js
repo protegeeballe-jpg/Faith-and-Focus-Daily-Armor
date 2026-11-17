@@ -1,7 +1,9 @@
 import {
     saveEncryptedVoiceNote, loadEncryptedVoiceNotes,
-    exportEncryptedVoiceNotes, restoreEncryptedVoiceNotes,
+    exportEncryptedVoiceNotes, restoreEncryptedVoiceNotes, mergeEncryptedVoiceNotes,
     validateEncryptedVoiceNoteBackup, encryptVoiceNoteBlob, decryptVoiceNoteRecord,
+    createEncryptedVoiceNoteDraft, saveEncryptedVoiceNoteSegment, finalizeEncryptedVoiceNoteDraft,
+    discardEmptyEncryptedVoiceNoteDraft,
     quarantineLegacyWritingRecords
 } from './voice-note-store.js';
 import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-writing-migration.js';
@@ -830,6 +832,27 @@ export function savePrivateVoiceNoteForDate(dateStr,blob){
     voiceNoteSavePromise=voiceNoteSavePromise.then(task,task);
     return voiceNoteSavePromise;
 }
+export async function createPrivateVoiceNoteDraft(dateStr,mimeType){
+    if(!writingCryptoKey)throw new Error('Unlock your Diary before recording a voice note.');
+    return createEncryptedVoiceNoteDraft(dateStr,mimeType);
+}
+export async function savePrivateVoiceNoteSegment(draft,blob,sequence,mimeType){
+    if(!writingCryptoKey)throw new Error('The Diary locked before this audio segment could be saved.');
+    const key=writingCryptoKey;
+    const task=()=>saveEncryptedVoiceNoteSegment(draft,blob,key,sequence,mimeType);
+    voiceNoteSavePromise=voiceNoteSavePromise.then(task,task);
+    return voiceNoteSavePromise;
+}
+export async function finalizePrivateVoiceNoteDraft(draftId){
+    if(!writingCryptoKey)throw new Error('The Diary locked before this recording could be completed.');
+    const key=writingCryptoKey;
+    const task=()=>finalizeEncryptedVoiceNoteDraft(draftId,key);
+    voiceNoteSavePromise=voiceNoteSavePromise.then(task,task);
+    return voiceNoteSavePromise;
+}
+export async function discardEmptyPrivateVoiceNoteDraft(draftId){
+    return discardEmptyEncryptedVoiceNoteDraft(draftId);
+}
 export async function loadPrivateVoiceNotesForDate(dateStr){
     await voiceNoteSavePromise;
     if(!writingCryptoKey)throw new Error('Unlock your Diary to play saved voice notes.');
@@ -844,6 +867,10 @@ export async function exportPrivateVoiceNotes(){
 export async function restorePrivateVoiceNotes(records){
     if(!validateEncryptedVoiceNoteBackup(records))throw new Error('The backup contains invalid encrypted voice-note records.');
     await restoreEncryptedVoiceNotes(records);
+}
+export async function mergePrivateVoiceNotes(records){
+    if(!validateEncryptedVoiceNoteBackup(records))throw new Error('The backup contains invalid encrypted voice-note records.');
+    await mergeEncryptedVoiceNotes(records);
 }
 export function validatePrivateVoiceNoteBackup(records){
     return validateEncryptedVoiceNoteBackup(records);
