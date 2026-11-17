@@ -28,14 +28,6 @@ Please review the [Privacy Policy](./privacy.html) and [Terms of Service](./term
 
 Settings provides an optional encrypted JSON export and import for supported daily data. Keep exported files private, and import a backup only into the account it belongs to.
 
-## Development
-
-The project uses standard browser technologies. To run the automated tests:
-
-```sh
-node --test tests/*.test.mjs
-```
-
 ## Project links
 
 - [Open the application](./home.html)
