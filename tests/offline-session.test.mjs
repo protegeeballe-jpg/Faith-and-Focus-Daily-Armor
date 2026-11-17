@@ -60,6 +60,7 @@ test('a device-local envelope unlocks existing encrypted data without storing a 
     async value => Buffer.from(value, 'utf8').toString('base64'),
     webcrypto
   );
+  assert.equal(packet.compression, 'gzip-base64');
   const restored = await decryptDailyBundle(
     packet,
     localSession.encryptionKey,
@@ -105,6 +106,16 @@ test('offline sign-in uses only the saved envelope and discards online credentia
   assert.match(offlineUnlock, /credentials\.writeToken = null/);
   assert.match(offlineUnlock, /credentials\.offlineOnly = true/);
   assert.doesNotMatch(offlineUnlock, /accountRequest\(|establishDeviceSession\(|startVaultSync\(/);
+  const login = session.slice(
+    session.indexOf('async function submitVaultLogin(event) {'),
+    session.indexOf('async function submitVaultSignup(event) {')
+  );
+  const deviceVerification = login.indexOf('await establishDeviceSession(credentials, unlocked.membershipTicket);');
+  assert.ok(deviceVerification >= 0);
+  const migrationAt = login.indexOf('const migration =', deviceVerification);
+  assert.ok(migrationAt > deviceVerification);
+  assert.doesNotMatch(login.slice(deviceVerification, migrationAt), /openOfflineSession\(/);
+  assert.match(login, /offlineProfileSaved = await cacheOfflineVaultProfile\(/);
 });
 
 test('offline-only mode cannot create or use cloud sessions', () => {
@@ -117,9 +128,9 @@ test('offline-only mode cannot create or use cloud sessions', () => {
     sync.indexOf('export async function startVaultSync(')
   );
   assert.match(localStart, /credentials\.offlineOnly !== true/);
-  assert.match(localStart, /!credentials\.writeToken/);
-  assert.match(localStart, /!credentials\.vaultMembershipTicket/);
-  assert.match(localStart, /!credentials\.deviceSessionToken/);
+  assert.match(localStart, /\|\| credentials\.writeToken/);
+  assert.match(localStart, /\|\| credentials\.vaultMembershipTicket/);
+  assert.match(localStart, /\|\| credentials\.deviceSessionToken/);
   assert.match(localStart, /await captureExistingLocalDates\(\)/);
   assert.doesNotMatch(localStart, /vaultRequest\(|synchronizeVault\(/);
 });
