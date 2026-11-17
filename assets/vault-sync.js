@@ -7,8 +7,10 @@ import {
   getLocalDailyPacket, listLocalDailyPackets, putLocalDailyPacket, markLocalDailyPacketSynced
 } from './vault-storage.js';
 import {
-  exportEncryptedVoiceNotes, exportEncryptedVoiceNotesForDate, restoreEncryptedVoiceNotesForDate,
-  validateEncryptedVoiceNoteRecord
+  exportEncryptedVoiceNotes, exportEncryptedVoiceNotesForDate, exportEncryptedVoiceNotesForDateFull,
+  restoreEncryptedVoiceNotesForDate, getEncryptedVoiceNoteRecord, markEncryptedVoiceNoteUploaded,
+  saveEncryptedVoiceNoteRecord, createVoiceNoteAttachmentManifest, validateEncryptedVoiceNoteRecord,
+  VOICE_NOTE_ATTACHMENT_CHUNK_CHARS
 } from './voice-note-store.js';
 import { GARDEN_STORAGE_KEY, GARDEN_DAILY_SYNC_PREFIX, mergeGardenStates, validateGardenState } from './garden-model.js';
 import { mergeDailyBundles } from './daily-merge.js';
@@ -320,6 +322,141 @@ async function vaultRequest(path, { method = 'GET', body = null, baseUpdatedAt }
   return result;
 }
 
+async function requestVoiceNoteAttachment(dateString, id, {
+  index = 0,
+  ciphertextChunk,
+  ciphertextLength,
+  totalChunks
+} = {}) {
+  if (!activeVault || activeVault.offlineOnly === true) {
+    throw new Error('Voice-note cloud access requires an active online device session.');
+  }
+  if (!Number.isSafeInteger(index) || index < 0 || index >= 64) {
+    throw new TypeError('The encrypted voice-note chunk index is invalid.');
+  }
+  const headers = await getCredentialHeaders();
+  const uploading = ciphertextChunk !== undefined;
+  if (uploading) headers['Content-Type'] = 'application/json';
+  const controller = new AbortController();
+  activeVaultRequestControllers.add(controller);
+  const path = '/vault/' + activeVault.vaultId + '/voice-note/' + dateString + '/' + id + '/' + index;
+  try {
+    const response = await fetch(WORKER_ORIGIN + path, {
+      method: uploading ? 'PUT' : 'GET',
+      mode: 'cors',
+      credentials: 'omit',
+      cache: 'no-store',
+      redirect: 'error',
+      headers,
+      body: uploading ? JSON.stringify({
+        id, dateString, index, totalChunks, ciphertextLength, ciphertextChunk
+      }) : undefined,
+      signal: controller.signal
+    });
+    let result = {};
+    try { result = await response.json(); } catch { result = {}; }
+    if (!response.ok) {
+      if (response.status === 401) throw new Error('Your device session expired. Sign in again before synchronizing voice notes.');
+      if (response.status === 404) return null;
+      if (response.status === 413) throw new Error('An encrypted voice-note segment exceeds the request limit. Its local copy remains saved.');
+      if (response.status === 429) throw new Error(result.error || 'The cloud service is receiving too many requests. Try again later.');
+      throw new Error(result.error || 'Voice-note synchronization failed (HTTP ' + response.status + ').');
+    }
+    return result;
+  } catch (error) {
+    if (error instanceof TypeError || error?.name === 'NetworkError') {
+      throw new Error('Voice-note synchronization is temporarily unavailable. The encrypted recording remains saved on this device.');
+    }
+    throw error;
+  } finally {
+    activeVaultRequestControllers.delete(controller);
+  }
+}
+
+async function uploadPendingVoiceNoteAttachments(dateString) {
+  if (!activeVault || activeVault.offlineOnly === true) return 0;
+  const records = await exportEncryptedVoiceNotesForDateFull(dateString);
+  let uploaded = 0;
+  for (const record of records) {
+    if (record.remoteUploaded === true) continue;
+    const ciphertextLength = record.ciphertext.length;
+    const totalChunks = Math.ceil(ciphertextLength / VOICE_NOTE_ATTACHMENT_CHUNK_CHARS);
+    for (let index = 0; index < totalChunks; index += 1) {
+      const start = index * VOICE_NOTE_ATTACHMENT_CHUNK_CHARS;
+      const ciphertextChunk = record.ciphertext.slice(start, start + VOICE_NOTE_ATTACHMENT_CHUNK_CHARS);
+      const result = await requestVoiceNoteAttachment(dateString, record.id, {
+        index, ciphertextChunk, ciphertextLength, totalChunks
+      });
+      if (result?.id !== record.id || result?.dateString !== dateString
+          || result?.stored !== true || result?.index !== index || result?.totalChunks !== totalChunks) {
+        throw new Error('The cloud did not confirm encrypted voice-note segment ' + (index + 1) + ' of ' + totalChunks + '. The full local recording remains queued.');
+      }
+    }
+    await markEncryptedVoiceNoteUploaded(record.id);
+    uploaded += 1;
+  }
+  return uploaded;
+}
+
+async function uploadAllPendingVoiceNoteAttachments() {
+  if (!activeVault || activeVault.offlineOnly === true) return 0;
+  const records = await exportEncryptedVoiceNotes();
+  const dates = [...new Set(records.map(record => record.dateString))].sort();
+  let uploaded = 0;
+  for (const dateString of dates) uploaded += await uploadPendingVoiceNoteAttachments(dateString);
+  return uploaded;
+}
+
+async function hydrateVoiceNoteAttachments(dateString, notes) {
+  if (!Array.isArray(notes) || notes.length > 100) {
+    throw new Error('The daily packet contains an invalid voice-note list. Both encrypted copies remain preserved.');
+  }
+  const localRecords = await exportEncryptedVoiceNotesForDateFull(dateString);
+  const localById = new Map(localRecords.map(record => [record.id, record]));
+  const hydrated = [];
+  for (const note of notes) {
+    if (!validateEncryptedVoiceNoteRecord(note) || note.dateString !== dateString) {
+      throw new Error('A voice-note entry failed validation. Both encrypted copies remain preserved.');
+    }
+    if (typeof note.ciphertext === 'string') {
+      // Legacy packets embed the full audio, but the separate attachment key
+      // may not exist yet. Queue it for the next authorized upload pass.
+      hydrated.push({ ...note, remoteUploaded: false });
+      continue;
+    }
+    const local = localById.get(note.id);
+    if (local) {
+      const localManifest = createVoiceNoteAttachmentManifest(local);
+      if (JSON.stringify(localManifest) !== JSON.stringify(note)) {
+        throw new Error('A local voice note does not match the synchronized manifest. Both copies remain preserved.');
+      }
+      hydrated.push(local);
+      continue;
+    }
+    const chunks = [];
+    for (let index = 0; index < note.attachmentChunkCount; index += 1) {
+      const remote = await requestVoiceNoteAttachment(dateString, note.id, { index });
+      if (!remote || remote.id !== note.id || remote.dateString !== dateString
+          || remote.index !== index || remote.totalChunks !== note.attachmentChunkCount
+          || remote.ciphertextLength !== note.ciphertextLength
+          || typeof remote.ciphertextChunk !== 'string') {
+        throw new Error('Encrypted voice-note segment ' + (index + 1) + ' is not available yet. Other local Diary data remains preserved.');
+      }
+      chunks.push(remote.ciphertextChunk);
+    }
+    const ciphertext = chunks.join('');
+    const restored = { ...note, ciphertext, remoteUploaded: true };
+    if (!validateEncryptedVoiceNoteRecord(restored)
+        || restored.ciphertext.length !== note.ciphertextLength
+        || atob(restored.ciphertext).length !== note.ciphertextBytes) {
+      throw new Error('A downloaded voice-note attachment failed its integrity checks. The local Diary remains preserved.');
+    }
+    await saveEncryptedVoiceNoteRecord(restored, { remoteUploaded: true });
+    hydrated.push(restored);
+  }
+  return hydrated;
+}
+
 async function captureDailyPacket(dateString) {
   if (!activeVault || !isValidDateString(dateString) || applyingRemotePacket) return;
   const version = (localChangeVersions.get(dateString) || 0) + 1;
@@ -466,6 +603,7 @@ function canonicalBundle(bundle) {
 }
 
 async function restoreDailyBundle(bundle) {
+  const hydratedVoiceNotes = await hydrateVoiceNoteAttachments(bundle.dateString, bundle.voiceNotes);
   applyingRemotePacket += 1;
   try {
     for (const [key, value] of Object.entries(bundle.records)) {
@@ -473,7 +611,7 @@ async function restoreDailyBundle(bundle) {
       if (isDailyRecordKey(key) && typeof value === 'string') localStorage.setItem(key, value);
     }
     restoreSharedAppState(bundle, { replaceConfidence: true });
-    await restoreEncryptedVoiceNotesForDate(bundle.dateString, bundle.voiceNotes);
+    await restoreEncryptedVoiceNotesForDate(bundle.dateString, hydratedVoiceNotes);
   } finally {
     applyingRemotePacket -= 1;
   }
@@ -789,15 +927,32 @@ export async function startVaultSync(credentials) {
   // packet merely because account-wide settings exist on this device.
   await captureExistingLocalDates();
   if (!isCurrent()) return false;
-  await synchronizeVault();
+
+  // Publish daily manifests only after their separate encrypted attachments
+  // have been accepted by the Worker. A missing/new Worker route must not make
+  // sign-in fail or publish references to unavailable audio objects.
+  let voiceAttachmentsReady = true;
+  try {
+    await uploadAllPendingVoiceNoteAttachments();
+  } catch (error) {
+    voiceAttachmentsReady = false;
+    console.warn('[Vault Sync] Encrypted voice notes remain queued locally; daily manifests were not published.', error);
+    status('Your account is open. Encrypted voice notes remain safely saved on this device and will sync after the storage service is ready.', 'info');
+  }
   if (!isCurrent()) return false;
+  if (voiceAttachmentsReady) {
+    await synchronizeVault();
+    if (!isCurrent()) return false;
+  }
 
   // Reconcile remote dates before attaching account-wide state to today's packet.
   // This lets a newly signed-in device receive today's Diary/location/voice data
   // instead of treating an empty bootstrap packet as a conflicting local edit.
-  if (localStorage.getItem(GARDEN_STORAGE_KEY) !== null
+  if (voiceAttachmentsReady && (
+      localStorage.getItem(GARDEN_STORAGE_KEY) !== null
       || localStorage.getItem(LEGACY_WRITING_CONFIG_KEY) !== null
-      || localStorage.getItem('user_confidence_score') !== null) {
+      || localStorage.getItem('user_confidence_score') !== null
+  )) {
     await captureDailyPacket(getCurrentDateString());
     if (!isCurrent()) return false;
     await synchronizeVault();

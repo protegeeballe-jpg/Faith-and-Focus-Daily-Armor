@@ -1,6 +1,9 @@
 const APP_ORIGIN = "https://protegeeballe-jpg.github.io";
 const APP_CLIENT = "faith-focus-daily-armor-web/1";
 const MAX_REQUEST_BYTES = 1024 * 1024;
+const MAX_VOICE_NOTE_CHUNK_CHARS = 256 * 1024;
+const MAX_VOICE_NOTE_CHUNKS = 100;
+const MAX_VOICE_NOTE_CIPHERTEXT_LENGTH = Math.ceil((16 * 1024 * 1024 + 16) / 3) * 4;
 const MAX_PACKET_CIPHERTEXT_BYTES = 700 * 1024 + 16;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const VAULT_ID_PATTERN = /^[a-f0-9]{64}$/;
@@ -184,9 +187,13 @@ async function enforceEdgeRateLimits(request, env, origin) {
   return null;
 }
 
-async function enforceVaultAccountRateLimits(vaultId, isWrite, env, origin) {
+async function enforceVaultAccountRateLimits(vaultId, isWrite, env, origin, isVoiceNoteWrite = false) {
   const checks = [[env.VAULT_ACCOUNT_RATE_LIMITER, "vault:v1:" + vaultId]];
-  if (isWrite) checks.push([env.VAULT_WRITE_ACCOUNT_RATE_LIMITER, "vault-write:v1:" + vaultId]);
+  if (isWrite) {
+    checks.push(isVoiceNoteWrite
+      ? [env.VOICE_NOTE_WRITE_ACCOUNT_RATE_LIMITER, "voice-note-write:v1:" + vaultId]
+      : [env.VAULT_WRITE_ACCOUNT_RATE_LIMITER, "vault-write:v1:" + vaultId]);
+  }
 
   for (const [binding, key] of checks) {
     if (!binding || typeof binding.limit !== "function") {
@@ -213,6 +220,36 @@ function validDate(value) {
   if (typeof value !== "string" || !DATE_PATTERN.test(value)) return false;
   const date = new Date(value + "T00:00:00.000Z");
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function validVoiceNoteId(id, dateString) {
+  return typeof id === "string" && new RegExp("^" + dateString + "-[a-f0-9]{32}$").test(id);
+}
+
+function validVoiceNoteChunkUpload(payload, dateString, id, index) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)
+      || Object.keys(payload).sort().join(",") !== "ciphertextChunk,ciphertextLength,dateString,id,index,totalChunks"
+      || payload.dateString !== dateString || payload.id !== id || payload.index !== index
+      || !Number.isSafeInteger(payload.totalChunks) || payload.totalChunks < 1
+      || payload.totalChunks > MAX_VOICE_NOTE_CHUNKS || index >= payload.totalChunks
+      || !Number.isSafeInteger(payload.ciphertextLength)
+      || payload.ciphertextLength < 24
+      || payload.ciphertextLength > MAX_VOICE_NOTE_CIPHERTEXT_LENGTH
+      || payload.ciphertextLength % 4 !== 0
+      || payload.totalChunks !== Math.ceil(payload.ciphertextLength / MAX_VOICE_NOTE_CHUNK_CHARS)
+      || typeof payload.ciphertextChunk !== "string"
+      || payload.ciphertextChunk.length !== Math.min(
+        MAX_VOICE_NOTE_CHUNK_CHARS,
+        payload.ciphertextLength - index * MAX_VOICE_NOTE_CHUNK_CHARS
+      )
+      || payload.ciphertextChunk.length % 4 !== 0
+      || !/^[A-Za-z0-9+/]+={0,2}$/.test(payload.ciphertextChunk)) return false;
+  try {
+    atob(payload.ciphertextChunk);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function validPacket(packet, dateString) {
@@ -469,7 +506,8 @@ export default {
     const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
     const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
     const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
-    const knownRoute = Boolean(accountRoute || legacyClaim || match);
+    const voiceNoteMatch = /^\/vault\/([a-f0-9]{64})\/voice-note\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2}-[a-f0-9]{32})\/(\d{1,2})$/.exec(url.pathname);
+    const knownRoute = Boolean(accountRoute || legacyClaim || match || voiceNoteMatch);
 
     if (!knownRoute) return jsonResponse({ error: "Route not found." }, 404, origin);
     if (url.search) return jsonResponse({ error: "Unexpected query parameters are not allowed." }, 400, origin);
@@ -492,6 +530,13 @@ export default {
       if (match[3] && !validDate(match[3])) {
         return jsonResponse({ error: "Invalid calendar date." }, 400, origin);
       }
+    }
+    if (voiceNoteMatch && (!validDate(voiceNoteMatch[2]) || !validVoiceNoteId(voiceNoteMatch[3], voiceNoteMatch[2])
+        || !Number.isInteger(Number(voiceNoteMatch[4])) || Number(voiceNoteMatch[4]) >= MAX_VOICE_NOTE_CHUNKS)) {
+      return jsonResponse({ error: "Invalid voice-note reference." }, 400, origin);
+    }
+    if (voiceNoteMatch && !["GET", "PUT"].includes(request.method)) {
+      return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
     if (!["GET", "POST", "PUT"].includes(request.method)) {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
@@ -616,7 +661,7 @@ export default {
       return jsonResponse({ ok: true, claimed: true, legacy: true }, 200, origin);
     }
 
-    if (!match || !VAULT_ID_PATTERN.test(match[1])) {
+    if ((!match && !voiceNoteMatch) || !VAULT_ID_PATTERN.test(match?.[1] || voiceNoteMatch?.[1] || "")) {
       return jsonResponse({ error: "Route not found." }, 404, origin);
     }
     if (!env.VAULT_PACKETS || !env.VAULT_COORDINATOR
@@ -624,9 +669,14 @@ export default {
       return jsonResponse({ error: "Cloudflare vault services are not configured." }, 503, origin);
     }
 
-    const [, vaultId, resource, dateString] = match;
-    const expectedMethods = resource === "index" ? ["GET"]
-      : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
+    const vaultId = match?.[1] || voiceNoteMatch?.[1];
+    const resource = voiceNoteMatch ? "voice-note" : match[2];
+    const dateString = voiceNoteMatch ? voiceNoteMatch[2] : match[3];
+    const voiceNoteId = voiceNoteMatch?.[3] || null;
+    const voiceNoteChunkIndex = voiceNoteMatch ? Number(voiceNoteMatch[4]) : null;
+    const expectedMethods = voiceNoteMatch ? ["GET", "PUT"]
+      : resource === "index" ? ["GET"]
+        : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
     if (!expectedMethods.includes(request.method)) {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
     }
@@ -643,11 +693,13 @@ export default {
       return jsonResponse({ error: "A valid account membership ticket is required. Please sign in again." }, 403, origin);
     }
 
+    const isVoiceNoteWrite = resource === "voice-note" && request.method === "PUT";
     const accountLimitResponse = await enforceVaultAccountRateLimits(
       vaultId,
-      resource.startsWith("day/") && request.method === "PUT",
+      (resource.startsWith("day/") && request.method === "PUT") || isVoiceNoteWrite,
       env,
-      origin
+      origin,
+      isVoiceNoteWrite
     );
     if (accountLimitResponse) return accountLimitResponse;
 
@@ -662,6 +714,10 @@ export default {
 
     const token = request.headers.get("X-Write-Token") || "";
     const sessionToken = request.headers.get("X-Device-Session") || "";
+    if (resource === "voice-note" && request.method === "PUT"
+        && !validVoiceNoteChunkUpload(payload, dateString, voiceNoteId, voiceNoteChunkIndex)) {
+      return jsonResponse({ error: "The encrypted voice-note attachment is invalid or exceeds its size limit." }, 400, origin);
+    }
 
     if (resource === "device/challenge") {
       if (!payload || Object.keys(payload).length !== 2
@@ -698,7 +754,7 @@ export default {
 
     const id = env.VAULT_COORDINATOR.idFromName(vaultId);
     const coordinator = env.VAULT_COORDINATOR.get(id);
-    const internalPath = "/" + resource;
+    const internalPath = voiceNoteMatch ? "/voice-note/" + dateString + "/" + voiceNoteId + "/" + voiceNoteChunkIndex : "/" + resource;
     const headers = new Headers({
       "Content-Type": "application/json",
       "X-Vault-Id": vaultId
@@ -1668,6 +1724,78 @@ export class VaultCoordinator {
 
       if (!(await this.authenticateDeviceSession(request))) return this.unauthorized();
 
+      const voiceNoteMatch = /^\/voice-note\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2}-[a-f0-9]{32})\/(\d{1,2})$/.exec(path);
+      if (voiceNoteMatch) {
+        const [, voiceDate, voiceId, indexText] = voiceNoteMatch;
+        const voiceIndex = Number(indexText);
+        if (!validDate(voiceDate) || !validVoiceNoteId(voiceId, voiceDate)
+            || !Number.isInteger(voiceIndex) || voiceIndex < 0 || voiceIndex >= MAX_VOICE_NOTE_CHUNKS) {
+          return jsonResponse({ error: "Invalid voice-note reference." }, 400);
+        }
+        const metadataKey = "voice-note-meta:" + voiceId;
+        const metadata = await this.state.storage.get(metadataKey);
+        const voiceKey = this.vaultId + ":voice:" + voiceId + ":" + voiceIndex;
+        if (request.method === "GET") {
+          if (!metadata || metadata.dateString !== voiceDate || voiceIndex >= metadata.totalChunks) {
+            return jsonResponse({ error: "The encrypted voice-note segment was not found." }, 404);
+          }
+          let ciphertextChunk;
+          try { ciphertextChunk = await this.env.VAULT_PACKETS.get(voiceKey); }
+          catch { return jsonResponse({ error: "The encrypted voice-note segment is temporarily unavailable." }, 503); }
+          if (typeof ciphertextChunk !== "string") {
+            return jsonResponse({ error: "The encrypted voice-note segment is still becoming available. Please retry." }, 503);
+          }
+          const expectedHash = metadata.chunkHashes?.[String(voiceIndex)];
+          if (!expectedHash || await sha256Hex(ciphertextChunk) !== expectedHash) {
+            return jsonResponse({ error: "The encrypted voice-note segment failed its integrity check." }, 503);
+          }
+          return jsonResponse({
+            id: voiceId,
+            dateString: voiceDate,
+            index: voiceIndex,
+            totalChunks: metadata.totalChunks,
+            ciphertextLength: metadata.ciphertextLength,
+            ciphertextChunk
+          }, 200);
+        }
+        if (request.method !== "PUT") return jsonResponse({ error: "Method not allowed." }, 405);
+        let upload;
+        try { upload = await request.json(); }
+        catch { return jsonResponse({ error: "Invalid encrypted voice-note segment upload." }, 400); }
+        if (!validVoiceNoteChunkUpload(upload, voiceDate, voiceId, voiceIndex)) {
+          return jsonResponse({ error: "The encrypted voice-note segment is invalid." }, 400);
+        }
+        if (metadata && (metadata.dateString !== voiceDate
+            || metadata.totalChunks !== upload.totalChunks
+            || metadata.ciphertextLength !== upload.ciphertextLength)) {
+          return jsonResponse({ error: "This voice-note identifier is already bound to different attachment metadata." }, 409);
+        }
+        const chunkHash = await sha256Hex(upload.ciphertextChunk);
+        const existingChunkHash = metadata?.chunkHashes?.[String(voiceIndex)];
+        if (existingChunkHash && existingChunkHash !== chunkHash) {
+          return jsonResponse({ error: "This voice-note segment is already bound to different encrypted audio." }, 409);
+        }
+        await this.enforceKvWriteSpacing(voiceKey);
+        try { await this.env.VAULT_PACKETS.put(voiceKey, upload.ciphertextChunk); }
+        catch { return jsonResponse({ error: "The encrypted voice-note segment could not be stored. Please retry." }, 503); }
+        await this.state.storage.put(metadataKey, {
+          dateString: voiceDate,
+          totalChunks: upload.totalChunks,
+          ciphertextLength: upload.ciphertextLength,
+          chunkHashes: {
+            ...(metadata?.chunkHashes || {}),
+            [String(voiceIndex)]: chunkHash
+          }
+        });
+        return jsonResponse({
+          ok: true,
+          stored: true,
+          id: voiceId,
+          dateString: voiceDate,
+          index: voiceIndex,
+          totalChunks: upload.totalChunks
+        }, 200);
+      }
       if (path === "/index" && request.method === "GET") {
         const index = (await this.state.storage.get("vault-index")) || {};
         return jsonResponse({ index }, 200);

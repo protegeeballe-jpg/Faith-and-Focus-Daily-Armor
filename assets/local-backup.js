@@ -1,10 +1,11 @@
 import {
   exportEncryptedVaultPackets, importEncryptedVaultPackets, isVaultSyncActive
 } from './vault-sync.js';
+import { exportPrivateVoiceNotes, mergePrivateVoiceNotes, validatePrivateVoiceNoteBackup } from './writing-security.js';
 
 const BACKUP_FORMAT = 'faith-focus-encrypted-vault-export';
 const BACKUP_VERSION = 1;
-const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
+const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 
 const byId = id => document.getElementById(id);
 
@@ -36,7 +37,8 @@ async function exportBackup() {
       format: BACKUP_FORMAT,
       version: BACKUP_VERSION,
       exportedAt: new Date().toISOString(),
-      packets
+      packets,
+      voiceNotes: await exportPrivateVoiceNotes()
     };
     const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -71,7 +73,11 @@ function validateBackupFile(payload) {
     }
     dates.add(record.dateString);
   }
-  return payload.packets;
+  const voiceNotes = payload.voiceNotes === undefined ? [] : payload.voiceNotes;
+  if (!validatePrivateVoiceNoteBackup(voiceNotes)) {
+    throw new Error('The backup contains invalid encrypted voice notes.');
+  }
+  return { packets: payload.packets, voiceNotes };
 }
 
 async function importBackupFile(file) {
@@ -88,9 +94,17 @@ async function importBackupFile(file) {
   setStatus('Checking the encrypted vault file…');
   try {
     const payload = JSON.parse(await file.text());
-    const packets = validateBackupFile(payload);
-    await importEncryptedVaultPackets(packets);
-    setStatus('Imported ' + packets.length + ' encrypted daily packet' + (packets.length === 1 ? '' : 's') + '. Automatic cloud sync is queued.', 'success');
+    const backup = validateBackupFile(payload);
+    // Restore full encrypted recordings before daily bundles hydrate their manifests.
+    // A backup may be the only source of the separate audio attachments.
+    if (backup.voiceNotes.length) await mergePrivateVoiceNotes(backup.voiceNotes);
+    await importEncryptedVaultPackets(backup.packets);
+    setStatus(
+      'Imported ' + backup.packets.length + ' encrypted daily packet' + (backup.packets.length === 1 ? '' : 's')
+        + ' and ' + backup.voiceNotes.length + ' encrypted voice note' + (backup.voiceNotes.length === 1 ? '' : 's')
+        + '. Automatic cloud reconciliation is queued.',
+      'success'
+    );
   } catch (error) {
     setStatus(error?.message || 'The encrypted vault file could not be imported.', 'error');
   } finally {

@@ -1,10 +1,18 @@
 const VOICE_NOTE_DB_NAME = 'faith_focus_private_voice_notes_v1';
-const VOICE_NOTE_DB_VERSION = 2;
+const VOICE_NOTE_DB_VERSION = 3;
 const VOICE_NOTE_STORE_NAME = 'voiceNotes';
 const LEGACY_QUARANTINE_STORE_NAME = 'legacyQuarantine';
+const RECORDING_DRAFT_STORE_NAME = 'voiceNoteDrafts';
+const RECORDING_SEGMENT_STORE_NAME = 'voiceNoteSegments';
+const MAX_VOICE_NOTE_SEGMENT_BYTES = 2 * 1024 * 1024;
+const VOICE_NOTE_DRAFT_RECOVERY_AGE_MS = 2 * 60 * 1000;
 const VOICE_NOTE_ID_PATTERN = /^(\d{4}-\d{2}-\d{2})-([a-f0-9]{32})$/;
 const VOICE_NOTE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-export const MAX_VOICE_NOTE_BYTES = 256 * 1024;
+export const MAX_VOICE_NOTE_BYTES = 16 * 1024 * 1024;
+export const MAX_VOICE_NOTE_DURATION_MS = 30 * 60 * 1000;
+export const VOICE_NOTE_TARGET_BITRATE = 48_000;
+export const VOICE_NOTE_ATTACHMENT_CHUNK_CHARS = 256 * 1024;
+export const MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100;
 const ALLOWED_VOICE_NOTE_MIME_TYPES = new Set([
     'audio/webm', 'audio/mp4', 'audio/ogg', 'audio/mpeg',
     'audio/wav', 'audio/x-wav', 'audio/wave', 'audio/aac',
@@ -49,6 +57,12 @@ function getVoiceNoteAad(dateString, id, mimeType) {
     );
 }
 
+function getVoiceNoteSegmentAad(dateString, id, sequence, mimeType) {
+    return new TextEncoder().encode(
+        'Faith & Focus: Daily Armor|private-voice-note-segment|v1|' + dateString + '|' + id + '|' + sequence + '|' + mimeType
+    );
+}
+
 function makeVoiceNoteId(dateString) {
     const random = crypto.getRandomValues(new Uint8Array(16));
     return dateString + '-' + Array.from(random, byte => byte.toString(16).padStart(2, '0')).join('');
@@ -89,8 +103,33 @@ export async function encryptVoiceNoteBlob(blob, key, dateString, id, capturedAt
     };
 }
 
+export function createVoiceNoteAttachmentManifest(record) {
+    if (!validateEncryptedVoiceNoteRecord(record) || typeof record.ciphertext !== 'string') {
+        throw new TypeError('A complete encrypted voice note is required to create its attachment manifest.');
+    }
+    return {
+        id: record.id,
+        dateString: record.dateString,
+        version: record.version,
+        algorithm: record.algorithm,
+        mimeType: record.mimeType,
+        capturedAt: record.capturedAt,
+        iv: record.iv,
+        attachmentVersion: 1,
+        ciphertextBytes: fromBase64(record.ciphertext).byteLength,
+        ciphertextLength: record.ciphertext.length,
+        attachmentChunkCount: Math.ceil(record.ciphertext.length / VOICE_NOTE_ATTACHMENT_CHUNK_CHARS)
+    };
+}
+
+export function isVoiceNoteAttachmentManifest(record) {
+    return validateEncryptedVoiceNoteRecord(record)
+        && typeof record.ciphertext !== 'string'
+        && record.attachmentVersion === 1;
+}
+
 export async function decryptVoiceNoteRecord(record, key) {
-    if (!validateEncryptedVoiceNoteRecord(record) || !key) {
+    if (!validateEncryptedVoiceNoteRecord(record) || typeof record.ciphertext !== 'string' || !key) {
         throw new TypeError('The encrypted voice note is invalid or the Diary is locked.');
     }
     const plaintext = await crypto.subtle.decrypt({
@@ -109,11 +148,26 @@ export function validateEncryptedVoiceNoteRecord(record) {
     if (record.version !== 1 || record.algorithm !== 'AES-256-GCM') return false;
     if (!isAllowedVoiceNoteMimeType(record.mimeType)) return false;
     if (typeof record.capturedAt !== 'string' || !Number.isFinite(Date.parse(record.capturedAt))) return false;
-    if (typeof record.iv !== 'string' || typeof record.ciphertext !== 'string') return false;
-    if (!/^[A-Za-z0-9+/]+={0,2}$/.test(record.iv)
-        || !/^[A-Za-z0-9+/]+={0,2}$/.test(record.ciphertext)) return false;
+    if (typeof record.iv !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(record.iv)) return false;
     try {
-        return fromBase64(record.iv).length === 12 && fromBase64(record.ciphertext).length >= 16;
+        if (fromBase64(record.iv).length !== 12) return false;
+        if (typeof record.ciphertext === 'string') {
+            return record.attachmentVersion === undefined
+                && /^[A-Za-z0-9+/]+={0,2}$/.test(record.ciphertext)
+                && fromBase64(record.ciphertext).length >= 16
+                && fromBase64(record.ciphertext).length <= MAX_VOICE_NOTE_BYTES + 16;
+        }
+        return !Object.hasOwn(record, 'ciphertext')
+            && record.attachmentVersion === 1
+            && Number.isSafeInteger(record.ciphertextBytes)
+            && record.ciphertextBytes >= 16
+            && record.ciphertextBytes <= MAX_VOICE_NOTE_BYTES + 16
+            && Number.isSafeInteger(record.ciphertextLength)
+            && record.ciphertextLength === Math.ceil(record.ciphertextBytes / 3) * 4
+            && Number.isSafeInteger(record.attachmentChunkCount)
+            && record.attachmentChunkCount === Math.ceil(record.ciphertextLength / VOICE_NOTE_ATTACHMENT_CHUNK_CHARS)
+            && record.attachmentChunkCount >= 1
+            && record.attachmentChunkCount <= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS;
     } catch (error) {
         return false;
     }
@@ -122,7 +176,9 @@ export function validateEncryptedVoiceNoteRecord(record) {
 export function validateEncryptedVoiceNoteBackup(records) {
     return Array.isArray(records)
         && records.length <= 10000
-        && records.every(validateEncryptedVoiceNoteRecord)
+        && records.every(record => validateEncryptedVoiceNoteRecord(record)
+            && typeof record.ciphertext === 'string'
+            && record.attachmentVersion === undefined)
         && new Set(records.map(record => record.id)).size === records.length;
 }
 
@@ -140,6 +196,14 @@ function openVoiceNoteDatabase() {
             }
             if (!database.objectStoreNames.contains(LEGACY_QUARANTINE_STORE_NAME)) {
                 database.createObjectStore(LEGACY_QUARANTINE_STORE_NAME, { keyPath: 'quarantineId' });
+            }
+            if (!database.objectStoreNames.contains(RECORDING_DRAFT_STORE_NAME)) {
+                const drafts = database.createObjectStore(RECORDING_DRAFT_STORE_NAME, { keyPath: 'id' });
+                drafts.createIndex('dateString', 'dateString', { unique: false });
+            }
+            if (!database.objectStoreNames.contains(RECORDING_SEGMENT_STORE_NAME)) {
+                const segments = database.createObjectStore(RECORDING_SEGMENT_STORE_NAME, { keyPath: 'segmentId' });
+                segments.createIndex('voiceNoteId', 'voiceNoteId', { unique: false });
             }
         };
         request.onsuccess = () => resolve(request.result);
@@ -163,6 +227,232 @@ function waitForRequest(request) {
     });
 }
 
+export async function encryptVoiceNoteSegment(blob, key, draft, sequence, mimeType) {
+    if (!(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_VOICE_NOTE_SEGMENT_BYTES) {
+        throw new RangeError('A recording segment must contain between 1 byte and 2 MB of audio.');
+    }
+    if (!key || !draft || !isValidDateString(draft.dateString)
+        || typeof draft.id !== 'string' || !draft.id.startsWith(draft.dateString + '-')
+        || !VOICE_NOTE_ID_PATTERN.test(draft.id)
+        || !Number.isSafeInteger(sequence) || sequence < 0 || sequence >= 1000
+        || !isAllowedVoiceNoteMimeType(mimeType)) {
+        throw new TypeError('The encrypted voice-note segment details are invalid.');
+    }
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = await crypto.subtle.encrypt({
+        name: 'AES-GCM',
+        iv,
+        additionalData: getVoiceNoteSegmentAad(draft.dateString, draft.id, sequence, mimeType),
+        tagLength: 128
+    }, key, await blob.arrayBuffer());
+    return {
+        segmentId: draft.id + '-' + String(sequence).padStart(6, '0'),
+        voiceNoteId: draft.id,
+        dateString: draft.dateString,
+        sequence,
+        version: 1,
+        algorithm: 'AES-256-GCM',
+        mimeType,
+        iv: toBase64(iv),
+        ciphertext: toBase64(new Uint8Array(ciphertext))
+    };
+}
+
+export async function decryptVoiceNoteSegment(record, key) {
+    if (!record || !key || record.version !== 1 || record.algorithm !== 'AES-256-GCM'
+        || !isValidDateString(record.dateString)
+        || !VOICE_NOTE_ID_PATTERN.test(record.voiceNoteId || '')
+        || !record.voiceNoteId.startsWith(record.dateString + '-')
+        || !Number.isSafeInteger(record.sequence) || record.sequence < 0 || record.sequence >= 1000
+        || record.segmentId !== record.voiceNoteId + '-' + String(record.sequence).padStart(6, '0')
+        || !isAllowedVoiceNoteMimeType(record.mimeType)
+        || typeof record.iv !== 'string' || typeof record.ciphertext !== 'string') {
+        throw new TypeError('The encrypted voice-note segment is invalid or the Diary is locked.');
+    }
+    const iv = fromBase64(record.iv);
+    const ciphertext = fromBase64(record.ciphertext);
+    if (iv.length !== 12 || ciphertext.length < 16 || ciphertext.length > MAX_VOICE_NOTE_SEGMENT_BYTES + 16) {
+        throw new TypeError('The encrypted voice-note segment has an invalid size.');
+    }
+    const plaintext = await crypto.subtle.decrypt({
+        name: 'AES-GCM',
+        iv,
+        additionalData: getVoiceNoteSegmentAad(record.dateString, record.voiceNoteId, record.sequence, record.mimeType),
+        tagLength: 128
+    }, key, ciphertext);
+    return new Blob([plaintext], { type: record.mimeType });
+}
+
+export async function createEncryptedVoiceNoteDraft(dateString, mimeType) {
+    if (!isValidDateString(dateString) || !isAllowedVoiceNoteMimeType(mimeType)) {
+        throw new TypeError('A valid Diary date and supported recording format are required.');
+    }
+    const draft = {
+        id: makeVoiceNoteId(dateString),
+        dateString,
+        mimeType,
+        capturedAt: new Date().toISOString(),
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+    };
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction(RECORDING_DRAFT_STORE_NAME, 'readwrite');
+        const completed = waitForTransaction(transaction);
+        transaction.objectStore(RECORDING_DRAFT_STORE_NAME).add(draft);
+        await completed;
+        return draft;
+    } finally {
+        database.close();
+    }
+}
+
+export async function saveEncryptedVoiceNoteSegment(draft, blob, key, sequence, mimeType = draft?.mimeType) {
+    const record = await encryptVoiceNoteSegment(blob, key, draft, sequence, mimeType);
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction([RECORDING_DRAFT_STORE_NAME, RECORDING_SEGMENT_STORE_NAME], 'readwrite');
+        const completed = waitForTransaction(transaction);
+        const drafts = transaction.objectStore(RECORDING_DRAFT_STORE_NAME);
+        const request = drafts.get(draft.id);
+        request.onsuccess = () => {
+            const storedDraft = request.result;
+            if (!storedDraft || storedDraft.dateString !== draft.dateString || storedDraft.mimeType !== mimeType) {
+                try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+                return;
+            }
+            transaction.objectStore(RECORDING_SEGMENT_STORE_NAME).add(record);
+            drafts.put({ ...storedDraft, updatedAt: Date.now() });
+        };
+        request.onerror = () => {
+            try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+        };
+        await completed;
+    } finally {
+        database.close();
+    }
+}
+
+async function readEncryptedVoiceNoteDraft(draftId) {
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction([RECORDING_DRAFT_STORE_NAME, RECORDING_SEGMENT_STORE_NAME], 'readonly');
+        const completed = waitForTransaction(transaction);
+        const draftPromise = waitForRequest(transaction.objectStore(RECORDING_DRAFT_STORE_NAME).get(draftId));
+        const segmentsPromise = waitForRequest(transaction.objectStore(RECORDING_SEGMENT_STORE_NAME).index('voiceNoteId').getAll(draftId));
+        const [draft, segments] = await Promise.all([draftPromise, segmentsPromise]);
+        await completed;
+        return { draft, segments };
+    } finally {
+        database.close();
+    }
+}
+
+export async function discardEmptyEncryptedVoiceNoteDraft(draftId) {
+    if (typeof draftId !== 'string' || !VOICE_NOTE_ID_PATTERN.test(draftId)) return false;
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction([RECORDING_DRAFT_STORE_NAME, RECORDING_SEGMENT_STORE_NAME], 'readwrite');
+        const completed = waitForTransaction(transaction);
+        const segmentStore = transaction.objectStore(RECORDING_SEGMENT_STORE_NAME);
+        const request = segmentStore.index('voiceNoteId').getAll(draftId);
+        request.onsuccess = () => {
+            if (request.result.length) {
+                try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+                return;
+            }
+            transaction.objectStore(RECORDING_DRAFT_STORE_NAME).delete(draftId);
+        };
+        request.onerror = () => {
+            try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+        };
+        await completed;
+        return true;
+    } finally {
+        database.close();
+    }
+}
+
+export async function finalizeEncryptedVoiceNoteDraft(draftId, key) {
+    if (!key || typeof draftId !== 'string' || !VOICE_NOTE_ID_PATTERN.test(draftId)) {
+        throw new TypeError('An unlocked Diary and valid recording draft are required.');
+    }
+    const { draft, segments } = await readEncryptedVoiceNoteDraft(draftId);
+    if (!draft || !Array.isArray(segments) || !segments.length) {
+        throw new Error('No saved audio segments were available to finish this recording.');
+    }
+    segments.sort((left, right) => left.sequence - right.sequence);
+    const parts = [];
+    let totalBytes = 0;
+    for (let index = 0; index < segments.length; index += 1) {
+        if (segments[index].sequence !== index) {
+            throw new Error('A recording segment is missing. Its encrypted local data remains preserved.');
+        }
+        const part = await decryptVoiceNoteSegment(segments[index], key);
+        totalBytes += part.size;
+        if (totalBytes > MAX_VOICE_NOTE_BYTES) {
+            throw new RangeError('The recording exceeded the local storage ceiling. Its encrypted segments remain preserved.');
+        }
+        parts.push(part);
+    }
+    const blob = new Blob(parts, { type: draft.mimeType });
+    const record = await encryptVoiceNoteBlob(blob, key, draft.dateString, draft.id, draft.capturedAt);
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction(
+            [VOICE_NOTE_STORE_NAME, RECORDING_DRAFT_STORE_NAME, RECORDING_SEGMENT_STORE_NAME],
+            'readwrite'
+        );
+        const completed = waitForTransaction(transaction);
+        transaction.objectStore(VOICE_NOTE_STORE_NAME).add({ ...record, remoteUploaded: false });
+        transaction.objectStore(RECORDING_DRAFT_STORE_NAME).delete(draft.id);
+        const segmentStore = transaction.objectStore(RECORDING_SEGMENT_STORE_NAME);
+        segments.forEach(segment => segmentStore.delete(segment.segmentId));
+        await completed;
+    } finally {
+        database.close();
+    }
+    if (globalThis.window?.dispatchEvent && globalThis.CustomEvent) {
+        globalThis.window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed', {
+            detail: { dateString: draft.dateString }
+        }));
+    }
+    return { id: record.id, dateString: record.dateString, capturedAt: record.capturedAt };
+}
+
+export async function recoverEncryptedVoiceNoteDrafts(dateString, key) {
+    if (!key || !isValidDateString(dateString)) {
+        throw new TypeError('An unlocked Diary and valid date are required to recover recordings.');
+    }
+    const database = await openVoiceNoteDatabase();
+    let drafts;
+    try {
+        const transaction = database.transaction(RECORDING_DRAFT_STORE_NAME, 'readonly');
+        const completed = waitForTransaction(transaction);
+        drafts = await waitForRequest(transaction.objectStore(RECORDING_DRAFT_STORE_NAME).index('dateString').getAll(dateString));
+        await completed;
+    } finally {
+        database.close();
+    }
+    const recovered = [];
+    const cutoff = Date.now() - VOICE_NOTE_DRAFT_RECOVERY_AGE_MS;
+    for (const draft of drafts) {
+        if (!draft || draft.updatedAt > cutoff) continue;
+        try {
+            recovered.push(await finalizeEncryptedVoiceNoteDraft(draft.id, key));
+        } catch (error) {
+            if (/No saved audio segments/.test(error?.message || '')) {
+                await discardEmptyEncryptedVoiceNoteDraft(draft.id).catch(() => {});
+            }
+            console.warn('[Diary Voice Note] An interrupted encrypted recording remains preserved for recovery.', {
+                recordingId: draft.id,
+                reason: error?.message || String(error)
+            });
+        }
+    }
+    return recovered;
+}
+
 export async function saveEncryptedVoiceNote(dateString, blob, key) {
     if (!isValidDateString(dateString)) throw new TypeError('A valid Diary date is required.');
     if (!(blob instanceof Blob) || blob.size === 0 || blob.size > MAX_VOICE_NOTE_BYTES) {
@@ -177,7 +467,7 @@ export async function saveEncryptedVoiceNote(dateString, blob, key) {
     try {
         const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
         const completed = waitForTransaction(transaction);
-        transaction.objectStore(VOICE_NOTE_STORE_NAME).add(record);
+        transaction.objectStore(VOICE_NOTE_STORE_NAME).add({ ...record, remoteUploaded: false });
         await completed;
         if (globalThis.window?.dispatchEvent && globalThis.CustomEvent) {
             globalThis.window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed', {
@@ -207,10 +497,83 @@ async function getStoredRecords(dateString = null) {
     }
 }
 
+export async function exportEncryptedVoiceNotesForDateFull(dateString) {
+    if (!isValidDateString(dateString)) throw new TypeError('A valid Diary date is required.');
+    const records = await getStoredRecords(dateString);
+    records.sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
+    return records.filter(record => typeof record.ciphertext === 'string');
+}
+
+export async function mergeEncryptedVoiceNotes(records) {
+    if (!validateEncryptedVoiceNoteBackup(records)) throw new TypeError('The encrypted voice-note backup is invalid.');
+    const existing = await getStoredRecords();
+    const byId = new Map(existing.map(record => [record.id, record]));
+    for (const record of records) {
+        const previous = byId.get(record.id);
+        if (previous && (previous.dateString !== record.dateString
+            || previous.ciphertext !== record.ciphertext || previous.iv !== record.iv)) {
+            throw new Error('A voice note with the same identifier already exists with different encrypted data. No recordings were replaced.');
+        }
+        if (!previous) byId.set(record.id, { ...record, remoteUploaded: false });
+    }
+    await restoreEncryptedVoiceNotes([...byId.values()].filter(record => typeof record.ciphertext === 'string'));
+    return records.length;
+}
+
+export async function getEncryptedVoiceNoteRecord(id) {
+    if (typeof id !== 'string' || !VOICE_NOTE_ID_PATTERN.test(id)) return null;
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readonly');
+        const completed = waitForTransaction(transaction);
+        const record = await waitForRequest(transaction.objectStore(VOICE_NOTE_STORE_NAME).get(id));
+        await completed;
+        return record && typeof record.ciphertext === 'string' ? record : null;
+    } finally {
+        database.close();
+    }
+}
+
+export async function markEncryptedVoiceNoteUploaded(id) {
+    if (typeof id !== 'string' || !VOICE_NOTE_ID_PATTERN.test(id)) return false;
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
+        const completed = waitForTransaction(transaction);
+        const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
+        const request = store.get(id);
+        request.onsuccess = () => {
+            if (request.result && typeof request.result.ciphertext === 'string') {
+                store.put({ ...request.result, remoteUploaded: true });
+            }
+        };
+        await completed;
+        return true;
+    } finally {
+        database.close();
+    }
+}
+
+export async function saveEncryptedVoiceNoteRecord(record, { remoteUploaded = false } = {}) {
+    if (!validateEncryptedVoiceNoteBackup([record])) {
+        throw new TypeError('A complete encrypted voice-note record is required.');
+    }
+    const database = await openVoiceNoteDatabase();
+    try {
+        const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
+        const completed = waitForTransaction(transaction);
+        transaction.objectStore(VOICE_NOTE_STORE_NAME).put({ ...record, remoteUploaded: remoteUploaded === true });
+        await completed;
+    } finally {
+        database.close();
+    }
+}
+
 export async function loadEncryptedVoiceNotes(dateString, key) {
     if (!isValidDateString(dateString) || !key) {
         throw new Error('Unlock your Diary to load its saved voice notes.');
     }
+    await recoverEncryptedVoiceNoteDrafts(dateString, key);
     const records = await getStoredRecords(dateString);
     records.sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
     const notes = [];
@@ -279,7 +642,7 @@ export async function restoreEncryptedVoiceNotes(records) {
         const completed = waitForTransaction(transaction);
         const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
         store.clear();
-        records.forEach(record => store.put(record));
+        records.forEach(record => store.put({ ...record, remoteUploaded: record.remoteUploaded === true }));
         await completed;
     } finally {
         database.close();
@@ -291,7 +654,7 @@ export async function exportEncryptedVoiceNotesForDate(dateString) {
     if (!isValidDateString(dateString)) throw new TypeError('A valid Diary date is required.');
     const records = await getStoredRecords(dateString);
     records.sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
-    return records;
+    return records.filter(record => typeof record.ciphertext === 'string').map(createVoiceNoteAttachmentManifest);
 }
 
 export async function restoreEncryptedVoiceNotesForDate(dateString, records) {
@@ -308,7 +671,7 @@ export async function restoreEncryptedVoiceNotesForDate(dateString, records) {
         const request = store.index('dateString').getAllKeys(dateString);
         request.onsuccess = () => {
             for (const key of request.result) store.delete(key);
-            records.forEach(record => store.put(record));
+            records.forEach(record => store.put({ ...record, remoteUploaded: record.remoteUploaded === true }));
         };
         request.onerror = () => {
             try { transaction.abort(); } catch { /* The transaction may already be closed. */ }

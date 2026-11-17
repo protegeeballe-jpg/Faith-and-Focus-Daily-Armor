@@ -1,5 +1,5 @@
 import { loadLocationCheckinEntries } from './location-checkin.js';
-import { validateEncryptedVoiceNoteRecord } from './voice-note-store.js';
+import { createVoiceNoteAttachmentManifest, validateEncryptedVoiceNoteRecord } from './voice-note-store.js';
 import {
     GARDEN_DAILY_SYNC_PREFIX,
     mergeGardenStates,
@@ -109,15 +109,30 @@ export function mergeEncryptedVoiceNoteRecords(localRecords, remoteRecords, date
         throw new Error('Voice-note records could not be reconciled safely. Both device copies remain preserved.');
     }
     const records = new Map();
-    for (const record of [...localRecords, ...remoteRecords]) {
-        if (!validateEncryptedVoiceNoteRecord(record) || record.dateString !== dateString) {
+    for (const sourceRecord of [...localRecords, ...remoteRecords]) {
+        if (!validateEncryptedVoiceNoteRecord(sourceRecord) || sourceRecord.dateString !== dateString) {
             throw new Error('A voice-note record failed validation. Both device copies remain preserved.');
         }
-        const previous = records.get(record.id);
-        if (previous && JSON.stringify(previous) !== JSON.stringify(record)) {
-            throw new Error('Two different voice-note records share an identifier. Both device copies remain preserved.');
+        // Compare a shared metadata representation, but retain full ciphertext
+        // when present. This lets a device migrate an older cloud packet to the
+        // separate attachment store without losing the only copy of its audio.
+        const manifest = typeof sourceRecord.ciphertext === 'string'
+            ? createVoiceNoteAttachmentManifest(sourceRecord)
+            : sourceRecord;
+        const previous = records.get(manifest.id);
+        if (previous) {
+            const previousManifest = typeof previous.ciphertext === 'string'
+                ? createVoiceNoteAttachmentManifest(previous)
+                : previous;
+            if (JSON.stringify(previousManifest) !== JSON.stringify(manifest)) {
+                throw new Error('Two different voice-note records share an identifier. Both device copies remain preserved.');
+            }
+            if (typeof previous.ciphertext !== 'string' && typeof sourceRecord.ciphertext === 'string') {
+                records.set(manifest.id, sourceRecord);
+            }
+        } else {
+            records.set(manifest.id, sourceRecord);
         }
-        records.set(record.id, previous || record);
     }
     return [...records.values()].sort((left, right) =>
         left.capturedAt.localeCompare(right.capturedAt) || left.id.localeCompare(right.id)

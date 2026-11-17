@@ -597,9 +597,10 @@ test('Diary voice notes are saved persistently, encrypted, and preserved by chec
   assert.match(html,/id="diary-voice-note-list"/);
   assert.match(html,/Voice notes are encrypted with your account key/);
   assert.doesNotMatch(html,/audio-container|diary-audio|temporary playback in this session/);
-  assert.match(app,/savePrivateVoiceNoteForDate\(dateString, blob\)/);
+  assert.match(app,/savePrivateVoiceNoteSegment/);
+  assert.match(app,/finalizePrivateVoiceNoteDraft\(draft.id\)/);
   assert.match(app,/loadPrivateVoiceNotesForDate\(dateString\)/);
-  assert.match(app,/mediaRecorder\?\.mimeType/);
+  assert.match(app,/activeVoiceNoteMimeType = mediaRecorder\.mimeType/);
   assert.doesNotMatch(app,/audio\/mp3/);
   assert.match(app,/registerVoiceNoteStopHandler\(stopActiveVoiceRecording\)/);
   assert.match(writing,/function savePrivateVoiceNoteForDate\(dateStr,blob\)/);
@@ -858,7 +859,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v23-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v24-stable-app/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -906,7 +907,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v23-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v24-stable-app/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
@@ -982,4 +983,17 @@ test('Diary Update is current-date-only; previous voice notes and location histo
  assert.match(writing, /!isCurrentPrivateWritingDate\(dateStr\)/);
  assert.match(html, /Location History/);
  assert.match(html, /READ ONLY/);
+});
+
+test('long voice recordings are bounded and count captured audio as active session use',()=>{
+ assert.match(voiceNoteStore,/MAX_VOICE_NOTE_DURATION_MS = 30 \* 60 \* 1000/);
+ assert.match(voiceNoteStore,/MAX_VOICE_NOTE_BYTES = 16 \* 1024 \* 1024/);
+ assert.match(app,/audioBitsPerSecond: VOICE_NOTE_TARGET_BITRATE/);
+ assert.match(app,/mediaRecorder\.start\(5000\)/);
+ assert.match(app,/createPrivateVoiceNoteDraft/);
+ assert.match(app,/savePrivateVoiceNoteSegment/);
+ assert.match(app,/finalizePrivateVoiceNoteDraft/);
+ assert.match(app,/faith-focus:session-activity/);
+ assert.match(vaultSession,/faith-focus:session-activity/);
+ assert.match(app,/activeVoiceNoteMaxDurationReached = true/);
 });

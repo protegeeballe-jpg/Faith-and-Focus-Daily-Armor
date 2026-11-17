@@ -15,7 +15,8 @@ const EDGE_LIMITERS = {
   AUTH_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   SENSITIVE_IP_RATE_LIMITER: { async limit() { return { success: true }; } },
   VAULT_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } },
-  VAULT_WRITE_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } }
+  VAULT_WRITE_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } },
+  VOICE_NOTE_WRITE_ACCOUNT_RATE_LIMITER: { async limit() { return { success: true }; } }
 };
 const packet = {
   format: 'faith-focus-encrypted-daily-packet',
@@ -185,6 +186,149 @@ async function createCoordinatorSession(coordinator, token = WRITE_TOKEN) {
   const verified = await responseJson(verifiedResponse);
   return { deviceId, sessionToken: verified.sessionToken, keyPair, publicKeySpki };
 }
+
+test('voice-note attachments require a verified device session and round-trip chunked ciphertext', async () => {
+  const { coordinator, kvMap } = makeCoordinator();
+  const initialized = await coordinator.fetch(coordinatorRequest('/admin/initialize', {
+    method: 'POST',
+    body: {}
+  }));
+  assert.equal(initialized.status, 200);
+  const device = await createCoordinatorSession(coordinator);
+  const pepper = 'worker-test-membership-secret-with-at-least-32-characters';
+  const membershipTicket = await createMembershipTicket(VAULT_ID, pepper);
+  const voiceId = dateString + '-0123456789abcdef0123456789abcdef';
+  const ciphertext = 'A'.repeat(600000);
+  const chunkSize = 256 * 1024;
+  const totalChunks = Math.ceil(ciphertext.length / chunkSize);
+  const env = {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: pepper,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName: () => VAULT_ID,
+      get: () => ({ fetch: request => coordinator.fetch(request) })
+    }
+  };
+  const commonHeaders = {
+    Origin: ORIGIN,
+    'X-App-Client': CLIENT,
+    'CF-Connecting-IP': '203.0.113.77',
+    'X-Vault-Membership': membershipTicket,
+    'X-Device-Session': device.sessionToken
+  };
+
+  for (let index = 0; index < totalChunks; index += 1) {
+    const ciphertextChunk = ciphertext.slice(index * chunkSize, (index + 1) * chunkSize);
+    const path = '/vault/' + VAULT_ID + '/voice-note/' + dateString + '/' + voiceId + '/' + index;
+    const upload = await worker.fetch(new Request('https://worker.example' + path, {
+      method: 'PUT',
+      headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: voiceId, dateString, index, totalChunks,
+        ciphertextLength: ciphertext.length,
+        ciphertextChunk
+      })
+    }), env);
+    assert.equal(upload.status, 200);
+    const uploadResult = await responseJson(upload);
+    assert.equal(uploadResult.stored, true);
+    assert.equal(uploadResult.index, index);
+    assert.equal(uploadResult.totalChunks, totalChunks);
+    assert.equal(kvMap.get(VAULT_ID + ':voice:' + voiceId + ':' + index), ciphertextChunk);
+  }
+
+  const conflictingChunk = 'B'.repeat(chunkSize);
+  const conflictingWrite = await worker.fetch(new Request(
+    'https://worker.example/vault/' + VAULT_ID + '/voice-note/' + dateString + '/' + voiceId + '/0',
+    {
+      method: 'PUT',
+      headers: { ...commonHeaders, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: voiceId, dateString, index: 0, totalChunks,
+        ciphertextLength: ciphertext.length,
+        ciphertextChunk: conflictingChunk
+      })
+    }
+  ), env);
+  assert.equal(conflictingWrite.status, 409);
+
+  const restoredChunks = [];
+  for (let index = 0; index < totalChunks; index += 1) {
+    const path = '/vault/' + VAULT_ID + '/voice-note/' + dateString + '/' + voiceId + '/' + index;
+    const download = await worker.fetch(new Request('https://worker.example' + path, {
+      headers: commonHeaders
+    }), env);
+    assert.equal(download.status, 200);
+    const restored = await responseJson(download);
+    assert.equal(restored.id, voiceId);
+    assert.equal(restored.dateString, dateString);
+    assert.equal(restored.index, index);
+    assert.equal(restored.totalChunks, totalChunks);
+    assert.equal(restored.ciphertextLength, ciphertext.length);
+    restoredChunks.push(restored.ciphertextChunk);
+  }
+  assert.equal(restoredChunks.join(''), ciphertext);
+
+  const firstChunkKey = VAULT_ID + ':voice:' + voiceId + ':0';
+  kvMap.set(firstChunkKey, 'B'.repeat(chunkSize));
+  const damaged = await worker.fetch(new Request(
+    'https://worker.example/vault/' + VAULT_ID + '/voice-note/' + dateString + '/' + voiceId + '/0',
+    { headers: commonHeaders }
+  ), env);
+  assert.equal(damaged.status, 503);
+  kvMap.set(firstChunkKey, ciphertext.slice(0, chunkSize));
+
+  const unauthorizedPath = '/vault/' + VAULT_ID + '/voice-note/' + dateString + '/' + voiceId + '/0';
+  const unauthorized = await worker.fetch(new Request('https://worker.example' + unauthorizedPath, {
+    headers: {
+      Origin: ORIGIN,
+      'X-App-Client': CLIENT,
+      'CF-Connecting-IP': '203.0.113.78',
+      'X-Vault-Membership': membershipTicket
+    }
+  }), env);
+  assert.equal(unauthorized.status, 401);
+});
+
+test('voice-note attachment route rejects malformed and oversized ciphertext before storage', async () => {
+  const { coordinator } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const device = await createCoordinatorSession(coordinator);
+  const pepper = 'worker-test-membership-secret-with-at-least-32-characters';
+  const membershipTicket = await createMembershipTicket(VAULT_ID, pepper);
+  const voiceId = dateString + '-abcdefabcdefabcdefabcdefabcdefab';
+  const path = '/vault/' + VAULT_ID + '/voice-note/' + dateString + '/' + voiceId + '/0';
+  let coordinatorTouched = false;
+  const env = {
+    ...EDGE_LIMITERS,
+    MEMBERSHIP_PEPPER: pepper,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName: () => VAULT_ID,
+      get: () => ({
+        fetch: request => {
+          coordinatorTouched = true;
+          return coordinator.fetch(request);
+        }
+      })
+    }
+  };
+  const response = await worker.fetch(new Request('https://worker.example' + path, {
+    method: 'PUT',
+    headers: {
+      Origin: ORIGIN,
+      'X-App-Client': CLIENT,
+      'CF-Connecting-IP': '203.0.113.79',
+      'X-Vault-Membership': membershipTicket,
+      'X-Device-Session': device.sessionToken,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ id: voiceId, dateString, index: 0, totalChunks: 1, ciphertextLength: 24, ciphertextChunk: 'not-base64!' })
+  }), env);
+  assert.equal(response.status, 400);
+  assert.equal(coordinatorTouched, false);
+});
 
 test('Vault Coordinator claims once, stores encrypted date packets, and rejects stale writes', async () => {
   const { coordinator, storageMap, kvMap } = makeCoordinator();

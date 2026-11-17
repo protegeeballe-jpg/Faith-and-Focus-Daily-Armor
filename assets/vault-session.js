@@ -319,6 +319,7 @@ function installSessionActivityListeners() {
   });
   window.addEventListener('focus', checkInactivityOnResume);
   window.addEventListener('pageshow', checkInactivityOnResume);
+  window.addEventListener('faith-focus:session-activity', handleSessionActivity);
   window.addEventListener('faith-focus:lock-account', () => {
     lockAccount('Your account is locked.');
   });
