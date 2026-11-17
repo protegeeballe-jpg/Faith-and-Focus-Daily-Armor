@@ -110,7 +110,7 @@ test('offline sign-in uses only the saved envelope and discards online credentia
     session.indexOf('async function submitVaultLogin(event) {'),
     session.indexOf('async function submitVaultSignup(event) {')
   );
-  const deviceVerification = login.indexOf('await establishDeviceSession(credentials, unlocked.membershipTicket);');
+  const deviceVerification = login.indexOf('try {\n      await establishDeviceSession(credentials, unlocked.membershipTicket);');
   assert.ok(deviceVerification >= 0);
   const migrationAt = login.indexOf('const migration =', deviceVerification);
   assert.ok(migrationAt > deviceVerification);
