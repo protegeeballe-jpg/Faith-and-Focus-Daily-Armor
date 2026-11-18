@@ -78,3 +78,22 @@ test('Diary writes and voice notes share a debounced cloud queue with guarded fo
   assert.doesNotMatch(flushSource, /synchronizeVault|vaultRequest\(/);
   assert.match(syncSource.slice(flushEnd), /clearTimeout\(dailySyncTimer\)/);
 });
+
+
+test('startup listeners are installed before the first cloud await and buffered changes flush afterward', () => {
+  const start = syncSource.slice(
+    syncSource.indexOf('export async function startVaultSync(credentials) {'),
+    syncSource.indexOf('function handleLocalDataChanged(event)')
+  );
+  const localListeners = start.indexOf('installVaultLocalListeners();');
+  const onlineListener = start.indexOf('installVaultOnlineListener();');
+  const firstCloudAwait = start.indexOf("await vaultRequest('/vault/' + activeVault.vaultId + '/claim'");
+  assert.ok(localListeners >= 0 && localListeners < firstCloudAwait);
+  assert.ok(onlineListener >= 0 && onlineListener < firstCloudAwait);
+  assert.match(syncSource, /let vaultSyncInitializing = false/);
+  assert.match(syncSource, /if \(vaultSyncInitializing\) return/);
+  assert.ok(start.indexOf('vaultSyncInitializing = false;') > start.indexOf('await synchronizeVault()'));
+  assert.match(start, /if \(pendingDailySyncDates\.size \|\| pendingFullVaultRefresh\)\s*\{\s*queueVaultSync\(\{ refreshAll: true, immediate: true \}\)/);
+  assert.match(start, /removeVaultSyncListeners\(\)/);
+  assert.match(syncSource, /function installVaultLocalListeners\(\)/);
+});

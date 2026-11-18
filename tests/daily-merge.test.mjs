@@ -1,3 +1,4 @@
+import { DAILY_RESET_MARKER_PREFIX } from '../assets/daily-reset.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -61,7 +62,7 @@ test('checklist states merge checked progress from both devices without unchecki
     assert.equal(merged['start-2'], true);
     assert.equal(merged['start-1__guided'], true);
     assert.equal(merged['start-2__guided'], true);
-    assert.equal(merged.cloud_flow_version, 1);
+    assert.equal(merged.cloud_flow_version, 2);
 });
 
 test('location check-in history is combined and duplicate captures are not repeated', () => {
@@ -181,4 +182,80 @@ test('legacy full voice-note records and attachment manifests merge as the same 
     assert.equal(merged[0].id, full.id);
     assert.equal(merged[0].ciphertext, full.ciphertext);
     assert.equal(Object.hasOwn(merged[0], 'attachmentVersion'), false);
+});
+
+
+test('a newer reset marker prevents checklist, reflection, and Garden resurrection', async () => {
+    const checklistKey = 'mindful_pokes_data_' + dateString;
+    const diaryKey = 'dmp_diary_cipher_v1_' + dateString;
+    const notesKey = 'dmp_notes_cipher_v1_' + dateString;
+    const gardenKey = 'faith_focus_garden_state_' + dateString;
+    const locationKey = 'faith_focus_location_checkins_v1_' + dateString;
+    const resetKey = DAILY_RESET_MARKER_PREFIX + dateString;
+    const localGarden = JSON.stringify({
+        version: 1, plantedOn: dateString, treeType: 'mango', flowerType: 'sunflower',
+        wateringDates: [dateString], updatedAt: '2026-11-13T08:00:00.000Z'
+    });
+    const olderDevice = {
+        dateString,
+        records: {
+            [checklistKey]: JSON.stringify({ 'start-1': true, 'cloud-checked': true }),
+            [diaryKey]: 'local-diary-ciphertext',
+            [notesKey]: 'old-reflection-ciphertext',
+            [gardenKey]: localGarden,
+            [locationKey]: JSON.stringify([location('loc-home', 14.5, 120.9, '2026-11-13T01:00:00.000Z')])
+        },
+        voiceNotes: [voiceNote('a', '2026-11-13T01:00:00.000Z')],
+        appState: { garden: localGarden, confidenceScore: '100' }
+    };
+    const resetDevice = {
+        dateString,
+        records: {
+            [checklistKey]: JSON.stringify({ 'start-1': false, 'cloud-checked': false }),
+            [diaryKey]: 'remote-diary-ciphertext',
+            [locationKey]: JSON.stringify([location('loc-office', 14.6, 121.0, '2026-11-13T02:00:00.000Z')]),
+            [resetKey]: JSON.stringify({ version: 1, resetAt: 1_800_000_000_000, resetId: 'f'.repeat(32) })
+        },
+        voiceNotes: [voiceNote('b', '2026-11-13T02:00:00.000Z')],
+        appState: { garden: null, confidenceScore: '200' }
+    };
+
+    const merged = await mergeDailyBundles(olderDevice, resetDevice, {
+        dateString,
+        mergePrivateWriting: async (local, remote) => ({
+            diary: local.diary + '+' + remote.diary,
+            notes: local.notes ?? remote.notes
+        })
+    });
+
+    assert.deepEqual(JSON.parse(merged.records[checklistKey]), {
+        'start-1': false,
+        'cloud-checked': false
+    });
+    assert.equal(Object.hasOwn(merged.records, notesKey), false);
+    assert.equal(Object.hasOwn(merged.records, gardenKey), false);
+    assert.equal(merged.appState.garden, null);
+    assert.equal(merged.records[resetKey], resetDevice.records[resetKey]);
+    assert.equal(merged.records[diaryKey], 'local-diary-ciphertext+remote-diary-ciphertext');
+    assert.equal(JSON.parse(merged.records[locationKey]).length, 2);
+    assert.equal(merged.voiceNotes.length, 2);
+    assert.equal(merged.appState.confidenceScore, '200');
+});
+
+
+test('emotional cloud choices merge to exactly one remote-preferred selection', () => {
+    const local = JSON.stringify({
+        cloud_cumulus: true, cloud_stratus: false, cloud_stratocumulus: false,
+        'cloud-checked': true, cloud_flow_version: 1
+    });
+    const remote = JSON.stringify({
+        cloud_cumulus: false, cloud_stratus: true, cloud_stratocumulus: false,
+        'cloud-checked': true, cloud_flow_version: 2
+    });
+    const merged = JSON.parse(mergeChecklistRecordValues(local, remote));
+    assert.equal(merged.cloud_cumulus, false);
+    assert.equal(merged.cloud_stratus, true);
+    assert.equal(merged.cloud_stratocumulus, false);
+    assert.equal(merged['cloud-checked'], true);
+    assert.equal(merged.cloud_flow_version, 2);
 });

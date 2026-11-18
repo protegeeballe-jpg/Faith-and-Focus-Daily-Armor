@@ -154,7 +154,11 @@ test('missed-card victory closes after seven seconds and returns to the current 
  assert.match(app,/const today = getDeviceLocalDateString\(\)/);
  assert.match(app,/await handleDateChange\(\);[\s\S]*?resetChecklistWizard\(\);[\s\S]*?showPage\('checklist'\)/);
  assert.match(app,/context\.returnDate === today \? context\.returnStep : 1/);
- assert.match(app,/if \(missedCardReviewContext && missedCardVictoryTimer\)/);
+ const victoryClose = app.slice(app.indexOf('async function closeGrandFinale()'), app.indexOf('function loadData()'));
+ assert.match(victoryClose,/if \(missedCardReviewContext\)/);
+ assert.match(victoryClose,/clearTimeout\(missedCardVictoryTimer\)/);
+ assert.match(victoryClose,/await returnFromMissedCardReview\(\)/);
+ assert.match(victoryClose,/showPage\('garden'\)/);
 });
 
 test('missed checklist cards are shown as actionable next-day in-app reminders',()=>{
@@ -860,7 +864,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v26-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v27-stable-app/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -921,7 +925,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v26-stable-app/);
+ assert.match(serviceWorker,/faith-focus-shell-v27-stable-app/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
@@ -980,6 +984,8 @@ test('same-day sync uses type-specific reconciliation for private writing, voice
  assert.match(writing,/mergePrivateWritingDiary/);
  assert.doesNotMatch(writing,/mergePrivateWritingText/);
  assert.ok(serviceWorker.includes('./assets/daily-merge.js'));
+ assert.ok(serviceWorker.includes('./assets/daily-reset.js'));
+ assert.ok(serviceWorker.includes('./assets/trusted-devices.js'));
 });
 
 
@@ -1010,4 +1016,87 @@ test('long voice recordings are bounded and count captured audio as active sessi
  assert.match(app,/faith-focus:session-activity/);
  assert.match(vaultSession,/faith-focus:session-activity/);
  assert.match(app,/activeVoiceNoteMaxDurationReached = true/);
+});
+
+
+test('trusted-device management is available through verified account routes', () => {
+ const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
+ const trustedDevices=readFileSync(new URL('../assets/trusted-devices.js',import.meta.url),'utf8');
+ const worker=readFileSync(new URL('../worker.js',import.meta.url),'utf8');
+ assert.match(html,/id="trusted-devices-settings"/);
+ assert.match(html,/id="trusted-devices-list"/);
+ assert.match(html,/assets\/trusted-devices\.js/);
+ assert.match(sync,/export async function listTrustedDevices/);
+ assert.match(sync,/export async function removeTrustedDevice/);
+ assert.match(trustedDevices,/listTrustedDevices\(\)/);
+ assert.match(trustedDevices,/removeTrustedDevice\(device\.deviceId\)/);
+ assert.ok(worker.includes('path === "/device/list"'));
+ assert.ok(worker.includes('path === "/device/remove"'));
+ assert.ok(worker.includes('deviceId === session.deviceId'));
+ assert.ok(worker.includes('record?.deviceId === deviceId'));
+ assert.match(readFileSync(new URL('../assets/garden.css',import.meta.url),'utf8'),/\.trusted-devices-list/);
+});
+
+test('main-branch protection policy and stable pull-request check are documented', () => {
+ const policy=readFileSync(new URL('../.github/BRANCH_PROTECTION.md',import.meta.url),'utf8');
+ const owners=readFileSync(new URL('../.github/CODEOWNERS',import.meta.url),'utf8');
+ const workflow=readFileSync(new URL('../.github/workflows/tests.yml',import.meta.url),'utf8');
+ assert.match(policy,/Require a pull request/);
+ assert.match(policy,/regression-security/);
+ assert.match(policy,/Block force pushes and branch deletion/);
+ assert.match(owners,/\* @protegeeballe-jpg/);
+ assert.match(workflow,/name: App regression and security tests/);
+ assert.match(workflow,/name: regression-security/);
+ assert.match(workflow,/pull_request:/);
+});
+
+test('Emotional Check requires one cloud selection per day', () => {
+ const vaultSync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
+ const merge=readFileSync(new URL('../assets/daily-merge.js',import.meta.url),'utf8');
+ assert.equal((html.match(/data-cloud="(?:cumulus|stratus|stratocumulus)"/g)||[]).length,3);
+ assert.match(html,/0 of 1 cloud chosen/);
+ assert.match(html,/id="ecosystem-trunk-meter"[^>]*aria-valuemax="1"/);
+ assert.match(app,/const selectedCloud = previouslySelected\[0\] \|\| null/);
+ assert.match(app,/item\.disabled = Boolean\(selectedCloud\)/);
+ assert.match(app,/One choice per day/);
+ assert.match(app,/cloud_flow_version = 2/);
+ assert.match(vaultSync,/checklist\.cloud_flow_version = 2/);
+ assert.match(merge,/cloudNames\.find\(name => remote\['cloud_' \+ name\] === true\)/);
+ assert.match(merge,/merged\.cloud_flow_version = 2/);
+});
+
+test('backup import preflights, rolls back, then queues verified cloud reconciliation', () => {
+ const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
+ const backup=readFileSync(new URL('../assets/local-backup.js',import.meta.url),'utf8');
+ const start=sync.indexOf('export async function importEncryptedVaultPackets(');
+ const end=sync.indexOf('export async function listTrustedDevices()',start);
+ assert.ok(start>=0 && end>start);
+ const importer=sync.slice(start,end);
+ assert.ok(importer.indexOf('decryptDailyBundle(item.packet') < importer.indexOf('await mergePrivateVoiceNotes(voiceNotes)'));
+ assert.match(importer,/restoreLocalDailyPacketState\(existingDailyPackets, affectedDates\)/);
+ assert.match(importer,/restorePrivateVoiceNotes\(existingVoiceNotes\)/);
+ assert.match(importer,/queueVaultSync\(\{ refreshAll: true, immediate: true \}\)/);
+ assert.match(backup,/importEncryptedVaultPackets\(backup\.packets, \{ voiceNotes: backup\.voiceNotes \}\)/);
+});
+
+test('vault sync captures local changes from the beginning of verified startup', () => {
+ const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
+ const start=sync.slice(sync.indexOf('export async function startVaultSync(credentials)'),sync.indexOf('function handleLocalDataChanged(event)'));
+ assert.ok(start.indexOf('installVaultLocalListeners();') < start.indexOf("await vaultRequest('/vault/'"));
+ assert.ok(start.indexOf('installVaultOnlineListener();') < start.indexOf("await vaultRequest('/vault/'"));
+ assert.match(sync,/if \(vaultSyncInitializing\) return/);
+ assert.match(start,/queueVaultSync\(\{ refreshAll: true, immediate: true \}\)/);
+});
+
+test('Claim Victory returns to the Forge Room after missed-card cleanup', () => {
+ const start=app.indexOf('async function closeGrandFinale()');
+ const end=app.indexOf('function loadData()',start);
+ assert.ok(start>=0 && end>start);
+ const claim=app.slice(start,end);
+ assert.match(claim,/clearTimeout\(missedCardVictoryTimer\)/);
+ assert.match(claim,/if \(missedCardReviewContext\)/);
+ assert.match(claim,/await returnFromMissedCardReview\(\)/);
+ assert.match(claim,/showPage\('garden'\)/);
+ assert.match(app,/if \(pageId === 'garden'\)[\s\S]*?document\.dispatchEvent\(new CustomEvent\('garden:open'\)\)/);
+ assert.match(html,/data-action="closeGrandFinale"[^>]*>[\s\S]*?Claim Victory/);
 });

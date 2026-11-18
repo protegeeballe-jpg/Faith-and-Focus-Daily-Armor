@@ -14,7 +14,8 @@ import {
 } from './voice-note-store.js';
 import { GARDEN_STORAGE_KEY, GARDEN_DAILY_SYNC_PREFIX, mergeGardenStates, validateGardenState } from './garden-model.js';
 import { mergeDailyBundles } from './daily-merge.js';
-import { flushAndSaveCurrentPrivateWriting, stopRegisteredVoiceNoteRecording, mergeEncryptedPrivateWritingRecords } from './writing-security.js';
+import { DAILY_RESET_MARKER_PREFIX, parseDailyResetMarker, compareDailyResetMarkers } from './daily-reset.js';
+import { flushAndSaveCurrentPrivateWriting, stopRegisteredVoiceNoteRecording, mergeEncryptedPrivateWritingRecords, validatePrivateVoiceNoteBackup, restorePrivateVoiceNotes, mergePrivateVoiceNotes } from './writing-security.js';
 
 const WORKER_ORIGIN = 'https://faith-focus-proxy.nine-westhigh.workers.dev';
 const APP_CLIENT = 'faith-focus-daily-armor-web/1';
@@ -26,11 +27,15 @@ const DAILY_RECORD_PREFIXES = [
   'dmp_diary_cipher_v1_',
   'dmp_notes_cipher_v1_',
   'faith_focus_location_checkins_v1_',
+  DAILY_RESET_MARKER_PREFIX,
   GARDEN_DAILY_SYNC_PREFIX
 ];
 const LEGACY_WRITING_CONFIG_KEY = 'dmp_private_writing_crypto_v1';
 
 let activeVault = null;
+let vaultSyncInitializing = false;
+let vaultLocalListenersInstalled = false;
+let vaultOnlineListenerInstalled = false;
 let vaultSyncGeneration = 0;
 let applyingRemotePacket = 0;
 let syncQueue = Promise.resolve();
@@ -51,6 +56,29 @@ let localFlushPromise = null;
 let activeVaultRequestControllers = new Set();
 
 const byId = id => document.getElementById(id);
+
+function installVaultLocalListeners() {
+  if (vaultLocalListenersInstalled) return;
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
+  window.addEventListener('pagehide', flushLocalVaultChanges);
+  vaultLocalListenersInstalled = true;
+}
+
+function installVaultOnlineListener() {
+  if (vaultOnlineListenerInstalled) return;
+  window.addEventListener('online', handleOnline);
+  vaultOnlineListenerInstalled = true;
+}
+
+function removeVaultSyncListeners() {
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
+  window.removeEventListener('online', handleOnline);
+  window.removeEventListener('pagehide', flushLocalVaultChanges);
+  vaultLocalListenersInstalled = false;
+  vaultOnlineListenerInstalled = false;
+}
 
 export function hasVerifiedDeviceSession(credentials) {
   return Boolean(credentials?.vaultId
@@ -149,6 +177,10 @@ function validateDailyBundleForEncryption(bundle, expectedDate) {
     catch { fail('the daily Garden snapshot is not valid JSON.'); }
     if (!validateGardenState(gardenSnapshot)) fail('the daily Garden snapshot is invalid.');
   }
+  if (Object.hasOwn(bundle.records, DAILY_RESET_MARKER_PREFIX + expectedDate)
+      && !parseDailyResetMarker(bundle.records[DAILY_RESET_MARKER_PREFIX + expectedDate])) {
+    fail('the daily reset marker is invalid.');
+  }
 
   if (!Array.isArray(bundle.voiceNotes) || bundle.voiceNotes.length > 100) {
     fail('voice notes must be an array containing no more than 100 records.');
@@ -218,7 +250,7 @@ async function buildDailyBundle(dateString) {
     if (isCurrentDate) checklist[key] = item.dataset.released === 'true';
     else if (typeof checklist[key] !== 'boolean') checklist[key] = false;
   });
-  checklist.cloud_flow_version = 1;
+  checklist.cloud_flow_version = 2;
   records[checklistKey] = JSON.stringify(checklist);
 
   // Keep the current Garden snapshot inside every newly captured daily packet.
@@ -582,19 +614,33 @@ function isUsableLegacyWritingConfig(value) {
   }
 }
 
-function restoreSharedAppState(bundle, { replaceConfidence = false } = {}) {
+function restoreSharedAppState(bundle, {
+  replaceConfidence = false,
+  replaceGarden = false,
+  preserveGarden = false
+} = {}) {
   if (!bundle || typeof bundle !== 'object') return;
   applyingRemotePacket += 1;
   try {
-    const localGardenRaw = localStorage.getItem(GARDEN_STORAGE_KEY);
-    let mergedGarden = parseGardenSnapshot(localGardenRaw);
-    const gardenRecord = bundle.records?.[GARDEN_DAILY_SYNC_PREFIX + bundle.dateString];
-    for (const candidate of [gardenRecord, bundle.appState?.garden]) {
-      const incomingGarden = parseGardenSnapshot(candidate);
-      if (incomingGarden) mergedGarden = mergeGardenStates(mergedGarden, incomingGarden);
-    }
-    if (mergedGarden && JSON.stringify(mergedGarden) !== JSON.stringify(parseGardenSnapshot(localGardenRaw))) {
-      localStorage.setItem(GARDEN_STORAGE_KEY, JSON.stringify(mergedGarden));
+    const gardenRecordKey = GARDEN_DAILY_SYNC_PREFIX + bundle.dateString;
+    if (replaceGarden) {
+      const gardenRaw = Object.hasOwn(bundle.records || {}, gardenRecordKey)
+        ? bundle.records[gardenRecordKey]
+        : bundle.appState?.garden;
+      const replacementGarden = parseGardenSnapshot(gardenRaw);
+      if (replacementGarden) localStorage.setItem(GARDEN_STORAGE_KEY, JSON.stringify(replacementGarden));
+      else localStorage.removeItem(GARDEN_STORAGE_KEY);
+    } else if (!preserveGarden) {
+      const localGardenRaw = localStorage.getItem(GARDEN_STORAGE_KEY);
+      let mergedGarden = parseGardenSnapshot(localGardenRaw);
+      const gardenRecord = bundle.records?.[gardenRecordKey];
+      for (const candidate of [gardenRecord, bundle.appState?.garden]) {
+        const incomingGarden = parseGardenSnapshot(candidate);
+        if (incomingGarden) mergedGarden = mergeGardenStates(mergedGarden, incomingGarden);
+      }
+      if (mergedGarden && JSON.stringify(mergedGarden) !== JSON.stringify(parseGardenSnapshot(localGardenRaw))) {
+        localStorage.setItem(GARDEN_STORAGE_KEY, JSON.stringify(mergedGarden));
+      }
     }
 
     const remoteLegacyConfig = bundle.appState?.legacyWritingConfig;
@@ -622,20 +668,44 @@ function canonicalBundle(bundle) {
   });
 }
 
-async function restoreDailyBundle(bundle) {
+async function restoreDailyBundle(bundle, { dispatch = true } = {}) {
   const hydratedVoiceNotes = await hydrateVoiceNoteAttachments(bundle.dateString, bundle.voiceNotes);
+  const checklistKey = 'mindful_pokes_data_' + bundle.dateString;
+  const notesKey = 'dmp_notes_cipher_v1_' + bundle.dateString;
+  const gardenRecordKey = GARDEN_DAILY_SYNC_PREFIX + bundle.dateString;
+  const resetKey = DAILY_RESET_MARKER_PREFIX + bundle.dateString;
+  const incomingReset = parseDailyResetMarker(bundle.records?.[resetKey]);
+  const localReset = parseDailyResetMarker(localStorage.getItem(resetKey));
+  const resetComparison = compareDailyResetMarkers(incomingReset, localReset);
+  const localResetIsNewer = Boolean(localReset && (!incomingReset || resetComparison < 0));
+  const incomingResetIsCurrentOrNewer = Boolean(incomingReset && (!localReset || resetComparison >= 0));
+  const resettableKeys = new Set([checklistKey, notesKey, gardenRecordKey, resetKey]);
+
   applyingRemotePacket += 1;
   try {
+    if (incomingResetIsCurrentOrNewer) {
+      // A newer reset is an explicit deletion of prior checklist, reflections,
+      // and Garden state. Clear before applying any post-reset values included
+      // in this same packet.
+      localStorage.removeItem(checklistKey);
+      localStorage.removeItem(notesKey);
+      localStorage.removeItem(GARDEN_STORAGE_KEY);
+    }
     for (const [key, value] of Object.entries(bundle.records)) {
       if (key.startsWith(GARDEN_DAILY_SYNC_PREFIX)) continue;
+      if (localResetIsNewer && resettableKeys.has(key)) continue;
       if (isDailyRecordKey(key) && typeof value === 'string') localStorage.setItem(key, value);
     }
-    restoreSharedAppState(bundle, { replaceConfidence: true });
+    restoreSharedAppState(bundle, {
+      replaceConfidence: true,
+      replaceGarden: incomingResetIsCurrentOrNewer,
+      preserveGarden: localResetIsNewer
+    });
     await restoreEncryptedVoiceNotesForDate(bundle.dateString, hydratedVoiceNotes);
   } finally {
     applyingRemotePacket -= 1;
   }
-  window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', { detail: { dateString: bundle.dateString } }));
+  if (dispatch) window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', { detail: { dateString: bundle.dateString } }));
 }
 
 async function fetchRemoteIndex() {
@@ -838,6 +908,7 @@ function queueVaultSync({ dateString = null, refreshAll = false, immediate = fal
   if (!activeVault || activeVault.offlineOnly === true) return;
   if (isValidDateString(dateString)) pendingDailySyncDates.add(dateString);
   if (refreshAll) pendingFullVaultRefresh = true;
+  if (vaultSyncInitializing) return;
 
   const session = activeVault;
   const generation = vaultSyncGeneration;
@@ -959,9 +1030,8 @@ export async function startLocalVaultStorage(credentials) {
   const generation = ++vaultSyncGeneration;
   const isCurrent = () => activeVault === credentials && vaultSyncGeneration === generation;
   installLocalStorageHooks();
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
-  window.addEventListener('pagehide', flushLocalVaultChanges);
+  vaultSyncInitializing = false;
+  installVaultLocalListeners();
 
   try {
     await captureExistingLocalDates();
@@ -974,9 +1044,7 @@ export async function startLocalVaultStorage(credentials) {
   } catch (error) {
     if (isCurrent()) {
       activeVault = null;
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
-      window.removeEventListener('pagehide', flushLocalVaultChanges);
+      removeVaultSyncListeners();
     }
     throw error;
   }
@@ -989,58 +1057,74 @@ export async function startVaultSync(credentials) {
   activeVault = credentials;
   const generation = ++vaultSyncGeneration;
   const isCurrent = () => activeVault === credentials && vaultSyncGeneration === generation;
+  vaultSyncInitializing = true;
   installLocalStorageHooks();
+
+  // Attach before the first await. Diary and IndexedDB voice-note changes made
+  // while the cloud snapshot loads are captured locally and held in the queue.
+  installVaultLocalListeners();
+  installVaultOnlineListener();
 
   try {
     status('Connecting to your private vault…');
     await vaultRequest('/vault/' + activeVault.vaultId + '/claim', { method: 'POST', body: {} });
+    if (!isCurrent()) return false;
+
+    // Capture actual local daily records first; do not manufacture an empty current-day
+    // packet merely because account-wide settings exist on this device.
+    await captureExistingLocalDates();
+    if (!isCurrent()) return false;
+
+    // Publish daily manifests only after their separate encrypted attachments
+    // have been accepted by the Worker. A missing/new Worker route must not make
+    // sign-in fail or publish references to unavailable audio objects.
+    let voiceAttachmentsReady = true;
+    try {
+      await uploadAllPendingVoiceNoteAttachments();
+    } catch (error) {
+      voiceAttachmentsReady = false;
+      console.warn('[Vault Sync] Encrypted voice notes remain queued locally; daily manifests were not published.', error);
+      status('Your account is open. Encrypted voice notes remain safely saved on this device and will sync after the storage service is ready.', 'info');
+    }
+    if (!isCurrent()) return false;
+    if (voiceAttachmentsReady) {
+      await synchronizeVault();
+      if (!isCurrent()) return false;
+    }
+
+    // Reconcile remote dates before attaching account-wide state to today's packet.
+    // This lets a newly signed-in device receive today's Diary/location/voice data
+    // instead of treating an empty bootstrap packet as a conflicting local edit.
+    if (voiceAttachmentsReady && (
+        localStorage.getItem(GARDEN_STORAGE_KEY) !== null
+        || localStorage.getItem(LEGACY_WRITING_CONFIG_KEY) !== null
+        || localStorage.getItem('user_confidence_score') !== null
+    )) {
+      await captureDailyPacket(getCurrentDateString());
+      if (!isCurrent()) return false;
+      await synchronizeVault();
+      if (!isCurrent()) return false;
+    }
+
+    vaultSyncInitializing = false;
+    // Changes captured while startup was in progress are now flushed through
+    // the same serialized attachment-upload and packet-reconciliation path.
+    if (pendingDailySyncDates.size || pendingFullVaultRefresh) {
+      queueVaultSync({ refreshAll: true, immediate: true });
+    }
+    return true;
   } catch (error) {
-    if (isCurrent()) activeVault = null;
+    if (isCurrent()) {
+      vaultSyncInitializing = false;
+      if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
+      dailySyncTimer = null;
+      pendingDailySyncDates.clear();
+      pendingFullVaultRefresh = false;
+      removeVaultSyncListeners();
+      activeVault = null;
+    }
     throw error;
   }
-  if (!isCurrent()) return false;
-
-  // Capture actual local daily records first; do not manufacture an empty current-day
-  // packet merely because account-wide settings exist on this device.
-  await captureExistingLocalDates();
-  if (!isCurrent()) return false;
-
-  // Publish daily manifests only after their separate encrypted attachments
-  // have been accepted by the Worker. A missing/new Worker route must not make
-  // sign-in fail or publish references to unavailable audio objects.
-  let voiceAttachmentsReady = true;
-  try {
-    await uploadAllPendingVoiceNoteAttachments();
-  } catch (error) {
-    voiceAttachmentsReady = false;
-    console.warn('[Vault Sync] Encrypted voice notes remain queued locally; daily manifests were not published.', error);
-    status('Your account is open. Encrypted voice notes remain safely saved on this device and will sync after the storage service is ready.', 'info');
-  }
-  if (!isCurrent()) return false;
-  if (voiceAttachmentsReady) {
-    await synchronizeVault();
-    if (!isCurrent()) return false;
-  }
-
-  // Reconcile remote dates before attaching account-wide state to today's packet.
-  // This lets a newly signed-in device receive today's Diary/location/voice data
-  // instead of treating an empty bootstrap packet as a conflicting local edit.
-  if (voiceAttachmentsReady && (
-      localStorage.getItem(GARDEN_STORAGE_KEY) !== null
-      || localStorage.getItem(LEGACY_WRITING_CONFIG_KEY) !== null
-      || localStorage.getItem('user_confidence_score') !== null
-  )) {
-    await captureDailyPacket(getCurrentDateString());
-    if (!isCurrent()) return false;
-    await synchronizeVault();
-    if (!isCurrent()) return false;
-  }
-
-  document.addEventListener('visibilitychange', handleVisibilityChange);
-  window.addEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('pagehide', flushLocalVaultChanges);
-  return true;
 }
 
 function handleLocalDataChanged(event) {
@@ -1088,6 +1172,7 @@ function flushLocalVaultChanges() {
 export async function stopVaultSync() {
   // Invalidate in-flight startup before aborting requests or awaiting local flushes.
   vaultSyncGeneration += 1;
+  vaultSyncInitializing = false;
   if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
   dailySyncTimer = null;
   pendingDailySyncDates.clear();
@@ -1106,10 +1191,7 @@ export async function stopVaultSync() {
     dailySyncTimer = null;
     pendingDailySyncDates.clear();
     pendingFullVaultRefresh = false;
-    document.removeEventListener('visibilitychange', handleVisibilityChange);
-    window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
-    window.removeEventListener('online', handleOnline);
-    window.removeEventListener('pagehide', flushLocalVaultChanges);
+    removeVaultSyncListeners();
     activeVault = null;
   }
 }
@@ -1124,16 +1206,26 @@ export async function exportEncryptedVaultPackets() {
   return packets.map(({ dateString, packet, remoteUpdatedAt }) => ({ dateString, packet, remoteUpdatedAt }));
 }
 
-export async function importEncryptedVaultPackets(packets) {
+export async function importEncryptedVaultPackets(packets, { voiceNotes = [] } = {}) {
   if (!activeVault) throw new Error('Sign in to the same account that created this backup before importing it.');
   if (!Array.isArray(packets) || packets.length > 5000
       || packets.some(item => !item || !isValidEncryptedPacket(item.packet)
-        || item.dateString !== item.packet.dateString)) {
+        || item.dateString !== item.packet.dateString)
+      || new Set(packets.map(item => item?.dateString)).size !== packets.length) {
     throw new Error('The selected backup contains an invalid or unsupported encrypted daily packet.');
   }
+  if (!validatePrivateVoiceNoteBackup(voiceNotes)) {
+    throw new Error('The backup contains invalid encrypted voice notes.');
+  }
+
+  // Authenticate and compare every daily packet before changing either local store.
   const prepared = [];
+  const affectedDates = [];
   for (const item of packets) {
     const bundle = await decryptDailyBundle(item.packet, activeVault.encryptionKey, decompressData);
+    if (bundle.dateString !== item.dateString) {
+      throw new Error('A daily packet does not match its declared date.');
+    }
     const existing = await getLocalDailyPacket(item.dateString);
     if (existing) {
       const existingBundle = await decryptDailyBundle(existing.packet, activeVault.encryptionKey, decompressData);
@@ -1142,15 +1234,115 @@ export async function importEncryptedVaultPackets(packets) {
       }
     }
     prepared.push({ item, bundle });
+    affectedDates.push(item.dateString);
   }
 
-  // Restore source records only after every imported packet is authenticated and
-  // checked against the existing local version, so a partially invalid file
-  // cannot replace some dates while leaving others untouched.
-  for (const { bundle } of prepared) await restoreDailyBundle(bundle);
-  const { importLocalDailyPackets } = await import('./vault-storage.js');
-  await importLocalDailyPackets(packets);
-  status('Restored ' + packets.length + ' validated encrypted daily packet' + (packets.length === 1 ? '' : 's') + '. The packets will be reconciled at the next verified sign-in.', 'success');
+  // Reject conflicting attachment IDs before restoring any packet or recording.
+  const existingVoiceNotes = await exportEncryptedVoiceNotes();
+  const existingVoiceById = new Map(existingVoiceNotes.map(record => [record.id, record]));
+  for (const record of voiceNotes) {
+    const previous = existingVoiceById.get(record.id);
+    if (previous && (previous.dateString !== record.dateString
+        || previous.ciphertext !== record.ciphertext
+        || previous.iv !== record.iv)) {
+      throw new Error('A voice note with the same identifier already exists with different encrypted data. No local records were changed.');
+    }
+  }
+
+  // Snapshot all keys the bundle restore may affect, plus the exact packet state.
+  const storageKeys = new Set([GARDEN_STORAGE_KEY, LEGACY_WRITING_CONFIG_KEY, 'user_confidence_score']);
+  for (const { bundle } of prepared) Object.keys(bundle.records).forEach(key => storageKeys.add(key));
+  const previousLocalValues = new Map();
+  for (const key of storageKeys) previousLocalValues.set(key, localStorage.getItem(key));
+  const existingDailyPackets = (await Promise.all(
+    affectedDates.map(dateString => getLocalDailyPacket(dateString))
+  )).filter(Boolean);
+
+  try {
+    if (voiceNotes.length) await mergePrivateVoiceNotes(voiceNotes);
+    for (const { bundle } of prepared) await restoreDailyBundle(bundle, { dispatch: false });
+    const { importLocalDailyPackets } = await import('./vault-storage.js');
+    await importLocalDailyPackets(packets);
+  } catch (error) {
+    const rollbackErrors = [];
+    try {
+      const { restoreLocalDailyPacketState } = await import('./vault-storage.js');
+      await restoreLocalDailyPacketState(existingDailyPackets, affectedDates);
+    } catch (rollbackError) {
+      rollbackErrors.push('daily-packet rollback failed: ' + (rollbackError?.message || String(rollbackError)));
+    }
+    try {
+      applyingRemotePacket += 1;
+      for (const [key, value] of previousLocalValues) {
+        if (value === null) localStorage.removeItem(key);
+        else localStorage.setItem(key, value);
+      }
+    } catch (rollbackError) {
+      rollbackErrors.push('local-storage rollback failed: ' + (rollbackError?.message || String(rollbackError)));
+    } finally {
+      applyingRemotePacket -= 1;
+    }
+    try {
+      await restorePrivateVoiceNotes(existingVoiceNotes);
+    } catch (rollbackError) {
+      rollbackErrors.push('voice-note rollback failed: ' + (rollbackError?.message || String(rollbackError)));
+    }
+    if (rollbackErrors.length) {
+      throw new Error((error?.message || 'The backup import failed.')
+        + ' Automatic rollback reported: ' + rollbackErrors.join('; ')
+        + '. Keep this device open and export any remaining local records before retrying.');
+    }
+    throw error;
+  }
+
+  for (const { bundle } of prepared) {
+    window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', {
+      detail: { dateString: bundle.dateString }
+    }));
+  }
+  if (activeVault.offlineOnly !== true) {
+    queueVaultSync({ refreshAll: true, immediate: true });
+    status('Restored ' + packets.length + ' encrypted daily packet' + (packets.length === 1 ? '' : 's')
+      + ' and ' + voiceNotes.length + ' encrypted voice note' + (voiceNotes.length === 1 ? '' : 's')
+      + '. Cloud reconciliation is queued.', 'success');
+  } else {
+    status('Restored ' + packets.length + ' encrypted daily packet' + (packets.length === 1 ? '' : 's')
+      + ' and ' + voiceNotes.length + ' encrypted voice note' + (voiceNotes.length === 1 ? '' : 's')
+      + '. Your backup is saved locally and will sync after your next verified online sign-in.', 'success');
+  }
+}
+
+export async function listTrustedDevices() {
+  if (!activeVault || activeVault.offlineOnly === true) {
+    throw new Error('Trusted-device management requires an online verified account session.');
+  }
+  const result = await vaultRequest('/vault/' + activeVault.vaultId + '/device/list');
+  if (result?.ok !== true || !Array.isArray(result.devices)
+      || typeof result.currentDeviceId !== 'string'
+      || result.devices.length > 10
+      || result.devices.some(device => !device
+        || typeof device.deviceId !== 'string'
+        || !/^[A-Za-z0-9_-]{43}$/.test(device.deviceId)
+        || typeof device.isCurrent !== 'boolean')) {
+    throw new Error('The trusted-device list returned an invalid response.');
+  }
+  return result;
+}
+
+export async function removeTrustedDevice(deviceId) {
+  if (!activeVault || activeVault.offlineOnly === true) {
+    throw new Error('Trusted-device management requires an online verified account session.');
+  }
+  if (typeof deviceId !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(deviceId)) {
+    throw new TypeError('A valid trusted-device identifier is required.');
+  }
+  if (deviceId === activeVault.deviceId) {
+    throw new Error('This device cannot remove its own active registration.');
+  }
+  return vaultRequest('/vault/' + activeVault.vaultId + '/device/remove', {
+    method: 'POST',
+    body: { deviceId }
+  });
 }
 
 export function isVaultSyncActive() {

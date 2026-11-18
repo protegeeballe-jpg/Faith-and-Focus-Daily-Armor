@@ -20,7 +20,7 @@ const ALLOWED_VOICE_NOTE_MIME_TYPES = new Set([
 ]);
 
 export function isAllowedVoiceNoteMimeType(value) {
-    if (typeof value !== 'string' || value.length > 128 || /[\\r\\n]/.test(value)) return false;
+    if (typeof value !== 'string' || value.length > 128 || /[\r\n]/.test(value)) return false;
     const [mediaType, ...parameters] = value.toLowerCase().split(';').map(part => part.trim());
     if (!ALLOWED_VOICE_NOTE_MIME_TYPES.has(mediaType)) return false;
     return parameters.every(parameter => /^codecs=[a-z0-9._,-]+$/.test(parameter));

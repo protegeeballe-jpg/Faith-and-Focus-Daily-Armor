@@ -9,6 +9,7 @@ import {
     encryptVoiceNoteBlob,
     encryptVoiceNoteSegment,
     isVoiceNoteAttachmentManifest,
+    isAllowedVoiceNoteMimeType,
     validateEncryptedVoiceNoteBackup,
     validateEncryptedVoiceNoteRecord
 } from '../assets/voice-note-store.js';
@@ -145,4 +146,12 @@ test('recording drafts are indexed separately from completed voice notes', () =>
     assert.match(source, /createObjectStore\(RECORDING_SEGMENT_STORE_NAME/);
     assert.match(source, /recoverEncryptedVoiceNoteDrafts/);
     assert.match(source, /VOICE_NOTE_DRAFT_RECOVERY_AGE_MS = 2 \* 60 \* 1000/);
+});
+
+
+test('voice-note MIME validation accepts supported codecs and rejects actual line breaks', () => {
+    assert.equal(isAllowedVoiceNoteMimeType('audio/ogg;codecs=vorbis'), true);
+    assert.equal(isAllowedVoiceNoteMimeType('audio/webm;codecs=opus'), true);
+    assert.equal(isAllowedVoiceNoteMimeType('audio/ogg;codecs=vorbis\\n'), false);
+    assert.equal(isAllowedVoiceNoteMimeType('audio/ogg;codecs=vorbis\\r'), false);
 });

@@ -265,6 +265,27 @@ export async function importLocalDailyPackets(records) {
   await done;
 }
 
+export async function restoreLocalDailyPacketState(records, dateStrings) {
+  if (!Array.isArray(records) || !Array.isArray(dateStrings)
+      || dateStrings.length > 5000
+      || dateStrings.some(date => typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+      || records.some(record => !record || !dateStrings.includes(record.dateString)
+        || !record.packet || !Number.isFinite(record.localUpdatedAt)
+        || typeof record.dirty !== 'boolean')) {
+    throw new TypeError('The previous local packet state is invalid.');
+  }
+  const byDate = new Map(records.map(record => [record.dateString, record]));
+  const database = await openDatabase();
+  const transaction = database.transaction(PACKET_STORE, 'readwrite');
+  const done = transactionDone(transaction);
+  const store = transaction.objectStore(PACKET_STORE);
+  for (const dateString of dateStrings) {
+    if (byDate.has(dateString)) store.put(byDate.get(dateString));
+    else store.delete(dateString);
+  }
+  await done;
+}
+
 export async function clearLocalDailyPackets() {
   const database = await openDatabase();
   const transaction = database.transaction(PACKET_STORE, 'readwrite');

@@ -68,7 +68,8 @@ test('stopping vault synchronization clears its in-memory context even when flus
   assert.match(stop, /finally/);
   assert.match(stop, /activeVault = null/);
   assert.match(stop, /activeVaultRequestControllers\.clear\(\)/);
-  assert.match(stop, /removeEventListener\('faith-focus:local-data-changed'/);
+  assert.match(stop, /removeVaultSyncListeners\(\)/);
+  assert.match(vaultSync, /function removeVaultSyncListeners\(\)[\s\S]*?removeEventListener\('faith-focus:local-data-changed'/);
 });
 
 
