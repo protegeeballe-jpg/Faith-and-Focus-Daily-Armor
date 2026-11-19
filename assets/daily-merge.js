@@ -1,4 +1,5 @@
 import { loadLocationCheckinEntries } from './location-checkin.js';
+import { DAILY_RESET_MARKER_PREFIX, parseDailyResetMarker, compareDailyResetMarkers } from './daily-reset.js';
 import { createVoiceNoteAttachmentManifest, validateEncryptedVoiceNoteRecord } from './voice-note-store.js';
 import {
     GARDEN_DAILY_SYNC_PREFIX,
@@ -63,12 +64,30 @@ function mergeObjectValues(localValue, remoteValue, path = 'record') {
 export function mergeChecklistRecordValues(localRaw, remoteRaw) {
     if (localRaw == null) return remoteRaw;
     if (remoteRaw == null) return localRaw;
-    if (localRaw === remoteRaw) return remoteRaw;
-    return JSON.stringify(mergeObjectValues(
-        parseObjectRecord(localRaw, 'checklist'),
-        parseObjectRecord(remoteRaw, 'checklist'),
-        'checklist'
-    ));
+    const local = parseObjectRecord(localRaw, 'checklist');
+    const remote = parseObjectRecord(remoteRaw, 'checklist');
+    const merged = localRaw === remoteRaw
+        ? { ...remote }
+        : mergeObjectValues(local, remote, 'checklist');
+
+    // Only one emotional cloud can be selected for a day. If devices selected
+    // different clouds concurrently, prefer the remote packet's selection;
+    // otherwise retain the local selection. Never OR several feelings together.
+    const cloudNames = ['cumulus', 'stratus', 'stratocumulus'];
+    const hasCloudState = cloudNames.some(name =>
+        Object.hasOwn(local, 'cloud_' + name) || Object.hasOwn(remote, 'cloud_' + name)
+    ) || Object.hasOwn(local, 'cloud_flow_version') || Object.hasOwn(remote, 'cloud_flow_version');
+    if (hasCloudState) {
+        const selectedCloud = cloudNames.find(name => remote['cloud_' + name] === true)
+            || cloudNames.find(name => local['cloud_' + name] === true)
+            || cloudNames.find(name => merged['cloud_' + name] === true)
+            || null;
+        cloudNames.forEach(name => {
+            merged['cloud_' + name] = name === selectedCloud;
+        });
+        merged.cloud_flow_version = 2;
+    }
+    return JSON.stringify(merged);
 }
 
 function parseLocationEntries(raw, dateString) {
@@ -181,9 +200,27 @@ export async function mergeDailyBundles(localBundle, remoteBundle, {
     const remoteRecords = remoteBundle.records || {};
     const diaryKey = 'dmp_diary_cipher_v1_' + dateString;
     const notesKey = 'dmp_notes_cipher_v1_' + dateString;
+    const checklistKey = 'mindful_pokes_data_' + dateString;
+    const gardenKey = GARDEN_DAILY_SYNC_PREFIX + dateString;
+    const resetKey = DAILY_RESET_MARKER_PREFIX + dateString;
+    const localReset = parseDailyResetMarker(localRecords[resetKey]);
+    const remoteReset = parseDailyResetMarker(remoteRecords[resetKey]);
+    const resetSide = localReset && remoteReset
+        ? (compareDailyResetMarkers(localReset, remoteReset) >= 0 ? 'local' : 'remote')
+        : localReset ? 'local' : remoteReset ? 'remote' : null;
+    const resetRecords = resetSide === 'local' ? localRecords : remoteRecords;
+
+    // Diary text is still reconciled normally. Private reflection notes belong to
+    // the winning reset generation, so a pre-reset remote value cannot return.
     const privateResult = await mergePrivateWriting(
-        { diary: localRecords[diaryKey] ?? null, notes: localRecords[notesKey] ?? null },
-        { diary: remoteRecords[diaryKey] ?? null, notes: remoteRecords[notesKey] ?? null }
+        {
+            diary: localRecords[diaryKey] ?? null,
+            notes: resetSide === 'remote' ? null : (localRecords[notesKey] ?? null)
+        },
+        {
+            diary: remoteRecords[diaryKey] ?? null,
+            notes: resetSide === 'local' ? null : (remoteRecords[notesKey] ?? null)
+        }
     );
 
     const records = {};
@@ -192,16 +229,25 @@ export async function mergeDailyBundles(localBundle, remoteBundle, {
         if (key === diaryKey || key === notesKey) continue;
         const localValue = localRecords[key];
         const remoteValue = remoteRecords[key];
+
+        if (resetSide && [checklistKey, notesKey, gardenKey, resetKey].includes(key)) {
+            const selectedValue = resetRecords[key];
+            if (selectedValue !== undefined) records[key] = selectedValue;
+            continue;
+        }
         if (localValue === undefined) { records[key] = remoteValue; continue; }
         if (remoteValue === undefined) { records[key] = localValue; continue; }
         if (localValue === remoteValue) { records[key] = remoteValue; continue; }
-        if (key === 'mindful_pokes_data_' + dateString) {
+        if (key === checklistKey) {
             records[key] = mergeChecklistRecordValues(localValue, remoteValue);
         } else if (key === 'faith_focus_location_checkins_v1_' + dateString) {
             records[key] = mergeLocationCheckinRecordValues(localValue, remoteValue, dateString);
-        } else if (key === GARDEN_DAILY_SYNC_PREFIX + dateString) {
+        } else if (key === gardenKey) {
             const garden = mergeGardenStates(parseGardenRecord(localValue), parseGardenRecord(remoteValue));
             records[key] = garden ? JSON.stringify(garden) : remoteValue;
+        } else if (key === resetKey) {
+            const selected = compareDailyResetMarkers(localValue, remoteValue) >= 0 ? localValue : remoteValue;
+            records[key] = selected;
         } else if (key === 'score_awarded_' + dateString) {
             records[key] = mergeAwardRecord(localValue, remoteValue);
         } else {
@@ -213,12 +259,19 @@ export async function mergeDailyBundles(localBundle, remoteBundle, {
 
     const localState = localBundle.appState || {};
     const remoteState = remoteBundle.appState || {};
-    const gardenCandidates = [
-        parseGardenRecord(localState.garden),
-        parseGardenRecord(remoteState.garden),
-        parseGardenRecord(localRecords[GARDEN_DAILY_SYNC_PREFIX + dateString]),
-        parseGardenRecord(remoteRecords[GARDEN_DAILY_SYNC_PREFIX + dateString])
-    ];
+    const resetBundle = resetSide === 'local' ? localBundle : remoteBundle;
+    const resetState = resetBundle.appState || {};
+    const gardenCandidates = resetSide
+        ? [
+            parseGardenRecord(resetState.garden),
+            parseGardenRecord(resetRecords[gardenKey])
+        ]
+        : [
+            parseGardenRecord(localState.garden),
+            parseGardenRecord(remoteState.garden),
+            parseGardenRecord(localRecords[gardenKey]),
+            parseGardenRecord(remoteRecords[gardenKey])
+        ];
     let garden = null;
     for (const candidate of gardenCandidates) garden = mergeGardenStates(garden, candidate);
     const appState = {
@@ -231,9 +284,25 @@ export async function mergeDailyBundles(localBundle, remoteBundle, {
     appState.legacyWritingConfig = isUsableLegacyWritingConfig(remoteLegacy)
         ? remoteLegacy
         : isUsableLegacyWritingConfig(localLegacy) ? localLegacy : (remoteLegacy ?? localLegacy ?? null);
-    if (garden) {
+
+    if (resetSide) {
+        const selectedGardenRaw = Object.hasOwn(resetRecords, gardenKey)
+            ? resetRecords[gardenKey]
+            : (typeof resetState.garden === 'string' ? resetState.garden : null);
+        appState.garden = selectedGardenRaw;
+        if (garden) {
+            const gardenText = JSON.stringify(garden);
+            records[gardenKey] = gardenText;
+            appState.garden = gardenText;
+        } else {
+            delete records[gardenKey];
+            appState.garden = null;
+        }
+        const selectedResetMarker = resetRecords[resetKey];
+        if (selectedResetMarker !== undefined) records[resetKey] = selectedResetMarker;
+    } else if (garden) {
         const gardenText = JSON.stringify(garden);
-        records[GARDEN_DAILY_SYNC_PREFIX + dateString] = gardenText;
+        records[gardenKey] = gardenText;
         appState.garden = gardenText;
     }
 

@@ -17,6 +17,7 @@ const DEVICE_CHALLENGE_TTL_MS = 60 * 1000;
 const DEVICE_SESSION_IDLE_MS = 2 * 60 * 1000;
 const DEVICE_SESSION_MAX_MS = 12 * 60 * 60 * 1000;
 const MAX_DEVICES_PER_VAULT = 10;
+const KV_WRITE_SPACING_BUCKET_COUNT = 32;
 const MAX_PENDING_DEVICE_CHALLENGES = 3;
 const DEVICE_ID_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const DEVICE_SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{86}$/;
@@ -107,6 +108,16 @@ function rateLimitedJsonResponse(message, origin = null) {
   return response;
 }
 
+export function getKvWriteSpacingBucket(key) {
+  const value = String(key ?? "");
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % KV_WRITE_SPACING_BUCKET_COUNT;
+}
+
 function getEdgeRateLimitPolicy(request) {
   const { pathname } = new URL(request.url);
 
@@ -121,7 +132,7 @@ function getEdgeRateLimitPolicy(request) {
     return { ipLimited: true, accountRegistry: true, sensitiveRoute: "legacy-claim" };
   }
 
-  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(pathname);
+  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke|device\/list|device\/remove)$/.exec(pathname);
   if (vaultRoute) {
     const resource = vaultRoute[1];
     const sensitiveRoute = resource === "device/challenge" ? "device:challenge"
@@ -505,7 +516,7 @@ export default {
     const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(url.pathname);
     const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
     const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
-    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke)$/.exec(url.pathname);
+    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke|device\/list|device\/remove)$/.exec(url.pathname);
     const voiceNoteMatch = /^\/vault\/([a-f0-9]{64})\/voice-note\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2}-[a-f0-9]{32})\/(\d{1,2})$/.exec(url.pathname);
     const knownRoute = Boolean(accountRoute || legacyClaim || match || voiceNoteMatch);
 
@@ -522,7 +533,7 @@ export default {
     }
     if (match) {
       const resource = match[2];
-      const expectedMethods = resource === "index" ? ["GET"]
+      const expectedMethods = resource === "index" || resource === "device/list" ? ["GET"]
         : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
       if (!expectedMethods.includes(request.method)) {
         return jsonResponse({ error: "Method not allowed." }, 405, origin);
@@ -675,7 +686,7 @@ export default {
     const voiceNoteId = voiceNoteMatch?.[3] || null;
     const voiceNoteChunkIndex = voiceNoteMatch ? Number(voiceNoteMatch[4]) : null;
     const expectedMethods = voiceNoteMatch ? ["GET", "PUT"]
-      : resource === "index" ? ["GET"]
+      : resource === "index" || resource === "device/list" ? ["GET"]
         : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
     if (!expectedMethods.includes(request.method)) {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
@@ -745,10 +756,13 @@ export default {
       if (!TOKEN_PATTERN.test(sessionToken)) {
         return jsonResponse({ error: "A valid device session is required. Please sign in again." }, 401, origin);
       }
-      if (resource === "device/session/revoke"
+      if ((resource === "device/session/revoke" || resource === "device/remove")
           && (!payload || Object.keys(payload).length !== 1
             || !DEVICE_ID_PATTERN.test(payload.deviceId || ""))) {
-        return jsonResponse({ error: "The device session revocation request is invalid." }, 400, origin);
+        return jsonResponse({ error: "The device management request is invalid." }, 400, origin);
+      }
+      if (resource === "device/list" && payload !== null) {
+        return jsonResponse({ error: "The device-list request is invalid." }, 400, origin);
       }
     }
 
@@ -1557,6 +1571,56 @@ export class VaultCoordinator {
     }, 200);
   }
 
+  async listRegisteredDevices(session) {
+    if (!session || session.vaultId !== this.vaultId) return this.unauthorized();
+    const records = await this.state.storage.list({ prefix: "device:" });
+    const devices = [...records.values()]
+      .filter(record => record && DEVICE_ID_PATTERN.test(record.deviceId || ""))
+      .map(record => ({
+        deviceId: record.deviceId,
+        createdAt: Number.isFinite(record.createdAt) ? record.createdAt : null,
+        lastAuthenticatedAt: Number.isFinite(record.lastAuthenticatedAt) ? record.lastAuthenticatedAt : null,
+        isCurrent: record.deviceId === session.deviceId
+      }))
+      .sort((left, right) => (right.lastAuthenticatedAt || right.createdAt || 0)
+        - (left.lastAuthenticatedAt || left.createdAt || 0));
+    return jsonResponse({ ok: true, currentDeviceId: session.deviceId, devices }, 200);
+  }
+
+  async removeRegisteredDevice(request, session) {
+    if (!session || session.vaultId !== this.vaultId) return this.unauthorized();
+    let payload;
+    try { payload = await request.json(); }
+    catch { return jsonResponse({ error: "Invalid device removal request." }, 400); }
+    const deviceId = payload?.deviceId;
+    if (!payload || Object.keys(payload).length !== 1 || !DEVICE_ID_PATTERN.test(deviceId || "")) {
+      return jsonResponse({ error: "Invalid device removal request." }, 400);
+    }
+    if (deviceId === session.deviceId) {
+      return jsonResponse({ error: "This device cannot remove its own active registration. Use another trusted device." }, 409);
+    }
+
+    const deviceKey = this.deviceKey(deviceId);
+    const registered = await this.state.storage.get(deviceKey);
+    if (!registered) return jsonResponse({ ok: true, removed: false, alreadyRemoved: true }, 200);
+
+    await this.state.storage.delete(deviceKey);
+    const sessions = await this.state.storage.list({ prefix: "device-session:" });
+    let revokedSessions = 0;
+    for (const [key, record] of sessions) {
+      if (record?.deviceId === deviceId) {
+        await this.state.storage.delete(key);
+        revokedSessions += 1;
+      }
+    }
+    const challenges = await this.state.storage.list({ prefix: "device-challenge:" });
+    for (const [key, challenge] of challenges) {
+      if (challenge?.deviceId === deviceId) await this.state.storage.delete(key);
+    }
+    await this.scheduleSessionCleanup();
+    return jsonResponse({ ok: true, removed: true, deviceId, revokedSessions }, 200);
+  }
+
   async revokeAllDeviceSessions() {
     const sessions = await this.state.storage.list({ prefix: "device-session:" });
     for (const key of sessions.keys()) {
@@ -1596,12 +1660,51 @@ export class VaultCoordinator {
     return next;
   }
 
+  async cleanupLegacyKvWriteMarkers() {
+    const cursorKey = "kv-write-marker-cleanup-cursor";
+    const cursor = await this.state.storage.get(cursorKey);
+    const options = { prefix: "kv-write-time:", limit: 64 };
+    if (typeof cursor === "string" && cursor.startsWith("kv-write-time:")) {
+      options.startAfter = cursor;
+    }
+
+    const page = await this.state.storage.list(options);
+    const keys = [...page.keys()];
+    for (const key of keys) {
+      // The bounded bucket markers are the new permanent state. Every other
+      // key under this prefix was created by the previous per-record scheme.
+      if (!key.startsWith("kv-write-time:bucket:")) {
+        await this.state.storage.delete(key);
+      }
+    }
+
+    if (keys.length === options.limit && keys.length > 0) {
+      await this.state.storage.put(cursorKey, keys[keys.length - 1]);
+    } else {
+      await this.state.storage.delete(cursorKey);
+    }
+    return keys.length;
+  }
+
   async enforceKvWriteSpacing(key) {
-    const storageKey = "kv-write-time:" + key;
+    // Fixed-size buckets bound permanent marker-key growth.
+    const storageKey = "kv-write-time:bucket:" + getKvWriteSpacingBucket(key);
     const lastWrite = await this.state.storage.get(storageKey) || 0;
     const waitMs = Math.max(0, 1100 - (Date.now() - lastWrite));
     if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
     await this.state.storage.put(storageKey, Date.now());
+
+    // Migrate legacy per-record markers gradually. A cleanup error must never
+    // turn an otherwise successful encrypted packet write into a failed save.
+    this.legacyMarkerCleanupTicks = (this.legacyMarkerCleanupTicks || 0) + 1;
+    if (this.legacyMarkerCleanupTicks >= 64) {
+      this.legacyMarkerCleanupTicks = 0;
+      try {
+        await this.cleanupLegacyKvWriteMarkers();
+      } catch (error) {
+        console.warn("[Vault] Legacy write-marker cleanup will retry on a later write.", error);
+      }
+    }
   }
 
   async authenticate(request, { allowFirstClaim = false } = {}) {
@@ -1727,7 +1830,11 @@ export class VaultCoordinator {
         return jsonResponse({ ok: true, claimed: true }, 200);
       }
 
-      if (!(await this.authenticateDeviceSession(request))) return this.unauthorized();
+      const authenticatedSession = await this.authenticateDeviceSession(request);
+      if (!authenticatedSession) return this.unauthorized();
+
+      if (path === "/device/list") return this.listRegisteredDevices(authenticatedSession);
+      if (path === "/device/remove") return this.removeRegisteredDevice(request, authenticatedSession);
 
       const voiceNoteMatch = /^\/voice-note\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2}-[a-f0-9]{32})\/(\d{1,2})$/.exec(path);
       if (voiceNoteMatch) {

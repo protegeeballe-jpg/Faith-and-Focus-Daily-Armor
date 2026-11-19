@@ -5,6 +5,7 @@ import {
     buildPrivateWritingDiaryPayload,
     buildPrivateWritingNotesPayload,
     isCurrentPrivateWritingDate,
+    isValidDiaryArchiveDate,
     mergeEncryptedPrivateWritingRecords
 } from '../assets/writing-security.js';
 
@@ -192,4 +193,13 @@ test('only the current device date is writable in the private Diary', () => {
     assert.equal(isCurrentPrivateWritingDate('2026-11-12', '2026-11-13'), false);
     assert.equal(isCurrentPrivateWritingDate('2026-11-14', '2026-11-13'), false);
     assert.equal(isCurrentPrivateWritingDate('not-a-date', '2026-11-13'), false);
+});
+
+
+test('archived Diary reader accepts real calendar dates and rejects impossible dates', () => {
+    assert.equal(isValidDiaryArchiveDate('2026-11-17'), true);
+    assert.equal(isValidDiaryArchiveDate('2024-02-29'), true);
+    assert.equal(isValidDiaryArchiveDate('2026-02-29'), false);
+    assert.equal(isValidDiaryArchiveDate('2026-13-01'), false);
+    assert.equal(isValidDiaryArchiveDate('not-a-date'), false);
 });

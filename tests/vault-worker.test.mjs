@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { webcrypto } from 'node:crypto';
 
-import worker, { AccountRegistry, VaultCoordinator } from '../worker.js';
+import worker, { AccountRegistry, VaultCoordinator, getKvWriteSpacingBucket } from '../worker.js';
 
 const ORIGIN = 'https://protegeeballe-jpg.github.io';
 const CLIENT = 'faith-focus-daily-armor-web/1';
@@ -552,6 +552,77 @@ test('Account Registry creates one stable vault, verifies recovery answers, and 
     sessionToken: verified.sessionToken
   }), env);
   assert.equal(indexResponse.status, 200);
+
+  // Exercise trusted-device listing and removal through the public Worker route,
+  // not only by calling the Durable Object directly.
+  const secondKeyPair = await webcrypto.subtle.generateKey(
+    { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign', 'verify']
+  );
+  const secondPublicKeyBytes = new Uint8Array(await webcrypto.subtle.exportKey('spki', secondKeyPair.publicKey));
+  const secondPublicKeySpki = base64Url(secondPublicKeyBytes);
+  const secondDeviceId = base64Url(new Uint8Array(await webcrypto.subtle.digest('SHA-256', secondPublicKeyBytes)));
+  const secondChallengeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/challenge', {
+    body: { deviceId: secondDeviceId, publicKeySpki: secondPublicKeySpki },
+    token: writeToken,
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  assert.equal(secondChallengeResponse.status, 200);
+  const secondChallenge = await responseJson(secondChallengeResponse);
+  const secondSignature = base64Url(await webcrypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    secondKeyPair.privateKey,
+    new TextEncoder().encode(secondChallenge.message)
+  ));
+  const secondVerifyResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/verify', {
+    body: {
+      challengeId: secondChallenge.challengeId,
+      deviceId: secondDeviceId,
+      signature: secondSignature
+    },
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  assert.equal(secondVerifyResponse.status, 200);
+  const secondVerified = await responseJson(secondVerifyResponse);
+
+  const trustedListResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/list', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(trustedListResponse.status, 200);
+  const trustedList = await responseJson(trustedListResponse);
+  assert.equal(trustedList.devices.length, 2);
+  assert.equal(trustedList.currentDeviceId, deviceId);
+  assert.equal(trustedList.devices.find(item => item.deviceId === deviceId).isCurrent, true);
+  assert.equal(trustedList.devices.find(item => item.deviceId === secondDeviceId).isCurrent, false);
+
+  const trustedRemovalResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/remove', {
+    body: { deviceId: secondDeviceId },
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(trustedRemovalResponse.status, 200);
+  assert.deepEqual(await responseJson(trustedRemovalResponse), {
+    ok: true, removed: true, deviceId: secondDeviceId, revokedSessions: 1
+  });
+
+  const removedDeviceIndex = await worker.fetch(accountRequest('/vault/' + vaultId + '/index', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: secondVerified.sessionToken
+  }), env);
+  assert.equal(removedDeviceIndex.status, 401);
+  const selfRemovalResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/remove', {
+    body: { deviceId },
+    membershipTicket: unlockData.membershipTicket,
+    sessionToken: verified.sessionToken
+  }), env);
+  assert.equal(selfRemovalResponse.status, 409);
+  const unauthorizedListResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/list', {
+    method: 'GET',
+    membershipTicket: unlockData.membershipTicket
+  }), env);
+  assert.equal(unauthorizedListResponse.status, 401);
 
   const wrongDeviceRevokeResponse = await worker.fetch(accountRequest('/vault/' + vaultId + '/device/session/revoke', {
     body: { deviceId: Buffer.alloc(32, 9).toString('base64url') },
@@ -1310,4 +1381,95 @@ test('transient cleanup restarts when an earlier-expiring record is inserted bef
   assert.equal(map.has(expiryKey), false);
   assert.ok(alarmAt >= recordExpiry);
   assert.ok(alarmAt <= recordExpiry + 1_000);
+});
+
+
+test('Durable Object write-spacing markers are bounded and migrate legacy per-record keys', async () => {
+  const originalNow = Date.now;
+  let simulatedNow = 1_800_000_000_000;
+  const markerMap = new Map();
+  for (let index = 0; index < 96; index += 1) {
+    markerMap.set('kv-write-time:legacy-voice-note-' + String(index).padStart(3, '0'), index);
+  }
+  const state = {
+    storage: {
+      async get(key) { return markerMap.get(key); },
+      async put(key, value) {
+        markerMap.set(key, value);
+        simulatedNow += 1_200;
+      },
+      async delete(key) { return markerMap.delete(key); },
+      async list({ prefix = '', startAfter = '', limit = 1000 } = {}) {
+        const keys = [...markerMap.keys()]
+          .filter(key => key.startsWith(prefix) && key > startAfter)
+          .sort()
+          .slice(0, limit);
+        return new Map(keys.map(key => [key, markerMap.get(key)]));
+      }
+    }
+  };
+  const coordinator = new VaultCoordinator(state, {});
+  Date.now = () => simulatedNow;
+  try {
+    for (let index = 0; index < 2_000; index += 1) {
+      await coordinator.enforceKvWriteSpacing('unique-voice-note-chunk-' + index);
+    }
+  } finally {
+    Date.now = originalNow;
+  }
+  const markerKeys = [...markerMap.keys()].filter(key => key.startsWith('kv-write-time:bucket:'));
+  const remainingLegacyKeys = [...markerMap.keys()].filter(key =>
+    key.startsWith('kv-write-time:') && !key.startsWith('kv-write-time:bucket:')
+  );
+  assert.ok(markerKeys.length <= 32);
+  assert.ok(markerKeys.length > 0);
+  assert.equal(remainingLegacyKeys.length, 0);
+  assert.equal(markerMap.has('kv-write-marker-cleanup-cursor'), false);
+  assert.ok(Array.from({ length: 2_000 }, (_, index) =>
+    getKvWriteSpacingBucket('unique-voice-note-chunk-' + index)
+  ).every(bucket => Number.isInteger(bucket) && bucket >= 0 && bucket < 32));
+});
+
+
+test('trusted devices can be listed and a removed device loses every active session', async () => {
+  const { coordinator, storageMap } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const current = await createCoordinatorSession(coordinator);
+  const oldDevice = await createCoordinatorSession(coordinator);
+
+  const listResponse = await coordinator.fetch(coordinatorRequest('/device/list', {
+    method: 'GET', token: null, sessionToken: current.sessionToken
+  }));
+  assert.equal(listResponse.status, 200);
+  const listed = await responseJson(listResponse);
+  assert.equal(listed.devices.length, 2);
+  assert.equal(listed.currentDeviceId, current.deviceId);
+  assert.equal(listed.devices.find(item => item.deviceId === current.deviceId).isCurrent, true);
+  assert.equal(listed.devices.find(item => item.deviceId === oldDevice.deviceId).isCurrent, false);
+
+  const selfRemoval = await coordinator.fetch(coordinatorRequest('/device/remove', {
+    method: 'POST', token: null, sessionToken: current.sessionToken,
+    body: { deviceId: current.deviceId }
+  }));
+  assert.equal(selfRemoval.status, 409);
+
+  const removal = await coordinator.fetch(coordinatorRequest('/device/remove', {
+    method: 'POST', token: null, sessionToken: current.sessionToken,
+    body: { deviceId: oldDevice.deviceId }
+  }));
+  assert.equal(removal.status, 200);
+  assert.deepEqual(await responseJson(removal), {
+    ok: true, removed: true, deviceId: oldDevice.deviceId, revokedSessions: 1
+  });
+  assert.equal(storageMap.has('device:' + oldDevice.deviceId), false);
+
+  const removedSession = await coordinator.fetch(coordinatorRequest('/index', {
+    method: 'GET', token: null, sessionToken: oldDevice.sessionToken
+  }));
+  assert.equal(removedSession.status, 401);
+
+  const remaining = await coordinator.fetch(coordinatorRequest('/device/list', {
+    method: 'GET', token: null, sessionToken: current.sessionToken
+  }));
+  assert.deepEqual((await responseJson(remaining)).devices.map(item => item.deviceId), [current.deviceId]);
 });

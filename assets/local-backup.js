@@ -1,7 +1,7 @@
 import {
   exportEncryptedVaultPackets, importEncryptedVaultPackets, isVaultSyncActive
 } from './vault-sync.js';
-import { exportPrivateVoiceNotes, mergePrivateVoiceNotes, validatePrivateVoiceNoteBackup } from './writing-security.js';
+import { exportPrivateVoiceNotes, validatePrivateVoiceNoteBackup } from './writing-security.js';
 
 const BACKUP_FORMAT = 'faith-focus-encrypted-vault-export';
 const BACKUP_VERSION = 1;
@@ -95,14 +95,12 @@ async function importBackupFile(file) {
   try {
     const payload = JSON.parse(await file.text());
     const backup = validateBackupFile(payload);
-    // Restore full encrypted recordings before daily bundles hydrate their manifests.
-    // A backup may be the only source of the separate audio attachments.
-    if (backup.voiceNotes.length) await mergePrivateVoiceNotes(backup.voiceNotes);
-    await importEncryptedVaultPackets(backup.packets);
+    // The vault importer preflights and restores packets and voice attachments as one operation.
+    await importEncryptedVaultPackets(backup.packets, { voiceNotes: backup.voiceNotes });
     setStatus(
       'Imported ' + backup.packets.length + ' encrypted daily packet' + (backup.packets.length === 1 ? '' : 's')
         + ' and ' + backup.voiceNotes.length + ' encrypted voice note' + (backup.voiceNotes.length === 1 ? '' : 's')
-        + '. Automatic cloud reconciliation is queued.',
+        + '. Check Vault Sync for the cloud reconciliation status.',
       'success'
     );
   } catch (error) {

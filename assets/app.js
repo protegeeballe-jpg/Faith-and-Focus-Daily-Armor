@@ -44,6 +44,7 @@ import {
     loadLocationCheckinEntries, saveLocationCheckin
 } from './location-checkin.js';
 import { GARDEN_STORAGE_KEY } from './garden-model.js';
+import { DAILY_RESET_MARKER_PREFIX, createDailyResetMarker } from './daily-reset.js';
 import {
     MAX_VOICE_NOTE_BYTES, MAX_VOICE_NOTE_DURATION_MS, VOICE_NOTE_TARGET_BITRATE,
     isAllowedVoiceNoteMimeType
@@ -248,7 +249,7 @@ import {
                     changeStep(firstIncomplete - currentStep);
                 }
                 status.textContent = firstIncomplete === 6
-                    ? "Almost there! Release all three cloud types, then tick the completion checkbox."
+                    ? "Almost there! Choose one cloud that best matches how you feel, then tick the completion checkbox."
                     : "Almost there! Please complete the remaining activity or activities on Card " + firstIncomplete + ".";
                 status.classList.remove('hidden');
                 return;
@@ -417,10 +418,10 @@ import {
                 });
                 const cloudCopy = document.createElement('div');
                 cloudCopy.className = 'guide-speech cloud-intro-copy';
-                cloudCopy.textContent = 'Meet the three clouds. Tap each one on your card and watch it drift away. After all three have been released, your completion checkbox will appear.';
+                cloudCopy.textContent = 'Meet the three clouds and choose the one that best matches how you feel today. One cloud is enough; emotions can be different, and you only need to acknowledge one.';
                 target.append(gallery, cloudCopy);
-                instructions.textContent = 'Notice each feeling gently. You can release a cloud when you feel ready.';
-                button.textContent = 'Let’s release the clouds';
+                instructions.textContent = 'Notice which feeling fits today. Choose one cloud when you feel ready.';
+                button.textContent = 'Choose one cloud';
             } else if (guide.breathing) {
                 activeModalAction = 'start-breathing';
                 const breathingPanel = document.createElement('div');
@@ -598,34 +599,44 @@ import {
         }
 
         function restoreCloudProgress(data) {
+            const cloudNames = ['cumulus', 'stratus', 'stratocumulus'];
+            const selectedCloud = cloudNames.find(name => data['cloud_' + name] === true) || null;
             document.querySelectorAll('.cloud-item[data-cloud]').forEach(item => {
-                const released = data['cloud_' + item.dataset.cloud] === true;
+                const released = item.dataset.cloud === selectedCloud;
                 item.dataset.released = released ? 'true' : 'false';
-                item.disabled = released;
-                item.setAttribute('aria-pressed',released ? 'true' : 'false');
-                item.classList.toggle('cloud-released',released);
-                item.classList.toggle('is-restored',released);
+                item.disabled = Boolean(selectedCloud);
+                item.setAttribute('aria-pressed', released ? 'true' : 'false');
+                item.classList.toggle('cloud-released', released);
+                item.classList.toggle('is-restored', released);
                 const status = item.querySelector('.cloud-status');
-                if (status) status.textContent = released ? 'Released ✓' : 'Tap to release';
+                if (status) status.textContent = released
+                    ? 'Chosen today ✓'
+                    : selectedCloud ? 'One choice per day' : 'Tap to choose';
             });
             updateCloudProgress();
         }
 
         function updateCloudProgress() {
             const items = Array.from(document.querySelectorAll('.cloud-item[data-cloud]'));
-            const releasedCount = items.filter(item => item.dataset.released === 'true').length;
+            const selectedCloud = items.find(item => item.dataset.released === 'true') || null;
+            const hasReleasedCloud = Boolean(selectedCloud);
+            items.forEach(item => {
+                item.disabled = hasReleasedCloud;
+                const status = item.querySelector('.cloud-status');
+                if (status && item !== selectedCloud) {
+                    status.textContent = hasReleasedCloud ? 'One choice per day' : 'Tap to choose';
+                }
+            });
             const progress = document.getElementById('cloud-progress');
             if (progress) {
-                progress.textContent = releasedCount === items.length
-                    ? '3 of 3 clouds released. Lovely work! Your completion checkbox is ready below.'
-                    : releasedCount + ' of ' + items.length + ' clouds released. Tap each cloud to let it drift away.';
+                progress.textContent = hasReleasedCloud
+                    ? '1 of 1 cloud chosen. Your completion checkbox is ready below.'
+                    : '0 of 1 clouds chosen. Select the cloud that best matches how you feel today.';
             }
 
             const cloudChk = document.getElementById('chk-cloud-checked');
             if (!cloudChk) return;
-            const allReleased = items.length > 0 && releasedCount === items.length;
-
-            if (allReleased) {
+            if (hasReleasedCloud) {
                 cloudChk.disabled = false;
                 cloudChk.dataset.guideUnlocked = 'true';
                 cloudChk.classList.remove('guide-hidden');
@@ -640,12 +651,13 @@ import {
 
         function releaseCloud(el) {
             if (!el || !el.dataset.cloud || el.dataset.released === 'true') return;
+            if (document.querySelector('.cloud-item[data-cloud][data-released="true"]')) return;
             el.dataset.released = 'true';
             el.disabled = true;
             el.setAttribute('aria-pressed','true');
             el.classList.add('cloud-released');
             const status = el.querySelector('.cloud-status');
-            if (status) status.textContent = 'Released ✓';
+            if (status) status.textContent = 'Chosen today ✓';
             playPopSound();
             confetti({ particleCount: 15, spread: 40, origin: { y: 0.6 } });
             updateCloudProgress();
@@ -1623,7 +1635,7 @@ import {
             const ctx=ecosystemCanvasContext;
             if(!ctx)return;
             const roots=Math.max(0,Math.min(1,ecosystemCanvasMotion.roots));
-            const clouds=Math.max(0,Math.min(3,ecosystemCanvasMotion.clouds));
+            const clouds=Math.max(0,Math.min(1,ecosystemCanvasMotion.clouds));
             const flowers=Math.max(0,Math.min(1,ecosystemCanvasMotion.flowers));
             const seedDrop=Math.max(0,ecosystemCanvasMotion.seedDrop);
             const centerX=160;
@@ -1675,9 +1687,9 @@ import {
                 ctx.restore();
             }
 
-            // Each existing cloud release increases trunk width by exactly five percent.
-            const trunkX=1+clouds*0.05;
-            const trunkY=0.82+clouds*0.06;
+            // The one daily cloud selection moves the emotional trunk to its completed stage.
+            const trunkX=1+clouds*0.15;
+            const trunkY=0.82+clouds*0.12;
             ctx.save();
             ctx.translate(centerX,groundY);
             ctx.scale(trunkX,trunkY);
@@ -1826,7 +1838,7 @@ import {
             const canvas=document.getElementById('ecosystem-canvas');
             if(!canvas)return;
             ecosystemCanvasTargets.roots=Math.max(0,Math.min(1,rootCount/6));
-            ecosystemCanvasTargets.clouds=Math.max(0,Math.min(3,cloudCount));
+            ecosystemCanvasTargets.clouds=Math.max(0,Math.min(1,cloudCount));
             ecosystemCanvasTargets.flowers=canopyBloomed?1:0;
             const reduced=ecosystemCanvasReducedMotion();
             if(animate.roots)spawnEcosystemCanvasParticles(160,190);
@@ -1876,7 +1888,7 @@ import {
 
             const rootActions=['start-2','sleep-4','start-4','mid-3','end-3','sleep-5'];
             const rootCount=rootActions.filter(id=>data[id]===true).length;
-            const cloudCount=['cumulus','stratus','stratocumulus'].filter(name=>data['cloud_'+name]===true).length;
+            const cloudCount=['cumulus','stratus','stratocumulus'].some(name=>data['cloud_'+name]===true)?1:0;
             const canopyBloomed=data['sleep-3']===true;
 
             const panel=document.getElementById('ecosystem-panel');
@@ -1907,15 +1919,15 @@ import {
                 });
             }
             if(trunk){
-                trunk.style.setProperty('--trunk-x',(1+cloudCount*.05).toFixed(3));
-                trunk.style.setProperty('--trunk-y',(0.82+cloudCount*.06).toFixed(3));
+                trunk.style.setProperty('--trunk-x',(1+cloudCount*.15).toFixed(3));
+                trunk.style.setProperty('--trunk-y',(0.82+cloudCount*.12).toFixed(3));
             }
             canopy?.classList.toggle('has-flower',canopyBloomed);
 
             if(rootStatus)rootStatus.textContent=rootCount
                 ?rootCount+' of 6 prayer and water actions completed · roots reaching farther'
                 :'0 of 6 actions · plant the seed with prayer or water';
-            if(trunkStatus)trunkStatus.textContent=(cloudCount*5)+'% growth · '+cloudCount+' of 3 clouds released';
+            if(trunkStatus)trunkStatus.textContent=(cloudCount*15)+'% growth · '+cloudCount+' of 1 cloud released';
             if(canopyStatus)canopyStatus.textContent=canopyBloomed
                 ?'1 of 1 · a flower has bloomed'
                 :'0 of 1 · waiting for Screen Curfew';
@@ -1930,7 +1942,7 @@ import {
                 if(fill)fill.style.width=(max?Math.round((value/max)*100):0)+'%';
             };
             updateMeter('ecosystem-root-meter','ecosystem-root-meter-fill',rootCount,6);
-            updateMeter('ecosystem-trunk-meter','ecosystem-trunk-meter-fill',cloudCount,3);
+            updateMeter('ecosystem-trunk-meter','ecosystem-trunk-meter-fill',cloudCount,1);
             updateMeter('ecosystem-canopy-meter','ecosystem-canopy-meter-fill',canopyBloomed?1:0,1);
             updateEcosystemCanvas(rootCount,cloudCount,canopyBloomed,animate);
 
@@ -1990,17 +2002,22 @@ import {
             }
         }
 
-        function closeGrandFinale() {
-            document.getElementById('grand-finale-overlay').classList.add('hidden');
-            // If the user closes the missed-card celebration early, honor that
-            // action by returning to today's checklist immediately.
-            if (missedCardReviewContext && missedCardVictoryTimer) {
+        async function closeGrandFinale() {
+            document.getElementById('grand-finale-overlay')?.classList.add('hidden');
+            if (missedCardVictoryTimer) {
                 window.clearTimeout(missedCardVictoryTimer);
                 missedCardVictoryTimer = null;
-                returnFromMissedCardReview().catch(error => {
-                    console.error('[Checklist] Could not return to today after closing the celebration.', error);
-                });
             }
+            // Complete any pending missed-card return first so its date and
+            // save cleanup finish before Claim Victory opens the Forge Room.
+            if (missedCardReviewContext) {
+                try {
+                    await returnFromMissedCardReview();
+                } catch (error) {
+                    console.error('[Checklist] Missed-card cleanup could not finish before returning to the Forge Room.', error);
+                }
+            }
+            showPage('garden');
         }
 
         function loadData() {
@@ -2008,11 +2025,27 @@ import {
             const saved = localStorage.getItem(getStorageKey(dateStr));
             const data = saved ? JSON.parse(saved) : {};
 
-            // Older versions marked the cloud task complete after only one click.
-            // Clear that legacy completion before restoring the checkbox state.
-            if (data.cloud_flow_version !== 1 && data['cloud-checked'] === true) {
+            // Pre-v1 records could mark this task complete from one legacy click
+            // without a selected cloud. Newer records keep only one daily feeling.
+            const previousCloudFlowVersion = data.cloud_flow_version;
+            const cloudNames = ['cumulus', 'stratus', 'stratocumulus'];
+            const previouslySelected = cloudNames.filter(name => data['cloud_' + name] === true);
+            if (previousCloudFlowVersion !== 1 && previousCloudFlowVersion !== 2
+                && data['cloud-checked'] === true && previouslySelected.length === 0) {
                 data['cloud-checked'] = false;
                 data['cloud-checked__guided'] = false;
+            }
+            const selectedCloud = previouslySelected[0] || null;
+            cloudNames.forEach(name => {
+                data['cloud_' + name] = name === selectedCloud;
+            });
+            data.cloud_flow_version = 2;
+            if (selectedCloud === null && data['cloud-checked'] === true) {
+                data['cloud-checked'] = false;
+                data['cloud-checked__guided'] = false;
+            }
+            if (previousCloudFlowVersion !== 2 || previouslySelected.length > 1) {
+                localStorage.setItem(getStorageKey(dateStr), JSON.stringify(data));
             }
 
             document.querySelectorAll('.app-chk').forEach(chk => {
@@ -2048,7 +2081,7 @@ import {
             });
 
             // Private reflection text is saved separately using AES-256-GCM.
-            data.cloud_flow_version = 1;
+            data.cloud_flow_version = 2;
             document.querySelectorAll('.cloud-item[data-cloud]').forEach(item => {
                 data['cloud_' + item.dataset.cloud] = item.dataset.released === 'true';
             });
@@ -2131,6 +2164,13 @@ import {
 
             try {
                 await flushPrivateWritingQueue();
+                // Publish an explicit reset generation before clearing resettable fields.
+                // This marker lets other devices distinguish an intentional reset from
+                // an incomplete local copy during daily packet reconciliation.
+                localStorage.setItem(
+                    DAILY_RESET_MARKER_PREFIX + dateStr,
+                    JSON.stringify(createDailyResetMarker())
+                );
                 localStorage.removeItem(getStorageKey(dateStr));
                 localStorage.removeItem(getSecureWritingStorageKey('notes',dateStr));
                 localStorage.removeItem(GARDEN_STORAGE_KEY);
