@@ -44,6 +44,7 @@ const PRECACHE_URLS = [
     './assets/location-checkin.js',
     './assets/garden-model.js',
     './assets/writing-security.js',
+    './assets/diary-archive.js',
     './assets/private-writing-migration.js',
     './assets/voice-note-store.js',
     './assets/compressor.js',
