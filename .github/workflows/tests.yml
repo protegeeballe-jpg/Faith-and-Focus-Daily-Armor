@@ -32,6 +32,7 @@ jobs:
           node --check assets/app-gate.js
           node --check assets/account-security.js
           node --check assets/writing-security.js
+          node --check assets/diary-archive.js
           node --check assets/vault-crypto.js
           node --check assets/vault-session.js
           node --check assets/vault-sync.js
