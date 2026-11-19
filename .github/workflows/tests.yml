@@ -36,6 +36,7 @@ jobs:
           node --check assets/vault-crypto.js
           node --check assets/vault-session.js
           node --check assets/vault-sync.js
+          node --check assets/backup-import-transaction.js
           node --check assets/vault-storage.js
           node --check assets/local-backup.js
           node --check worker.js
