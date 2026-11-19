@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 const sync = readFileSync(new URL('../assets/vault-sync.js', import.meta.url), 'utf8');
 const backup = readFileSync(new URL('../assets/local-backup.js', import.meta.url), 'utf8');
 const storage = readFileSync(new URL('../assets/vault-storage.js', import.meta.url), 'utf8');
+const transaction = readFileSync(new URL('../assets/backup-import-transaction.js', import.meta.url), 'utf8');
 
 function section(source, start, end) {
     const from = source.indexOf(start);
@@ -30,16 +31,22 @@ test('backup import preflights encrypted daily packets and voice-note conflicts 
     assert.ok(firstMutation > snapshot, 'No local records may change before preflight and snapshots finish');
 });
 
-test('backup import restores exact prior local state when a restore step fails', () => {
+test('backup import delegates mutations and all rollback stores to the runtime transaction', () => {
     const importer = section(
         sync,
         'export async function importEncryptedVaultPackets(',
         'export async function listTrustedDevices()'
     );
-    assert.match(importer, /restoreLocalDailyPacketState\(existingDailyPackets, affectedDates\)/);
-    assert.match(importer, /for \(const \[key, value\] of previousLocalValues\)/);
-    assert.match(importer, /await restorePrivateVoiceNotes\(existingVoiceNotes\)/);
-    assert.match(importer, /rollbackErrors\.length/);
+    assert.match(importer, /runBackupImportTransaction\\(\\{/);
+    assert.match(importer, /apply: async \\(\\) =>/);
+    assert.match(importer, /await mergePrivateVoiceNotes\\(voiceNotes\\)/);
+    assert.match(importer, /await restoreDailyBundle\\(bundle, \\{ dispatch: false \\}\\)/);
+    assert.match(importer, /await importLocalDailyPackets\\(packets\\)/);
+    assert.match(importer, /restoreLocalDailyPacketState\\(existingDailyPackets, affectedDates\\)/);
+    assert.match(importer, /for \\(const \\[key, value\\] of previousLocalValues\\)/);
+    assert.match(importer, /await restorePrivateVoiceNotes\\(existingVoiceNotes\\)/);
+    assert.match(transaction, /for \\(const step of rollback\\)/);
+    assert.match(transaction, /rollbackErrors\\.length/);
 });
 
 test('successful backup import announces restored data only after commit and explicitly queues online sync', () => {
