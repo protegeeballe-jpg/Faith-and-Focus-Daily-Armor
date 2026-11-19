@@ -7,6 +7,7 @@ import {
     quarantineLegacyWritingRecords
 } from './voice-note-store.js';
 import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-writing-migration.js';
+import { isValidDiaryArchiveDate } from './diary-archive.js';
 
         const WRITING_CONFIG_KEY='dmp_private_writing_crypto_v1';
         const WRITING_DIARY_PREFIX='dmp_diary_cipher_v1_';
@@ -764,14 +765,10 @@ import { isRecordReadableWithKey, migrateRecordToTargetKey } from './private-wri
                 savePrivateWritingForDate(writingLoadedDate).catch(error=>setWritingSecurityStatus('Encrypted autosave failed. Your text is still visible; do not lock or close the page until saving succeeds. '+(error?.message||''),'error'));
             },500);
         }
-        export function isValidDiaryArchiveDate(dateStr){
-            if(typeof dateStr!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(dateStr))return false;
-            const date=new Date(dateStr+'T00:00:00.000Z');
-            return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===dateStr;
-        }
+        export { isValidDiaryArchiveDate };
         export async function readPrivateDiaryEntryForDate(dateStr){
             if(!writingCryptoKey)throw new Error('Unlock your Diary to read archived entries.');
-            if(!/^\\d{4}-\\d{2}-\\d{2}$/.test(dateStr))throw new TypeError('The archive date is invalid.');
+            if(!isValidDiaryArchiveDate(dateStr))throw new TypeError('The archive date is invalid.');
             const record=localStorage.getItem(getSecureWritingStorageKey('diary',dateStr));
             if(!record)return '';
             const value=await decryptPrivatePayload('diary',dateStr,record,writingCryptoKey);
