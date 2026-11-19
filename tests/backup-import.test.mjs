@@ -37,16 +37,21 @@ test('backup import delegates mutations and all rollback stores to the runtime t
         'export async function importEncryptedVaultPackets(',
         'export async function listTrustedDevices()'
     );
-    assert.match(importer, /runBackupImportTransaction\\(\\{/);
-    assert.match(importer, /apply: async \\(\\) =>/);
-    assert.match(importer, /await mergePrivateVoiceNotes\\(voiceNotes\\)/);
-    assert.match(importer, /await restoreDailyBundle\\(bundle, \\{ dispatch: false \\}\\)/);
-    assert.match(importer, /await importLocalDailyPackets\\(packets\\)/);
-    assert.match(importer, /restoreLocalDailyPacketState\\(existingDailyPackets, affectedDates\\)/);
-    assert.match(importer, /for \\(const \\[key, value\\] of previousLocalValues\\)/);
-    assert.match(importer, /await restorePrivateVoiceNotes\\(existingVoiceNotes\\)/);
-    assert.match(transaction, /for \\(const step of rollback\\)/);
-    assert.match(transaction, /rollbackErrors\\.length/);
+    const importerOperations = [
+        'runBackupImportTransaction({',
+        'apply: async () =>',
+        'await mergePrivateVoiceNotes(voiceNotes)',
+        'await restoreDailyBundle(bundle, { dispatch: false })',
+        'await importLocalDailyPackets(packets)',
+        'restoreLocalDailyPacketState(existingDailyPackets, affectedDates)',
+        'for (const [key, value] of previousLocalValues)',
+        'await restorePrivateVoiceNotes(existingVoiceNotes)'
+    ];
+    for (const operation of importerOperations) {
+        assert.ok(importer.includes(operation), 'Missing importer operation: ' + operation);
+    }
+    assert.ok(transaction.includes('for (const step of rollback)'));
+    assert.ok(transaction.includes('if (rollbackErrors.length)'));
 });
 
 test('successful backup import announces restored data only after commit and explicitly queues online sync', () => {
