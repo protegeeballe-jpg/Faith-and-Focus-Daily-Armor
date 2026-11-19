@@ -45,6 +45,7 @@ test('the offline shell includes every page and runtime dependency needed by the
         './assets/vault-crypto.js',
         './assets/vault-storage.js',
         './assets/vault-sync.js',
+        './assets/backup-import-transaction.js',
         './assets/vault-session.js',
         './assets/device-identity.js',
         './assets/local-backup.js',

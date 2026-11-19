@@ -16,6 +16,7 @@ import { GARDEN_STORAGE_KEY, GARDEN_DAILY_SYNC_PREFIX, mergeGardenStates, valida
 import { mergeDailyBundles } from './daily-merge.js';
 import { DAILY_RESET_MARKER_PREFIX, parseDailyResetMarker, compareDailyResetMarkers } from './daily-reset.js';
 import { flushAndSaveCurrentPrivateWriting, stopRegisteredVoiceNoteRecording, mergeEncryptedPrivateWritingRecords, validatePrivateVoiceNoteBackup, restorePrivateVoiceNotes, mergePrivateVoiceNotes } from './writing-security.js';
+import { runBackupImportTransaction } from './backup-import-transaction.js';
 
 const WORKER_ORIGIN = 'https://faith-focus-proxy.nine-westhigh.workers.dev';
 const APP_CLIENT = 'faith-focus-daily-armor-web/1';
@@ -1258,42 +1259,43 @@ export async function importEncryptedVaultPackets(packets, { voiceNotes = [] } =
     affectedDates.map(dateString => getLocalDailyPacket(dateString))
   )).filter(Boolean);
 
-  try {
-    if (voiceNotes.length) await mergePrivateVoiceNotes(voiceNotes);
-    for (const { bundle } of prepared) await restoreDailyBundle(bundle, { dispatch: false });
-    const { importLocalDailyPackets } = await import('./vault-storage.js');
-    await importLocalDailyPackets(packets);
-  } catch (error) {
-    const rollbackErrors = [];
-    try {
-      const { restoreLocalDailyPacketState } = await import('./vault-storage.js');
-      await restoreLocalDailyPacketState(existingDailyPackets, affectedDates);
-    } catch (rollbackError) {
-      rollbackErrors.push('daily-packet rollback failed: ' + (rollbackError?.message || String(rollbackError)));
-    }
-    try {
-      applyingRemotePacket += 1;
-      for (const [key, value] of previousLocalValues) {
-        if (value === null) localStorage.removeItem(key);
-        else localStorage.setItem(key, value);
+  await runBackupImportTransaction({
+    apply: async () => {
+      if (voiceNotes.length) await mergePrivateVoiceNotes(voiceNotes);
+      for (const { bundle } of prepared) await restoreDailyBundle(bundle, { dispatch: false });
+      const { importLocalDailyPackets } = await import('./vault-storage.js');
+      await importLocalDailyPackets(packets);
+    },
+    rollback: [
+      {
+        label: 'daily-packet rollback',
+        run: async () => {
+          const { restoreLocalDailyPacketState } = await import('./vault-storage.js');
+          await restoreLocalDailyPacketState(existingDailyPackets, affectedDates);
+        }
+      },
+      {
+        label: 'local-storage rollback',
+        run: async () => {
+          applyingRemotePacket += 1;
+          try {
+            for (const [key, value] of previousLocalValues) {
+              if (value === null) localStorage.removeItem(key);
+              else localStorage.setItem(key, value);
+            }
+          } finally {
+            applyingRemotePacket -= 1;
+          }
+        }
+      },
+      {
+        label: 'voice-note rollback',
+        run: async () => {
+          await restorePrivateVoiceNotes(existingVoiceNotes);
+        }
       }
-    } catch (rollbackError) {
-      rollbackErrors.push('local-storage rollback failed: ' + (rollbackError?.message || String(rollbackError)));
-    } finally {
-      applyingRemotePacket -= 1;
-    }
-    try {
-      await restorePrivateVoiceNotes(existingVoiceNotes);
-    } catch (rollbackError) {
-      rollbackErrors.push('voice-note rollback failed: ' + (rollbackError?.message || String(rollbackError)));
-    }
-    if (rollbackErrors.length) {
-      throw new Error((error?.message || 'The backup import failed.')
-        + ' Automatic rollback reported: ' + rollbackErrors.join('; ')
-        + '. Keep this device open and export any remaining local records before retrying.');
-    }
-    throw error;
-  }
+    ]
+  });
 
   for (const { bundle } of prepared) {
     window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', {
