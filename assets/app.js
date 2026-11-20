@@ -282,29 +282,29 @@ import {
         ];
 
         const guideContent = {
-            "loc-home":{title:"Find your place",line:"Pause and look around. Are you at home? Choose the place that describes where you are.",person:"🧒",prop:"🏡",action:"Take a moment to notice your surroundings."},
-            "loc-office":{title:"Check in at work",line:"Take one calm look around. Are you at work right now? Choose your location when you're ready.",person:"🧑‍💻",prop:"💼",action:"Notice where you are."},
-            "loc-house":{title:"A guest today",line:"Are you visiting someone else's home? Look around and choose the place that fits.",person:"👧",prop:"🏠",action:"Notice your surroundings."},
-            "loc-out":{title:"Out and about",line:"You're out somewhere. Take a breath, notice your surroundings, and choose this option if it fits.",person:"🧍",prop:"🌳",action:"Pause and orient yourself."},
-            "start-1":{title:"Three grateful things",line:"Let's find three small things to appreciate. They can be as simple as a safe moment, a kind word, or a warm drink.",person:"🧑",prop:"🌼",action:"Think of three things. You can jot them down mentally or in your own words."},
-            "start-2":{title:"Prayer and intention",line:"Let's pause together. Set a kind intention for yourself and the people you care about. Take the moment in your own way.",person:"🧑",prop:"🙏",action:"Take a quiet moment for prayer or a positive intention."},
-            "start-3":{title:"Gentle movement",line:"Let's loosen up. Roll your shoulders gently, stretch your arms, and move only within a comfortable range.",person:"🧑",prop:"🙆",action:"Try a few gentle stretches. Stop if anything hurts."},
-            "start-4":{title:"A little hydration",line:"Take a moment to enjoy some water. Sip slowly and comfortably, then continue when you're ready.",person:"👧",prop:"🥛",action:"Drink your water. No need to rush.",drink:true},
-            "mid-1":{title:"Posture and stretch",line:"Let's reset our posture. Unclench your jaw, relax your shoulders, sit or stand comfortably, then stretch gently.",person:"🧑",prop:"🧘",action:"Take a comfortable posture and stretch gently."},
-            "mid-2":{title:"Breathe with me",line:"We'll do five gentle 4–2–6 cycles: breathe in for 4, pause softly for 2, and breathe out for 6. Keep it comfortable. Never force or hold if uncomfortable.",person:"🧑",prop:"🌬️",action:"Start the five guided breathing cycles.",breathing:true},
-            "mid-3":{title:"Midday water break",line:"Step away from the rush for a moment. Have some water if it is available, and sip at your own pace.",person:"👧",prop:"💧",action:"Drink some water at your own pace.",drink:true},
-            "mid-4":{title:"Check how you feel",line:"Let's gently check in. What emotion is here right now? What thought is asking for your attention? You don't have to judge or fix it.",person:"🧑",prop:"💗",action:"Name what you're feeling, even if the answer is 'not sure'."},
-            "mid-5":{title:"Let a thought drift by",line:"Imagine a thought floating past like a cloud. You can notice it without holding on. Let it drift away in its own time.",person:"🧑",prop:"☁️",action:"Notice one thought and practice letting it pass."},
-            "end-1":{title:"Three wins today",line:"Let's celebrate three things you managed today. Tiny wins count: showing up, trying again, or taking a pause.",person:"🧑",prop:"🏆",action:"Write or think of three things you feel good about."},
-            "end-2":{title:"Tomorrow's priorities",line:"Let's make tomorrow feel lighter. Choose up to three priorities that matter most. They don't need to be perfect.",person:"🧑",prop:"📝",action:"Write three realistic priorities for tomorrow."},
-            "end-3":{title:"Evening hydration",line:"One more gentle reminder from me: have some water if you'd like and if it suits your needs. Sip comfortably.",person:"👧",prop:"🥛",action:"Drink some water at a comfortable pace.",drink:true},
-            "end-4":{title:"Give yourself a GOOD JOB poke",line:"You made it through another day. Give yourself a gentle little nose boop and say, 'Good job. I kept going.'",person:"🧑",prop:"👃✨",action:"Give yourself a gentle nose poke and a kind word."},
-            "sleep-1":{title:"Gratitude for others",line:"Think of three things someone did that you appreciated today. They can be very small moments.",person:"🧑",prop:"💛",action:"Write or remember three gratitude points about others."},
-            "sleep-2":{title:"Gratitude for blessings",line:"Take a quiet moment to remember three blessings or things you're thankful for today, in your own words.",person:"🧑",prop:"✨",action:"Write or remember three gratitude points."},
-            "sleep-3":{title:"Screen sunset",line:"Let's give your eyes and mind a gentle break. Put your device aside for the last 30 minutes before sleep when you can.",person:"🧑",prop:"🌙📵",action:"Begin your screen-free wind-down."},
-            "sleep-4":{title:"A peaceful intention",line:"Before sleep, pause for a prayer or a gentle intention. Let the day settle; you can pick things up tomorrow.",person:"🧑",prop:"🙏",action:"Take a quiet moment for prayer or intention."},
-            "sleep-5":{title:"Bedtime water reminder",line:"If you're thirsty, have a comfortable sip of water. No need to drink more than feels right before bed.",person:"👧",prop:"💧",action:"Have water if you need it, at a comfortable pace.",drink:true},
-            "cloud-checked":{title:"Cloud check",line:"Choose a thought or feeling you want to release. Tap one of the clouds on your card and watch it drift away. You can leave any thought alone if you're not ready.",person:"🧑",prop:"☁️💨",action:"Release a cloud thought when you're ready."}
+            "loc-home":{title:"Find your place",line:"Pause and look around. Are you at home? Choose the place that describes where you are.",action:"Take a moment to notice your surroundings."},
+            "loc-office":{title:"Check in at work",line:"Take one calm look around. Are you at work right now? Choose your location when you're ready.",action:"Notice where you are."},
+            "loc-house":{title:"A guest today",line:"Are you visiting someone else's home? Look around and choose the place that fits.",action:"Notice your surroundings."},
+            "loc-out":{title:"Out and about",line:"You're out somewhere. Take a breath, notice your surroundings, and choose this option if it fits.",action:"Pause and orient yourself."},
+            "start-1":{title:"Three grateful things",line:"Let's find three small things to appreciate. They can be as simple as a safe moment, a kind word, or a warm drink.",action:"Think of three things. You can jot them down mentally or in your own words."},
+            "start-2":{title:"Prayer and intention",line:"Let's pause together. Set a kind intention for yourself and the people you care about. Take the moment in your own way.",action:"Take a quiet moment for prayer or a positive intention."},
+            "start-3":{title:"Gentle movement",line:"Let's loosen up. Roll your shoulders gently, stretch your arms, and move only within a comfortable range.",action:"Try a few gentle stretches. Stop if anything hurts."},
+            "start-4":{title:"A little hydration",line:"Take a moment to enjoy some water. Sip slowly and comfortably, then continue when you're ready.",action:"Drink your water. No need to rush.",drink:true},
+            "mid-1":{title:"Posture and stretch",line:"Let's reset our posture. Unclench your jaw, relax your shoulders, sit or stand comfortably, then stretch gently.",action:"Take a comfortable posture and stretch gently."},
+            "mid-2":{title:"Breathe with me",line:"We'll do five gentle 4–2–6 cycles: breathe in for 4, pause softly for 2, and breathe out for 6. Keep it comfortable. Never force or hold if uncomfortable.",action:"Start the five guided breathing cycles.",breathing:true},
+            "mid-3":{title:"Midday water break",line:"Step away from the rush for a moment. Have some water if it is available, and sip at your own pace.",action:"Drink some water at your own pace.",drink:true},
+            "mid-4":{title:"Check how you feel",line:"Let's gently check in. What emotion is here right now? What thought is asking for your attention? You don't have to judge or fix it.",action:"Name what you're feeling, even if the answer is 'not sure'."},
+            "mid-5":{title:"Let a thought drift by",line:"Imagine a thought floating past like a cloud. You can notice it without holding on. Let it drift away in its own time.",action:"Notice one thought and practice letting it pass."},
+            "end-1":{title:"Three wins today",line:"Let's celebrate three things you managed today. Tiny wins count: showing up, trying again, or taking a pause.",action:"Write or think of three things you feel good about."},
+            "end-2":{title:"Tomorrow's priorities",line:"Let's make tomorrow feel lighter. Choose up to three priorities that matter most. They don't need to be perfect.",action:"Write three realistic priorities for tomorrow."},
+            "end-3":{title:"Evening hydration",line:"One more gentle reminder from me: have some water if you'd like and if it suits your needs. Sip comfortably.",action:"Drink some water at a comfortable pace.",drink:true},
+            "end-4":{title:"Give yourself a GOOD JOB poke",line:"You made it through another day. Give yourself a gentle little nose boop and say, 'Good job. I kept going.'",action:"Give yourself a gentle nose poke and a kind word."},
+            "sleep-1":{title:"Gratitude for others",line:"Think of three things someone did that you appreciated today. They can be very small moments.",action:"Write or remember three gratitude points about others."},
+            "sleep-2":{title:"Gratitude for blessings",line:"Take a quiet moment to remember three blessings or things you're thankful for today, in your own words.",action:"Write or remember three gratitude points."},
+            "sleep-3":{title:"Screen sunset",line:"Let's give your eyes and mind a gentle break. Put your device aside for the last 30 minutes before sleep when you can.",action:"Begin your screen-free wind-down."},
+            "sleep-4":{title:"A peaceful intention",line:"Before sleep, pause for a prayer or a gentle intention. Let the day settle; you can pick things up tomorrow.",action:"Take a quiet moment for prayer or intention."},
+            "sleep-5":{title:"Bedtime water reminder",line:"If you're thirsty, have a comfortable sip of water. No need to drink more than feels right before bed.",action:"Have water if you need it, at a comfortable pace.",drink:true},
+            "cloud-checked":{title:"Cloud check",line:"Choose a thought or feeling you want to release. Tap one of the clouds on your card and watch it drift away. You can leave any thought alone if you're not ready.",action:"Release a cloud thought when you're ready."}
         };
 
         function createGuideQuoteCard(guideId) {
@@ -494,7 +494,7 @@ import {
                 const row = chk.closest('.guided-task-row');
                 const label = row?.querySelector('.guide-checkbox-label');
                 if (label) label.classList.add('is-unlocked');
-                // Leave Show me visible so the user can replay the demonstration.
+                // Keep Read quote available after the activity is unlocked.
                 saveData();
             }
         }
