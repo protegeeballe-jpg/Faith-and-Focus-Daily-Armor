@@ -65,7 +65,7 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
     const context = await browser.newContext({
       viewport: { width: 1280, height: 1200 },
       reducedMotion: 'no-preference',
-      serviceWorkers: 'block'
+      serviceWorkers: 'allow'
     });
     const page = await context.newPage();
     const pageErrors = [];
@@ -75,6 +75,27 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
     await page.goto('http://127.0.0.1:' + address.port + '/index.html', {
       waitUntil: 'load',
       timeout: 30000
+    });
+
+    // Exercise the actual offline shell as a controlled page, not only a
+    // network-loaded tab. The service worker must finish its full precache
+    // before we reload into the controlled session.
+    await page.evaluate(async () => {
+      const registration = await navigator.serviceWorker.ready;
+      if (!registration.active || registration.active.state !== 'activated') {
+        throw new Error('The app service worker did not reach the activated state.');
+      }
+    });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
+      timeout: 20000
+    });
+    const shellCacheNames = await page.evaluate(() => caches.keys());
+    assert.ok(shellCacheNames.includes('faith-focus-shell-v33-guide-quotes'),
+      'the active app must have installed the expected offline shell cache');
+
+    await page.reload({ waitUntil: 'load', timeout: 30000 });
+    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
+      timeout: 10000
     });
 
     assert.equal(await page.locator('#vault-login-form').isVisible(), true,
