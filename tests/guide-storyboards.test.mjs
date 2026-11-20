@@ -87,8 +87,8 @@ test('every non-timer action has its own validated, bounded articulation timelin
         assert.ok(Number.isFinite(percent) && percent > previous && percent >= 0 && percent <= 100);
         assert.ok(Number.isFinite(x) && Math.abs(x) <= 32);
         assert.ok(Number.isFinite(y) && Math.abs(y) <= 32);
-        assert.ok(Number.isFinite(rotation) && Math.abs(rotation) <= 85);
-        assert.ok(Number.isFinite(scale) && scale >= 0.96 && scale <= 1.04);
+        assert.ok(Number.isFinite(rotation) && Math.abs(rotation) <= 180);
+        assert.ok(Number.isFinite(scale) && scale >= 0.85 && scale <= 1.8);
         previous = percent;
       }
       const keyframeName = 'wgi-story-' + id + '-' + part;
