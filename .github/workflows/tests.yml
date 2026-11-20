@@ -48,6 +48,10 @@ jobs:
           node --check assets/gist-sync.js
           node --check assets/location-checkin.js
           node --check assets/voice-note-store.js
+      - name: Verify generated Tailwind stylesheet
+        run: |
+          npx --yes tailwindcss@3.4.17 -c tailwind.config.cjs -i assets/tailwind.input.css -o "$RUNNER_TEMP/tailwind.generated.css" --minify
+          diff -u assets/tailwind.generated.css "$RUNNER_TEMP/tailwind.generated.css"
       - name: Validate Worker configuration and bundle
         run: npx --yes wrangler@4.134.0 deploy --dry-run --outdir=/tmp/faith-focus-worker
       - name: Run regression and security tests
