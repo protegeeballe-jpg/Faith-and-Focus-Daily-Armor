@@ -533,6 +533,20 @@
                 </button>
             </div>
             <textarea id="private-diary-entry" class="w-full h-64 bg-white/80 border-2 border-purple-200 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Your private thoughts are encrypted before they are saved on this device."></textarea>
+            <section id="diary-additional-notes" class="diary-additional-notes mt-5 rounded-2xl border p-4" aria-labelledby="diary-additional-notes-heading">
+                <div class="diary-additional-notes-header">
+                    <div>
+                        <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Additional Notes</h3>
+                        <p class="mt-1 text-xs">Keep separate thoughts for this date. Each note is encrypted and saved on this device before cloud sync.</p>
+                    </div>
+                    <button id="diary-add-note-button" type="button" class="diary-add-note-button" data-action="addPrivateDiaryNote" aria-label="Add a separate private note" title="Add a separate private note" disabled aria-disabled="true">
+                        <span aria-hidden="true">＋</span> Add Note
+                    </button>
+                </div>
+                <ol id="diary-additional-notes-list" class="diary-additional-notes-list mt-3" aria-label="Additional private notes" aria-live="polite">
+                    <li class="diary-additional-notes-empty">No additional notes yet. Select Add Note to create one for this date.</li>
+                </ol>
+            </section>
             <section id="diary-location-history" class="mt-5 rounded-2xl border border-purple-200 bg-purple-50/70 p-4" aria-labelledby="diary-location-history-heading">
                 <div class="flex flex-wrap items-center justify-between gap-2">
                     <h3 id="diary-location-history-heading" class="font-bold text-sm text-purple-950">Location History</h3>
