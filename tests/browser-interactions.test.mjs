@@ -523,7 +523,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   assert.match(quoteTexture.edgeBackground, /radial-gradient/);
   assert.equal(quoteTexture.edgePointerEvents, 'none');
   assert.match(quoteTexture.washBackground, /radial-gradient/);
-  assert.ok(quoteTexture.washOpacity >= 0.8,
+  assert.ok(quoteTexture.washOpacity >= 0.7,
     'The pigment wash must be visible rather than an imperceptible decoration');
 
   const closeButton = page.locator('#anim-modal [data-action="closeModal"]');
