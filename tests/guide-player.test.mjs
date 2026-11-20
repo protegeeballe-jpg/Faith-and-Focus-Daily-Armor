@@ -58,10 +58,10 @@ test('existing hydration and breathing owners feed the player without replacing 
 test('cloud idle drift and selection transforms use separate SVG groups', () => {
   const cloudSvg = buildGuideIllustrationSvg('cloud-checked');
   assert.match(cloudSvg, /class="wgi-cloud-drift"><g class="wgi-cloud">/);
-  const driftRule = css.match(/\.wgi-cloud-drift\\s*\\{[^}]*\\}/)?.[0] || '';
-  const selectableRule = css.match(/\.watercolor-guide-stage--cloud\\s+\.wgi-cloud\\s*\\{[^}]*\\}/)?.[0] || '';
-  assert.match(driftRule, /animation:\\s*wgi-cloud-drift/);
-  assert.match(selectableRule, /transition:\\s*transform/);
+  const driftRule = css.match(/\.wgi-cloud-drift\s*\{[^}]*\}/)?.[0] || '';
+  const selectableRule = css.match(/\.watercolor-guide-stage--cloud\s+\.wgi-cloud\s*\{[^}]*\}/)?.[0] || '';
+  assert.match(driftRule, /animation:\s*wgi-cloud-drift/);
+  assert.match(selectableRule, /transition:\s*transform/);
   assert.doesNotMatch(selectableRule, /animation:/);
 });
 
