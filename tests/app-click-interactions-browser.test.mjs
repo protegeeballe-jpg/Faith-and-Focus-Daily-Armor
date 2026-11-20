@@ -80,12 +80,10 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
     // Exercise the actual offline shell as a controlled page, not only a
     // network-loaded tab. The service worker must finish its full precache
     // before we reload into the controlled session.
-    await page.evaluate(async () => {
-      const registration = await navigator.serviceWorker.ready;
-      if (!registration.active || registration.active.state !== 'activated') {
-        throw new Error('The app service worker did not reach the activated state.');
-      }
-    });
+    await page.waitForFunction(async () => {
+      const registration = await navigator.serviceWorker.getRegistration();
+      return registration?.active?.state === 'activated';
+    }, null, { timeout: 20000 });
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
       timeout: 20000
     });
