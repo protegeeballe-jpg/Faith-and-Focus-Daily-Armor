@@ -130,17 +130,36 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
         cause: error.message
       }));
     }
-    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
-      timeout: 20000
-    });
     const shellCacheNames = await page.evaluate(() => caches.keys());
     assert.ok(shellCacheNames.includes('faith-focus-shell-v33-guide-quotes'),
-      'the active app must have installed the expected offline shell cache');
+      'the activated worker must have installed the expected offline shell cache');
 
+    // The first navigation can finish before the new worker controls it.
+    // Navigate again after activation; the reloaded page must be controlled.
     await page.reload({ waitUntil: 'load', timeout: 30000 });
-    await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
-      timeout: 10000
-    });
+    try {
+      await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
+        timeout: 10000
+      });
+    } catch (error) {
+      const controllerState = await page.evaluate(async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        return {
+          registrationScope: registration?.scope || null,
+          activeState: registration?.active?.state || null,
+          controller: navigator.serviceWorker.controller?.scriptURL || null
+        };
+      });
+      throw new Error('Reloaded app was not controlled by its activated service worker. ' + JSON.stringify({
+        controllerState,
+        missingFiles,
+        pageErrors,
+        consoleMessages,
+        failedRequests,
+        serviceWorkerMessages,
+        cause: error.message
+      }));
+    }
 
     assert.equal(await page.locator('#vault-login-form').isVisible(), true,
       'the account sign-in form must render');
