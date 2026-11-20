@@ -88,7 +88,7 @@ export function createWatercolorGuidePlayer({ guideId, stage, modal = null, lowP
     stage.classList.toggle('guide-motion-fallback', staticFallback);
     stage.classList.toggle('guide-playback-paused', !staticFallback && paused);
 
-    if (staticFallback) stage.dataset.playbackState = 'static';
+    if (staticFallback) stage.dataset.playbackState = 'fallback';
     else if (paused) stage.dataset.playbackState = 'paused';
     else if (completed && spec.playbackMode === 'finite') stage.dataset.playbackState = 'complete';
     else if (spec.playbackMode === 'interactive' && cloudSelection) stage.dataset.playbackState = 'selected';

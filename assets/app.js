@@ -447,7 +447,7 @@ import {
                 try {
                     activeModalGuidePlayer = createWatercolorGuidePlayer({ guideId: checkboxId, stage: modalGuideStage, modal });
                 } catch (error) {
-                    console.warn('[Faith & Focus] Watercolor guide player unavailable; keeping the illustration static.', error);
+                    console.warn('[Faith & Focus] Watercolor guide player unavailable; keeping the illustration motion-safe.', error);
                 }
             }
         }
@@ -671,7 +671,7 @@ import {
                 cloudGuidePlayer.setCloudSelection(selectedCloud);
             } catch (error) {
                 cloudGuidePlayer = null;
-                console.warn('[Faith & Focus] Cloud guide player unavailable; keeping the illustration static.', error);
+                console.warn('[Faith & Focus] Cloud guide player unavailable; keeping the illustration motion-safe.', error);
             }
         }
 

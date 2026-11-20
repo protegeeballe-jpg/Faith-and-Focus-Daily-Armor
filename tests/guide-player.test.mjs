@@ -36,6 +36,7 @@ test('the visual controller has no independent clock or persistence side effects
   assert.doesNotMatch(controller, /\bsetInterval\s*\(/);
   assert.doesNotMatch(controller, /\bsetTimeout\s*\(/);
   assert.doesNotMatch(controller, /localStorage|sessionStorage|saveData\s*\(/);
+  assert.doesNotMatch(controller, /\bstatic\b/, 'player state names must not generate unintended Tailwind utilities');
   assert.match(controller, /setBreathingPhase\(phase\)/);
   assert.match(controller, /setCloudSelection\(selection\)/);
   assert.match(controller, /visibilitychange/);
