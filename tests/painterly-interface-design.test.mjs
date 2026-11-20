@@ -43,7 +43,7 @@ test('the launcher presents its two destinations as balanced, responsive waterco
 test('shared scenes use consistent painterly surfaces and accessible interactive sizing', () => {
   assert.match(gardenCss, /\.garden-topbar\s*\{[^}]*background:\s*rgba\(255, 253, 247, \.86\)/s);
   assert.match(gardenCss, /\.garden-action-button,\s*\.garden-small-button,\s*\.garden-settings-button\s*\{[^}]*min-height:\s*44px/s);
-  assert.match(gardenCss, /\.garden-checklist-scene \.checklist-header-button,\s*\.garden-checklist-scene \.guide-launch\s*\{\s*min-height:\s*44px/s);
+  assert.match(gardenCss, /\.garden-checklist-scene \.checklist-header-button,\s*\.garden-checklist-scene \.guide-quote-launch\s*\{\s*min-height:\s*44px/s);
   assert.match(gardenCss, /#private-diary-entry\s*\{[^}]*font-size:\s*16px/s);
   assert.match(gardenCss, /\.settings-disclosure\s*\{[^}]*border-radius:\s*\.95rem/s);
   assert.match(gardenCss, /\.settings-modal \.drive-sync-panel \.garden-action-button\s*\{\s*min-height:\s*44px/s);
@@ -58,7 +58,7 @@ test('keyboard focus and reduced-motion preferences are respected throughout the
 });
 
 test('the offline shell version changes when the visual app shell changes', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v32-articulated-storyboards/);
+  assert.match(serviceWorker, /faith-focus-shell-v33-guide-quotes/);
   assert.match(serviceWorker, /\.\/assets\/app\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden-room-background\.jpg/);
