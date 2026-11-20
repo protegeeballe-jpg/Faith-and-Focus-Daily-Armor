@@ -127,7 +127,7 @@ test('offline-only mode cannot create or use cloud sessions', () => {
   assert.match(session, /if \(window\.navigator\?\.onLine === false\)\s*\{\s*await openOfflineSession\(\);\s*return;/);
   assert.match(sync, /if \(activeVault\?\.offlineOnly === true\)\s*\{\s*throw new Error/);
   assert.match(sync, /if \(!activeVault \|\| activeVault\.offlineOnly === true\) return Promise\.resolve\(\)/);
-  assert.match(sync, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false \} = \)\s*\{\s*if \(!activeVault \|\| activeVault\.offlineOnly === true\) return;/);
+  assert.match(sync, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false \} = \{\}\)\s*\{\s*if \(!activeVault \|\| activeVault\.offlineOnly === true\) return;/);
   const localStart = sync.slice(
     sync.indexOf('export async function startLocalVaultStorage('),
     sync.indexOf('export async function startVaultSync(')
