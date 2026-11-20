@@ -308,3 +308,146 @@ test('Chromium: every in-card guide action button receives a real pointer click'
     'In-card guide actions must not produce browser runtime errors');
   await context.close();
 });
+
+
+test('Chromium: checklist controls remain clickable across laptop viewport and display-scale profiles', {
+  timeout: 120000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const profiles = [
+    {name: 'laptop-1366x768', viewport: {width: 1366, height: 768}, deviceScaleFactor: 1},
+    {name: 'laptop-short-window-1366x650', viewport: {width: 1366, height: 650}, deviceScaleFactor: 1},
+    {name: 'laptop-compact-1366x590', viewport: {width: 1366, height: 590}, deviceScaleFactor: 1},
+    {name: 'laptop-125-percent-scale', viewport: {width: 1092, height: 614}, deviceScaleFactor: 1.25},
+    {name: 'laptop-150-percent-scale', viewport: {width: 911, height: 512}, deviceScaleFactor: 1.5},
+    {name: 'small-desktop-window-1024x640', viewport: {width: 1024, height: 640}, deviceScaleFactor: 1}
+  ];
+  const cloudChoices = ['cumulus', 'stratus', 'stratocumulus'];
+
+  for (let profileIndex = 0; profileIndex < profiles.length; profileIndex++) {
+    const profile = profiles[profileIndex];
+    const context = await browser.newContext({
+      viewport: profile.viewport,
+      deviceScaleFactor: profile.deviceScaleFactor,
+      serviceWorkers: 'block',
+      permissions: []
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+
+    try {
+      await page.goto(host.url, {waitUntil: 'load'});
+      await page.evaluate(() => {
+        document.getElementById('view-pin')?.classList.add('hidden');
+        window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+      });
+      await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+      await page.locator('#card-step-1').waitFor({state: 'visible'});
+
+      for (let step = 1; step <= 5; step++) {
+        if (step > 1) {
+          await page.locator('#btn-next').click();
+          await page.locator('#card-step-' + step).waitFor({state: 'visible'});
+        }
+
+        const card = page.locator('#card-step-' + step);
+        const launchers = card.locator('.guide-quote-launch');
+        if (await launchers.count()) {
+          const launcher = launchers.first();
+          await assertPointerHitTarget(launcher, profile.name);
+          await launcher.click();
+          assert.equal(await page.locator('#anim-modal').evaluate(
+            modal => !modal.classList.contains('hidden')), true,
+            profile.name + ': quote launcher must open its modal');
+          await page.locator('#anim-modal [data-action="closeModal"]').click();
+        }
+
+        const actions = card.locator('button[data-action="openModal"]');
+        for (let index = 0; index < await actions.count(); index++) {
+          const button = actions.nth(index);
+          const target = await button.getAttribute('data-target');
+          await assertPointerHitTarget(button, profile.name + ' card ' + step);
+          await button.click();
+          assert.equal(await page.locator('#anim-modal').evaluate(
+            modal => !modal.classList.contains('hidden')), true,
+            profile.name + ': guide action must open its modal (' + target + ')');
+
+          await page.locator('#modal-complete-btn').click();
+          assert.equal(await page.locator('#anim-modal').evaluate(
+            modal => modal.classList.contains('hidden')), true,
+            profile.name + ': completing the guide must close its modal');
+
+          const checkbox = page.locator('#chk-' + target);
+          assert.equal(await checkbox.isEnabled(), true,
+            profile.name + ': guide must unlock its associated checkbox (' + target + ')');
+          if (!await checkbox.isChecked()) await checkbox.check();
+          assert.equal(await checkbox.isChecked(), true,
+            profile.name + ': unlocked checkbox must accept a user interaction (' + target + ')');
+        }
+
+        const enabledCheckboxes = card.locator('input.app-chk:visible:not([disabled])');
+        for (let index = 0; index < await enabledCheckboxes.count(); index++) {
+          const checkbox = enabledCheckboxes.nth(index);
+          if (!await checkbox.isChecked()) await checkbox.check();
+          assert.equal(await checkbox.isChecked(), true,
+            profile.name + ': visible checklist checkbox must respond to interaction');
+        }
+      }
+
+      await page.locator('#btn-next').click();
+      await page.locator('#card-step-6').waitFor({state: 'visible'});
+      const selectedCloud = cloudChoices[profileIndex % cloudChoices.length];
+      const cloudButton = page.locator('.cloud-item[data-cloud="' + selectedCloud + '"]');
+      await assertPointerHitTarget(cloudButton, profile.name + ' cloud choice');
+      await cloudButton.click();
+      assert.equal(await cloudButton.getAttribute('aria-pressed'), 'true',
+        profile.name + ': selected cloud option must respond to a click');
+      assert.equal(await page.locator('#chk-cloud-checked').isEnabled(), true,
+        profile.name + ': cloud selection must unlock its checklist checkbox');
+      await page.locator('#chk-cloud-checked').check();
+      assert.equal(await page.locator('#chk-cloud-checked').isChecked(), true,
+        profile.name + ': cloud completion checkbox must respond to interaction');
+
+      assert.deepEqual(pageErrors, [],
+        profile.name + ': checklist interaction must not throw browser runtime errors');
+    } catch (error) {
+      error.message = '[' + profile.name + '] ' + error.message;
+      throw error;
+    } finally {
+      await context.close();
+    }
+  }
+});
+
+async function assertPointerHitTarget(locator, profileName) {
+  await locator.scrollIntoViewIfNeeded();
+  const hitTest = await locator.evaluate(element => {
+    const rect = element.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    const hit = document.elementFromPoint(x, y);
+    const style = getComputedStyle(element);
+    return {
+      visible: rect.width > 0 && rect.height > 0 &&
+        style.visibility !== 'hidden' && style.display !== 'none',
+      enabled: !element.disabled,
+      receivesPointer: style.pointerEvents !== 'none',
+      hitTarget: Boolean(hit && (hit === element || element.contains(hit))),
+      x,
+      y
+    };
+  });
+  assert.equal(hitTest.visible, true, profileName + ': control must be visible');
+  assert.equal(hitTest.enabled, true, profileName + ': control must be enabled');
+  assert.equal(hitTest.receivesPointer, true,
+    profileName + ': control must accept pointer events');
+  assert.equal(hitTest.hitTarget, true,
+    profileName + ': another element must not cover the control hit area');
+}
