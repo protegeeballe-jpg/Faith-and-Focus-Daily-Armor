@@ -631,7 +631,9 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
       editorBorder: getComputedStyle(editor).borderColor,
       archiveBackground: getComputedStyle(element.querySelector('.diary-archive-dialog')).backgroundImage,
       archiveBackdrop: getComputedStyle(element.querySelector('#diary-archive-panel')).backgroundColor,
-      archiveCloseHeight: getComputedStyle(element.querySelector('.diary-archive-close')).minHeight
+      archiveCloseHeight: getComputedStyle(element.querySelector('.diary-archive-close')).minHeight,
+      cardIsolation: getComputedStyle(card).isolation,
+      archiveZIndex: getComputedStyle(element.querySelector('#diary-archive-panel')).zIndex
     };
   });
   assert.equal(diarySurface.active, true, 'The Diary-specific theme must be scoped to the Diary scene');
@@ -647,6 +649,10 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
   assert.match(diarySurface.archiveBackground, /radial-gradient/);
   assert.match(diarySurface.archiveBackdrop, /29, 54, 72/);
   assert.equal(diarySurface.archiveCloseHeight, '44px');
+  assert.equal(diarySurface.cardIsolation, 'auto',
+    'The Diary paper must not create a stacking context around its fixed archive dialog');
+  assert.equal(diarySurface.archiveZIndex, '90',
+    'The full-screen Diary archive must retain its established overlay priority');
 
   await page.evaluate(() => {
     document.getElementById('diary-editor-panel')?.classList.remove('hidden');
