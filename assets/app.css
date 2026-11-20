@@ -1299,7 +1299,7 @@ body {position:fixed;inset:0;min-width:0;min-height:0 !important;padding-bottom:
 .finale-character-sparkles { animation: wgi-celebrate-sparkles 1.45s ease-in-out infinite; }
 
 .wgi-sun { transform-box: view-box; transform-origin: 73px 71px; animation: wgi-sun-glow 3.6s ease-in-out infinite; }
-.wgi-cloud { transform-box: view-box; transform-origin: 240px 90px; animation: wgi-cloud-drift 4.2s ease-in-out infinite; }
+.wgi-cloud-drift { transform-box: view-box; transform-origin: 240px 90px; animation: wgi-cloud-drift 4.2s ease-in-out infinite; }
 .wgi-flower { transform-box: view-box; transform-origin: 281px 68px; animation: wgi-flower-sway 4s ease-in-out infinite; }
 .wgi-heart { transform-box: view-box; transform-origin: 229px 91px; animation: wgi-heart-glow 2.6s ease-in-out infinite; }
 .wgi-breath-ring { transform-box: view-box; transform-origin: 78px 91px; animation: wgi-breath-expand 6s ease-in-out infinite; }
