@@ -559,3 +559,117 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
     'Pigment motion must respect the reduced-motion preference');
   await reducedContext.close();
 });
+
+
+test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve real hit targets', {
+  timeout: 30000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({
+    serviceWorkers: 'block',
+    permissions: [],
+    viewport: {width: 1366, height: 768}
+  });
+  const page = await context.newPage();
+  await page.goto(host.url, {waitUntil: 'load'});
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+
+  await page.getByRole('button', {name: 'Open Faith & Focus: Daily Armor'}).click();
+  const forgeSurface = await page.locator('#little-garden').evaluate(element => {
+    const roomCard = element.querySelector('.garden-room-card');
+    const plantingPanel = element.querySelector('.garden-planting-panel');
+    return {
+      scene: element.classList.contains('garden-room-home'),
+      backgroundImage: getComputedStyle(element).backgroundImage,
+      roomEdge: getComputedStyle(roomCard, '::before').backgroundImage,
+      roomEdgePointerEvents: getComputedStyle(roomCard, '::before').pointerEvents,
+      plantingBackground: getComputedStyle(plantingPanel).backgroundImage,
+      roomRadius: getComputedStyle(roomCard).borderRadius
+    };
+  });
+  assert.equal(forgeSurface.scene, true, 'The Forge Room must remain the active home scene');
+  assert.match(forgeSurface.backgroundImage, /garden-room-background\.jpg/);
+  assert.match(forgeSurface.backgroundImage, /repeating-linear-gradient/);
+  assert.match(forgeSurface.roomEdge, /radial-gradient/);
+  assert.equal(forgeSurface.roomEdgePointerEvents, 'none');
+  assert.match(forgeSurface.plantingBackground, /repeating-linear-gradient/);
+  assert.match(forgeSurface.roomRadius, /29px/);
+  await assertPointerHitTarget(
+    page.locator('#garden-planting-button'),
+    'Forge Room planting action beneath watercolor paper layers'
+  );
+
+  await page.evaluate(() => {
+    document.dispatchEvent(new CustomEvent('garden:show-scene', {
+      detail: {scene: 'diary'}
+    }));
+  });
+  const diary = page.locator('#view-diary');
+  await diary.waitFor({state: 'visible'});
+  const diarySurface = await page.locator('#little-garden').evaluate(element => {
+    const card = element.querySelector('#view-diary > .card-lavender');
+    const lockCard = element.querySelector('#diary-lock-panel');
+    const editor = element.querySelector('#private-diary-entry');
+    return {
+      active: element.classList.contains('garden-diary-active'),
+      backgroundColor: getComputedStyle(element).backgroundColor,
+      backgroundImage: getComputedStyle(element).backgroundImage,
+      cardBackground: getComputedStyle(card).backgroundImage,
+      cardEdge: getComputedStyle(card, '::before').backgroundImage,
+      cardEdgePointerEvents: getComputedStyle(card, '::before').pointerEvents,
+      lockBackground: getComputedStyle(lockCard).backgroundImage,
+      editorBackground: getComputedStyle(editor).backgroundImage,
+      editorBorder: getComputedStyle(editor).borderColor
+    };
+  });
+  assert.equal(diarySurface.active, true, 'The Diary-specific theme must be scoped to the Diary scene');
+  assert.equal(diarySurface.backgroundColor, 'rgb(241, 247, 251)');
+  assert.match(diarySurface.backgroundImage, /repeating-linear-gradient/);
+  assert.match(diarySurface.cardBackground, /radial-gradient/);
+  assert.match(diarySurface.cardBackground, /repeating-linear-gradient/);
+  assert.match(diarySurface.cardEdge, /radial-gradient/);
+  assert.equal(diarySurface.cardEdgePointerEvents, 'none');
+  assert.match(diarySurface.lockBackground, /rgba\(244, 207, 116/);
+  assert.match(diarySurface.editorBackground, /repeating-linear-gradient/);
+  assert.match(diarySurface.editorBorder, /112, 157, 188/);
+
+  await page.evaluate(() => {
+    document.getElementById('diary-editor-panel')?.classList.remove('hidden');
+  });
+  const notebookButton = page.locator('#diary-archive-button');
+  await assertPointerHitTarget(notebookButton, 'Diary notebook button beneath watercolor paper layers');
+  await notebookButton.click();
+  assert.match(
+    await page.locator('#diary-security-status').textContent(),
+    /Unlock your Diary before opening your notebook/,
+    'The Diary notebook control must still receive and handle its click while locked'
+  );
+
+  await context.close();
+
+  const reducedContext = await browser.newContext({
+    serviceWorkers: 'block',
+    reducedMotion: 'reduce'
+  });
+  const reducedPage = await reducedContext.newPage();
+  await reducedPage.goto(host.url, {waitUntil: 'load'});
+  await reducedPage.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+    document.getElementById('little-garden')?.classList.add('garden-room-home');
+  });
+  const reducedRoomMotion = await reducedPage.locator('.garden-room-card').evaluate(
+    element => getComputedStyle(element, '::before').animationDuration);
+  assert.equal(reducedRoomMotion, '0s',
+    'Forge Room decorative effects must respect reduced-motion preferences');
+  await reducedContext.close();
+});
