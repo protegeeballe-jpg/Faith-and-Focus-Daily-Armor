@@ -100,6 +100,11 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
 
     assert.equal(await page.locator('#vault-login-form').isVisible(), true,
       'the account sign-in form must render');
+    await page.locator('#vault-login-submit').click();
+    assert.equal(await page.locator('#vault-login-message').getAttribute('data-state'), 'error',
+      'the Sign In submit button must run validation without contacting the account service');
+    assert.match(await page.locator('#vault-login-message').textContent(), /Enter a valid username/,
+      'invalid sign-in input must produce an accessible validation message');
     assert.equal(await page.locator('#vault-show-signup').isEnabled(), true);
     await page.locator('#vault-show-signup').click();
     assert.equal(await page.locator('#vault-signup-panel').isVisible(), true,
