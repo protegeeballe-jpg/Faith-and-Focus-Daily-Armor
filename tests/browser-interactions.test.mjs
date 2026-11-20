@@ -638,7 +638,7 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
   assert.match(diarySurface.cardBackground, /repeating-linear-gradient/);
   assert.match(diarySurface.cardEdge, /radial-gradient/);
   assert.equal(diarySurface.cardEdgePointerEvents, 'none');
-  assert.match(diarySurface.lockBackground, /rgba\\(239, 204, 116/);
+  assert.match(diarySurface.lockBackground, /rgba\(239, 204, 116/);
   assert.match(diarySurface.editorBackground, /repeating-linear-gradient/);
   assert.match(diarySurface.editorBorder, /112, 157, 188/);
 
