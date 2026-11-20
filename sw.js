@@ -8,7 +8,7 @@
  * When the cache list or its behavior changes, increment CACHE_NAME so the
  * old shell is retired cleanly after the new worker activates.
  */
-const CACHE_NAME = 'faith-focus-shell-v32-articulated-storyboards';
+const CACHE_NAME = 'faith-focus-shell-v33-guide-quotes';
 const CACHE_PREFIX = 'faith-focus-';
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -27,10 +27,7 @@ const PRECACHE_URLS = [
     './assets/legal.css',
 
     './assets/app.js',
-    './assets/watercolor-illustrations.js',
-    './assets/character-appearance.js',
-    './assets/storyboard-choreographer.js',
-    './assets/guide-player.js',
+    './assets/guide-quotes.js',
     './assets/missed-card-notifications.js',
     './assets/device-clock.js',
     './assets/garden.js',
