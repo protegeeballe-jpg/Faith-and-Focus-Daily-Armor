@@ -64,7 +64,7 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
     browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
     const context = await browser.newContext({
       viewport: { width: 1280, height: 1200 },
-      reducedMotion: 'reduce',
+      reducedMotion: 'no-preference',
       serviceWorkers: 'block'
     });
     const page = await context.newPage();
