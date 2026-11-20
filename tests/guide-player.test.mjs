@@ -8,6 +8,7 @@ import { GUIDE_ILLUSTRATION_IDS } from '../assets/watercolor-illustrations.js';
 const app = readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../assets/app.css', import.meta.url), 'utf8');
+const tailwindCSS = readFileSync(new URL('../assets/tailwind.generated.css', import.meta.url), 'utf8');
 const serviceWorker = readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 const controller = readFileSync(new URL('../assets/guide-player.js', import.meta.url), 'utf8');
 
@@ -36,7 +37,7 @@ test('the visual controller has no independent clock or persistence side effects
   assert.doesNotMatch(controller, /\bsetInterval\s*\(/);
   assert.doesNotMatch(controller, /\bsetTimeout\s*\(/);
   assert.doesNotMatch(controller, /localStorage|sessionStorage|saveData\s*\(/);
-  assert.doesNotMatch(controller, /\bstatic\b/, 'player state names must not generate unintended Tailwind utilities');
+  assert.doesNotMatch(tailwindCSS, /\.static\{position:static\}/, 'the generated Tailwind bundle must not contain the false-positive static utility');
   assert.match(controller, /setBreathingPhase\(phase\)/);
   assert.match(controller, /setCloudSelection\(selection\)/);
   assert.match(controller, /visibilitychange/);
