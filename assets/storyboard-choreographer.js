@@ -65,36 +65,41 @@ const ACTION_DESIGNS = Object.freeze({
     }
   },
   'start-3': {
+
     setting: 'sunny-garden', camera: 'wide', prop: { kind: 'morning-sun', attachment: 'scene' },
     primaryPart: 'leftArm', easing: 'cubic-bezier(.35,.05,.2,1)', expression: 'bright',
     motion: {
       head: [[0,0,0,0,1],[28,0,-2,-2,1],[55,0,-2,2,1],[78,0,-1,0,1],[100,0,0,0,1]],
       torso: [[0,0,0,0,1],[30,0,-3,0,1.025],[68,0,-3,0,1.025],[100,0,0,0,1]],
-      leftArm: [[0,0,0,0,1],[30,-8,-10,-72,1],[68,-8,-10,-72,1],[100,0,0,0,1]],
-      leftForearm: [[0,0,0,0,1],[30,-3,-14,-40,1],[68,-3,-14,-40,1],[100,0,0,0,1]],
-      rightArm: [[0,0,0,0,1],[30,8,-10,72,1],[68,8,-10,72,1],[100,0,0,0,1]],
-      rightForearm: [[0,0,0,0,1],[30,3,-14,40,1],[68,3,-14,40,1],[100,0,0,0,1]]
+      leftArm: [[0,0,0,0,1],[30,0,-4,152,1],[68,0,-4,152,1],[100,0,0,0,1]],
+      leftForearm: [[0,0,0,0,1],[30,0,-2,-12,1],[68,0,-2,-12,1],[100,0,0,0,1]],
+      rightArm: [[0,0,0,0,1],[30,0,-4,-148,1],[68,0,-4,-148,1],[100,0,0,0,1]],
+      rightForearm: [[0,0,0,0,1],[30,0,-2,12,1],[68,0,-2,12,1],[100,0,0,0,1]]
     }
   },
   'start-4': {
+
     setting: 'sunlit-kitchen', camera: 'medium', prop: { kind: 'water-glass', attachment: 'right-hand' },
     primaryPart: 'rightForearm', easing: 'cubic-bezier(.25,.75,.25,1)', expression: 'sip',
+    propCounterRotation: [[0,0],[24,-54],[48,-163],[74,-163],[90,-54],[100,0]],
     motion: {
-      head: [[0,0,0,0,1],[24,1,1,4,1],[42,2,2,7,1],[70,2,2,7,1],[100,0,0,0,1]],
-      torso: [[0,0,0,0,1],[34,1,-1,1,1],[68,1,-1,1,1],[100,0,0,0,1]],
-      rightArm: [[0,0,0,0,1],[28,0,-3,-28,1],[58,0,-5,-44,1],[78,0,-5,-44,1],[100,0,0,0,1]],
-      rightForearm: [[0,0,0,0,1],[28,0,-3,-34,1],[58,0,-5,-58,1],[78,0,-5,-58,1],[100,0,0,0,1]]
+      head: [[0,0,0,0,1],[24,1,-1,2,1],[48,1,-2,4,1],[74,1,-2,4,1],[90,0,-1,1,1],[100,0,0,0,1]],
+      torso: [[0,0,0,0,1],[34,0,-1,1,1],[68,0,-1,1,1],[100,0,0,0,1]],
+      rightArm: [[0,0,0,0,1],[24,0,-2,24,1],[48,0,-4,70,1],[74,0,-4,70,1],[90,0,-2,24,1],[100,0,0,0,1]],
+      rightForearm: [[0,0,0,0,1],[24,0,-2,30,1],[48,0,-4,93,1],[74,0,-4,93,1],[90,0,-2,30,1],[100,0,0,0,1]]
     }
   },
   'mid-1': {
+
     setting: 'bright-room', camera: 'medium', prop: { kind: 'soft-sunlight', attachment: 'scene' },
     primaryPart: 'torso', easing: 'ease-in-out', expression: 'focused',
     motion: {
-      head: [[0,0,0,0,1],[25,0,-2,-3,1],[54,0,-2,3,1],[78,0,-1,0,1],[100,0,0,0,1]],
-      torso: [[0,0,0,0,1],[28,0,-3,0,1.025],[72,0,-3,0,1.025],[100,0,0,0,1]],
-      leftArm: [[0,0,0,0,1],[30,-5,-7,-48,1],[68,-5,-7,-48,1],[100,0,0,0,1]],
-      leftForearm: [[0,0,0,0,1],[30,-6,-4,-25,1],[68,-6,-4,-25,1],[100,0,0,0,1]],
-      rightArm: [[0,0,0,0,1],[30,4,-5,32,1],[68,4,-5,32,1],[100,0,0,0,1]]
+      head: [[0,0,0,0,1],[28,0,-2,-4,1],[55,0,-1,3,1],[78,0,-2,-3,1],[100,0,0,0,1]],
+      torso: [[0,0,0,0,1],[28,0,-3,0,1.02],[48,2,-3,-6,1.02],[68,-2,-3,6,1.02],[84,0,-2,0,1.01],[100,0,0,0,1]],
+      leftArm: [[0,0,0,0,1],[30,0,-3,145,1],[68,0,-3,145,1],[100,0,0,0,1]],
+      leftForearm: [[0,0,0,0,1],[30,0,-2,-8,1],[68,0,-2,-8,1],[100,0,0,0,1]],
+      rightArm: [[0,0,0,0,1],[30,0,-3,-145,1],[68,0,-3,-145,1],[100,0,0,0,1]],
+      rightForearm: [[0,0,0,0,1],[30,0,-2,8,1],[68,0,-2,8,1],[100,0,0,0,1]]
     }
   },
   'mid-2': {
@@ -108,13 +113,15 @@ const ACTION_DESIGNS = Object.freeze({
     })
   },
   'mid-3': {
+
     setting: 'midday-garden', camera: 'medium', prop: { kind: 'water-glass', attachment: 'right-hand' },
-    primaryPart: 'head', easing: 'ease-in-out', expression: 'sip',
+    primaryPart: 'rightForearm', easing: 'ease-in-out', expression: 'sip',
+    propCounterRotation: [[0,0],[24,-50],[48,-158],[74,-158],[90,-50],[100,0]],
     motion: {
-      head: [[0,0,0,0,1],[20,1,0,3,1],[46,2,1,6,1],[70,2,1,6,1],[100,0,0,0,1]],
+      head: [[0,0,0,0,1],[20,1,-1,2,1],[46,1,-2,4,1],[70,1,-2,4,1],[88,0,-1,1,1],[100,0,0,0,1]],
       torso: [[0,0,0,0,1],[34,0,-1,1,1],[74,0,-1,1,1],[100,0,0,0,1]],
-      rightArm: [[0,0,0,0,1],[32,-1,-2,-24,1],[60,-1,-4,-39,1],[82,-1,-4,-39,1],[100,0,0,0,1]],
-      rightForearm: [[0,0,0,0,1],[32,0,-2,-29,1],[60,0,-4,-52,1],[82,0,-4,-52,1],[100,0,0,0,1]]
+      rightArm: [[0,0,0,0,1],[24,0,-2,22,1],[48,0,-4,68,1],[74,0,-4,68,1],[90,0,-2,22,1],[100,0,0,0,1]],
+      rightForearm: [[0,0,0,0,1],[24,0,-2,28,1],[48,0,-4,90,1],[74,0,-4,90,1],[90,0,-2,28,1],[100,0,0,0,1]]
     }
   },
   'mid-4': {
@@ -159,13 +166,15 @@ const ACTION_DESIGNS = Object.freeze({
     }
   },
   'end-3': {
+
     setting: 'evening-window', camera: 'medium', prop: { kind: 'water-glass', attachment: 'right-hand' },
     primaryPart: 'rightForearm', easing: 'ease-in-out', expression: 'sip',
+    propCounterRotation: [[0,0],[24,-50],[48,-158],[74,-158],[90,-50],[100,0]],
     motion: {
-      head: [[0,0,0,0,1],[30,1,1,4,1],[55,2,2,6,1],[80,2,2,6,1],[100,0,0,0,1]],
+      head: [[0,0,0,0,1],[30,1,-1,2,1],[55,1,-2,4,1],[80,1,-2,4,1],[92,0,-1,1,1],[100,0,0,0,1]],
       torso: [[0,0,0,0,1],[38,0,-1,1,1],[76,0,-1,1,1],[100,0,0,0,1]],
-      rightArm: [[0,0,0,0,1],[34,0,-2,-20,1],[64,0,-3,-34,1],[82,0,-3,-34,1],[100,0,0,0,1]],
-      rightForearm: [[0,0,0,0,1],[34,0,-2,-26,1],[64,0,-3,-46,1],[82,0,-3,-46,1],[100,0,0,0,1]]
+      rightArm: [[0,0,0,0,1],[28,0,-2,22,1],[52,0,-4,68,1],[78,0,-4,68,1],[92,0,-2,22,1],[100,0,0,0,1]],
+      rightForearm: [[0,0,0,0,1],[28,0,-2,28,1],[52,0,-4,90,1],[78,0,-4,90,1],[92,0,-2,28,1],[100,0,0,0,1]]
     }
   },
   'end-4': {
@@ -223,13 +232,15 @@ const ACTION_DESIGNS = Object.freeze({
     }
   },
   'sleep-5': {
+
     setting: 'bedside', camera: 'close', prop: { kind: 'water-glass', attachment: 'right-hand' },
     primaryPart: 'rightForearm', easing: 'ease-in-out', expression: 'sip',
+    propCounterRotation: [[0,0],[24,-50],[48,-158],[74,-158],[90,-50],[100,0]],
     motion: {
-      head: [[0,0,0,0,1],[25,1,1,4,1],[48,1,2,6,1],[74,1,2,6,1],[100,0,0,0,1]],
+      head: [[0,0,0,0,1],[25,1,-1,2,1],[48,1,-2,4,1],[74,1,-2,4,1],[90,0,-1,1,1],[100,0,0,0,1]],
       torso: [[0,0,0,0,1],[34,0,1,0,1],[70,0,1,0,1],[100,0,0,0,1]],
-      rightArm: [[0,0,0,0,1],[26,0,-1,-18,1],[52,0,-3,-32,1],[76,0,-3,-32,1],[100,0,0,0,1]],
-      rightForearm: [[0,0,0,0,1],[26,0,-2,-24,1],[52,0,-4,-48,1],[76,0,-4,-48,1],[100,0,0,0,1]]
+      rightArm: [[0,0,0,0,1],[24,0,-2,22,1],[48,0,-4,68,1],[74,0,-4,68,1],[90,0,-2,22,1],[100,0,0,0,1]],
+      rightForearm: [[0,0,0,0,1],[24,0,-2,28,1],[48,0,-4,90,1],[74,0,-4,90,1],[90,0,-2,28,1],[100,0,0,0,1]]
     }
   },
   'cloud-checked': {
@@ -306,6 +317,31 @@ function framesToCss(frames) {
   }).join('');
 }
 
+function propCounterRotationFramesToCss(frames) {
+  if (!Array.isArray(frames) || frames.length < 3) {
+    throw new Error('[GuideStoryboardError] Missing water-glass counter-rotation timeline.');
+  }
+
+  let previousPercent = -1;
+  const css = frames.map((frame) => {
+    if (!Array.isArray(frame) || frame.length !== 2) {
+      throw new Error('[GuideStoryboardError] Invalid water-glass counter-rotation frame.');
+    }
+    const [percent, rotation] = frame;
+    if (!Number.isFinite(percent) || percent < 0 || percent > 100 ||
+        percent <= previousPercent || !Number.isFinite(rotation) || Math.abs(rotation) > 180) {
+      throw new Error('[GuideStoryboardError] Unsafe water-glass counter-rotation frame.');
+    }
+    previousPercent = percent;
+    return percent + '%{transform:rotate(' + rotation + 'deg);}';
+  }).join('');
+
+  if (frames[0][0] !== 0 || frames[frames.length - 1][0] !== 100) {
+    throw new Error('[GuideStoryboardError] Water-glass counter-rotation must begin and end upright.');
+  }
+  return css;
+}
+
 function expressionCss(prefix, id, expression, duration, iterations, fill) {
   const selector = prefix;
   const blinkFrames = expression === 'soft'
@@ -376,6 +412,18 @@ export function buildGuideStoryboardStylesheet(rawId) {
         'animation-timing-function:' + storyboard.easing + ';' +
         'animation-iteration-count:' + iterations + ';animation-fill-mode:' + fill + '}';
     });
+
+    if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'water-glass') {
+      const propKeyframes = 'wgi-story-' + storyboard.id + '-glass-upright';
+      css += '@keyframes ' + propKeyframes + '{' +
+        propCounterRotationFramesToCss(storyboard.propCounterRotation) + '}';
+      css += prefix + ' .wgi-hand-prop--water-glass{' +
+        'transform-box:view-box;transform-origin:184px 145px;' +
+        'animation-name:' + propKeyframes + ';animation-duration:' + duration + 'ms;' +
+        'animation-timing-function:' + storyboard.easing + ';' +
+        'animation-iteration-count:' + iterations + ';animation-fill-mode:' + fill + '}';
+    }
+
     css += expressionCss(prefix, storyboard.id, storyboard.expression, duration, iterations, fill);
   }
 
