@@ -1466,3 +1466,46 @@ input[type="reset"] {
         transition: none !important;
     }
 }
+
+
+/* Complete the blue-and-yellow palette through every saved-notebook state. */
+.garden-overlay.garden-diary-active .diary-current-date-label,
+.garden-overlay.garden-diary-active .diary-archive-entry-date {
+    color: #254f69;
+}
+.garden-overlay.garden-diary-active .diary-current-date-caption,
+.garden-overlay.garden-diary-active .diary-archive-eyebrow {
+    color: #9b7a35;
+}
+.garden-overlay.garden-diary-active #diary-archive-panel {
+    background: rgba(29, 54, 72, .48);
+}
+.garden-overlay.garden-diary-active .diary-archive-intro,
+.garden-overlay.garden-diary-active .diary-archive-date-meta,
+.garden-overlay.garden-diary-active .diary-archive-record-meta,
+.garden-overlay.garden-diary-active .diary-archive-empty {
+    color: #496d84;
+}
+.garden-overlay.garden-diary-active .diary-archive-date-title,
+.garden-overlay.garden-diary-active .diary-archive-section-title {
+    color: #254f69;
+}
+.garden-overlay.garden-diary-active .diary-archive-date-button {
+    min-height: 44px;
+    border-color: rgba(112, 157, 188, .40);
+    background:
+        radial-gradient(ellipse at 96% 4%, rgba(241, 207, 124, .20), transparent 42%),
+        rgba(255, 254, 247, .94);
+}
+.garden-overlay.garden-diary-active .diary-archive-date-button:hover {
+    border-color: rgba(82, 144, 179, .64);
+    background:
+        radial-gradient(ellipse at 96% 4%, rgba(241, 207, 124, .30), transparent 46%),
+        rgba(236, 246, 251, .98);
+}
+.garden-overlay.garden-diary-active .diary-archive-empty {
+    border-color: rgba(194, 165, 91, .48);
+    background:
+        radial-gradient(ellipse at 92% 0%, rgba(242, 211, 134, .22), transparent 46%),
+        rgba(255, 253, 243, .90);
+}
