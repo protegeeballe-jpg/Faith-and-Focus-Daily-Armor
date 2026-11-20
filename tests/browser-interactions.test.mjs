@@ -511,7 +511,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
 
   const quoteLauncher = page.locator('.guide-quote-launch').first();
   await quoteLauncher.click();
-  const quoteTexture = await page.locator('.guide-quote-card').evaluate(element => ({
+  const quoteTexture = await page.locator('#anim-modal .guide-quote-card').evaluate(element => ({
     backgroundImage: getComputedStyle(element).backgroundImage,
     edgePointerEvents: getComputedStyle(element, '::after').pointerEvents,
     edgeBackground: getComputedStyle(element, '::after').backgroundImage,
@@ -550,7 +550,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   });
   await reducedPage.getByRole('button', {name: 'Open Health Checklist'}).click();
   await reducedPage.locator('.guide-quote-launch').first().click();
-  const reducedAnimation = await reducedPage.locator('.guide-quote-wash').evaluate(
+  const reducedAnimation = await reducedPage.locator('#anim-modal .guide-quote-wash').evaluate(
     element => getComputedStyle(element).animationDuration);
   assert.equal(reducedAnimation, '0s',
     'Pigment motion must respect the reduced-motion preference');
