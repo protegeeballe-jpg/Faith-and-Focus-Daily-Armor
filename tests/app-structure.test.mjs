@@ -82,7 +82,7 @@ test('ordinary progress storage is documented as not encrypted',()=>{
 test('all existing checklist, cloud and ecosystem features remain',()=>{
  assert.equal((html.match(/class="[^"]*app-chk/g)||[]).length,23);
  assert.equal((html.match(/data-cloud="(?:cumulus|stratus|stratocumulus)"/g)||[]).length,3);
- for(const feature of ['finishChecklist','guide-launch','ecosystem-canvas'])assert.ok(html.includes(feature)||app.includes(feature),feature);
+ for(const feature of ['finishChecklist','guide-quote-launch','ecosystem-canvas'])assert.ok(html.includes(feature)||app.includes(feature),feature);
 });
 
 test('Forge Room is a separate local module and does not replace existing features',()=>{
@@ -321,33 +321,24 @@ test('breathing guide uses a single explicit modal action and completes five 4-2
  assert.match(appCss,/@keyframes guide-breath-in/);
  assert.match(appCss,/@keyframes guide-breath-out/);
 });
-test('water animation runs for five seconds before asking the user to take their turn',()=>{
- assert.match(app,/drinkGuideTimeout\s*=\s*setTimeout\([\s\S]*?\},\s*5000\)/);
- assert.match(app,/Now it is your turn. Have water if appropriate for you/);
- assert.match(app,/I've had my water. Show my checkbox/);
- assert.match(app,/activeModalAction\s*=\s*'waiting-for-drink'/);
+test('water reminders use the quote immediately without an animation wait',()=>{
+ assert.doesNotMatch(app,/drinkGuideTimeout|waiting-for-drink|5-second water guide|5000\)/);
+ assert.match(app,/Your turn\. Have water if you wish, at a comfortable pace\./);
+ assert.match(app,/I've had my water\. Show my checkbox/);
+ assert.doesNotMatch(app,/buildGuideIllustrationSvg|createWatercolorGuidePlayer/);
 });
-test('animal stickers are removed from checklist launchers while Show me animations remain',()=>{
- assert.match(app,/const guideButton = document\.createElement\('button'\)/);
- assert.match(app,/guideButton\.type = 'button'/);
- assert.match(app,/guideButton\.className = 'guide-launch'/);
- assert.match(app,/const playIcon = document\.createElement\('span'\)/);
- assert.match(app,/playIcon\.className = 'guide-play-icon'/);
- assert.match(app,/playIcon\.setAttribute\('aria-hidden',\s*'true'\)/);
- assert.match(app,/playIcon\.textContent = '▶'/);
- assert.match(app,/const guideLabel = document\.createElement\('span'\)/);
- assert.match(app,/guideLabel\.textContent = 'Show me'/);
- assert.match(app,/guideButton\.append\(playIcon,\s*guideLabel\)/);
+test('checklist activities open a painterly quote card through text-safe rendering',()=>{
+ assert.match(app,/function createGuideQuoteCard\(guideId\)/);
+ assert.match(app,/quote\.textContent\s*=\s*getGuideQuote\(guideId\)/);
+ assert.match(app,/guideButton\.className\s*=\s*'guide-quote-launch'/);
+ assert.match(app,/guideLabel\.textContent\s*=\s*'Read quote'/);
  assert.match(app,/guideButton\.addEventListener\('click',\s*\(\)\s*=>\s*openModal\('guided',\s*id\)\)/);
- assert.doesNotMatch(app,/guide-buddy/);
- const guideBlock=app.slice(app.indexOf('const guideContent'),app.indexOf('function stopBreathingTimer'));
- assert.doesNotMatch(guideBlock,/🐻|🐰|🐱|🐼|🐨|🦊|🐣|🐥|🦉/);
- const watercolor=readFileSync(new URL('../assets/watercolor-illustrations.js',import.meta.url),'utf8');
- assert.match(app,/buildGuideIllustrationSvg\(checkboxId\)/);
- assert.match(watercolor,/export function buildGuideIllustrationSvg/);
- assert.match(watercolor,/class="watercolor-guide-svg watercolor-guide-svg--/);
- assert.doesNotMatch(app,/guide-person /);
- assert.doesNotMatch(app,/function buildStretchingCartoon/);
+ assert.match(app,/function syncGuideQuoteLaunchers\(\)/);
+ assert.match(app,/launch\?\.classList\.remove\('is-hidden'\)/);
+ assert.match(appCss,/\.guide-quote-card\s*\{/);
+ assert.match(appCss,/\.guide-quote-wash\s*\{/);
+ assert.match(appCss,/prefers-reduced-motion:\s*reduce/);
+ assert.doesNotMatch(app,/buildGuideIllustrationSvg|createWatercolorGuidePlayer|buildVictoryCharacterSvg/);
 });
 
 test('the active checklist scene keeps hidden checklist cards hidden',()=>{
@@ -371,9 +362,7 @@ test('repository text files avoid em dash punctuation',()=>{
   '../assets/app-gate.js',
   '../assets/app.css',
   '../assets/app.js',
-  '../assets/character-appearance.js',
-  '../assets/storyboard-choreographer.js',
-  '../assets/watercolor-illustrations.js',
+  '../assets/guide-quotes.js',
   '../assets/garden-model.js',
   '../assets/garden.css',
   '../assets/garden.js',
@@ -386,9 +375,7 @@ test('repository text files avoid em dash punctuation',()=>{
   './app-gate.test.mjs',
   './app-structure.test.mjs',
   './garden-model.test.mjs',
-  './guide-storyboards.test.mjs',
-  './guide-player-browser.html',
-  './guide-player-browser.test.mjs',
+  './guide-quotes.test.mjs',
   './location-checkin.test.mjs',
   './voice-note-store.test.mjs'
  ];
@@ -874,7 +861,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v32-articulated-storyboards/);
+ assert.match(serviceWorker,/faith-focus-shell-v33-guide-quotes/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -935,7 +922,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v32-articulated-storyboards/);
+ assert.match(serviceWorker,/faith-focus-shell-v33-guide-quotes/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
