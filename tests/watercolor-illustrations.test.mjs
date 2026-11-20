@@ -43,7 +43,10 @@ test('every activity family has a dedicated coordinated choreography rule', () =
     'night', 'prayer', 'relaxed', 'stretch', 'write'
   ]);
   for (const sequence of sequences) {
-    assert.ok(css.includes('.wgi-character--' + sequence), 'missing choreography for ' + sequence);
+    const hasChoreography = sequence === 'breathe'
+      ? css.includes('.watercolor-guide-svg--breathe[data-breath-phase=')
+      : css.includes('.wgi-character--' + sequence);
+    assert.ok(hasChoreography, 'missing choreography for ' + sequence);
   }
   for (const selector of [
     '.wgi-character--stretch .wgi-arm--left',
