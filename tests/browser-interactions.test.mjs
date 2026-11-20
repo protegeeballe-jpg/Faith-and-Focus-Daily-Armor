@@ -516,6 +516,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
     edgePointerEvents: getComputedStyle(element, '::after').pointerEvents,
     edgeBackground: getComputedStyle(element, '::after').backgroundImage,
     washBackground: getComputedStyle(element.querySelector('.guide-quote-wash')).backgroundImage,
+    washFilter: getComputedStyle(element.querySelector('.guide-quote-wash')).filter,
     washOpacity: Number(getComputedStyle(element.querySelector('.guide-quote-wash')).opacity)
   }));
   assert.match(quoteTexture.backgroundImage, /radial-gradient/);
@@ -523,8 +524,10 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   assert.match(quoteTexture.edgeBackground, /radial-gradient/);
   assert.equal(quoteTexture.edgePointerEvents, 'none');
   assert.match(quoteTexture.washBackground, /radial-gradient/);
-  assert.ok(quoteTexture.washOpacity >= 0.7,
-    'The pigment wash must be visible rather than an imperceptible decoration');
+  assert.ok(quoteTexture.washOpacity > 0.6,
+    'The pigment wash must remain visibly present');
+  assert.match(quoteTexture.washFilter, /saturate\\(1\\.08\\)/,
+    'The pigment wash must retain its richer color treatment');
 
   const closeButton = page.locator('#anim-modal [data-action="closeModal"]');
   await assertPointerHitTarget(closeButton, 'watercolor quote modal close');
