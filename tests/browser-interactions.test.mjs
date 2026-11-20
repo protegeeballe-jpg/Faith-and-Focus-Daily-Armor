@@ -224,3 +224,91 @@ async function expectStoredChecklistValue(page, key, expected) {
   }, {key, expected});
   assert.equal(found, true, 'Expected checklist value "' + key + '" to be persisted');
 }
+
+
+test('Chromium: every in-card guide action button receives a real pointer click', {
+  timeout: 30000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({
+    serviceWorkers: 'block',
+    permissions: []
+  });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.goto(host.url, {waitUntil: 'load'});
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+
+  // Exercise the actual action buttons embedded in cards 2–5, not the card pager.
+  const expectedTargets = new Map([
+    ['prayer', 'start-2'],
+    ['water', 'start-4'],
+    ['breathing', 'mid-2'],
+    ['water', 'mid-3'],
+    ['feeling', 'mid-4'],
+    ['water', 'end-3'],
+    ['curfew', 'sleep-3'],
+    ['water', 'sleep-5']
+  ]);
+
+  for (let step = 1; step <= 5; step++) {
+    if (step > 1) await page.locator('#btn-next').click();
+    const card = page.locator('#card-step-' + step);
+    const actions = card.locator('button[data-action="openModal"]');
+    const count = await actions.count();
+
+    for (let index = 0; index < count; index++) {
+      const button = actions.nth(index);
+      const type = await button.getAttribute('data-modal');
+      const target = await button.getAttribute('data-target');
+      assert.ok(expectedTargets.has(type), 'Unexpected in-card guide action: ' + type);
+      assert.ok(expectedTargets.get(type) === target
+        || (type === 'water' && ['start-4','mid-3','end-3','sleep-5'].includes(target)),
+        'Guide button must retain its intended target: ' + type + '/' + target);
+
+      // Playwright performs browser hit-testing; an overlay intercepting the
+      // pointer causes this click to fail rather than silently invoking a handler.
+      await button.click();
+      assert.equal(await page.locator('#anim-modal').evaluate(
+        modal => !modal.classList.contains('hidden')), true,
+        'In-card button failed to open its guide: ' + type + '/' + target);
+      assert.equal(await page.locator('#modal-complete-btn').isEnabled(), true);
+      await page.locator('#anim-modal [data-action="closeModal"]').click();
+      assert.equal(await page.locator('#anim-modal').evaluate(
+        modal => modal.classList.contains('hidden')), true,
+        'Guide modal close action failed for: ' + type + '/' + target);
+    }
+  }
+
+  // Every generated Read quote launcher must also be visible and receive pointer input.
+  for (let step = 2; step <= 5; step++) {
+    if (step > 2) await page.locator('#btn-next').click();
+    const launchers = page.locator('#card-step-' + step + ' .guide-quote-launch');
+    const count = await launchers.count();
+    assert.ok(count > 0, 'Expected generated guide launchers in card ' + step);
+    for (let index = 0; index < count; index++) {
+      const launcher = launchers.nth(index);
+      await launcher.click();
+      assert.equal(await page.locator('#anim-modal').evaluate(
+        modal => !modal.classList.contains('hidden')), true,
+        'Read quote launcher did not receive click in card ' + step);
+      await page.locator('#anim-modal [data-action="closeModal"]').click();
+    }
+  }
+
+  assert.deepEqual(pageErrors, [],
+    'In-card guide actions must not produce browser runtime errors');
+  await context.close();
+});
