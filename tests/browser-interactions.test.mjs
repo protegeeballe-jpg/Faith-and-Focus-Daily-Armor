@@ -119,3 +119,108 @@ test('Chromium: primary account, navigation, settings, and quote controls receiv
     'The application must not throw browser runtime errors during these interactions');
   await context.close();
 });
+
+
+test('Chromium: checklist navigation, guided unlocks, checkbox persistence, cloud selection, and completion gate', {
+  timeout: 30000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({
+    serviceWorkers: 'block',
+    permissions: []
+  });
+  const page = await context.newPage();
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.goto(host.url, {waitUntil: 'load'});
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+  const checklist = page.locator('#view-checklist');
+  await page.locator('#card-step-1').waitFor({state: 'visible'});
+
+  // Previous is disabled on the first card; Next advances exactly one card.
+  assert.equal(await page.locator('#btn-prev').isDisabled(), true);
+  await page.locator('#btn-next').click();
+  assert.equal(await page.locator('#current-step-num').textContent(), '2');
+  assert.equal(await page.locator('#card-step-2').isVisible(), true);
+  assert.equal(await page.locator('#btn-prev').isDisabled(), false);
+
+  // A guided task must unlock its associated checkbox through the actual modal action.
+  const guidedLaunch = page.locator('.guide-quote-launch[aria-label="Read quote for start-2"]');
+  await guidedLaunch.click();
+  assert.equal(await page.locator('#anim-modal').isVisible(), true);
+  await page.locator('#modal-complete-btn').click();
+  assert.equal(await page.locator('#anim-modal').isVisible(), false);
+  const guidedCheckbox = page.locator('#chk-start-2');
+  assert.equal(await guidedCheckbox.isEnabled(), true,
+    'Completing the guide must unlock its matching checkbox');
+  await guidedCheckbox.check();
+  assert.equal(await guidedCheckbox.isChecked(), true);
+
+  // Confirm the change handler persists the checkbox in this fresh, isolated browser store.
+  await expectStoredChecklistValue(page, 'start-2', true);
+
+  // Exercise forward and backward navigation through all six cards.
+  for (let step = 3; step <= 6; step++) {
+    await page.locator('#btn-next').click();
+    assert.equal(await page.locator('#current-step-num').textContent(), String(step));
+    assert.equal(await page.locator('#card-step-' + step).isVisible(), true);
+  }
+  await page.locator('#btn-prev').click();
+  assert.equal(await page.locator('#current-step-num').textContent(), '5');
+  await page.locator('#btn-next').click();
+  assert.equal(await page.locator('#current-step-num').textContent(), '6');
+
+  // One cloud may be selected per day; selection unlocks the completion checkbox.
+  const clouds = page.locator('.cloud-item[data-cloud]');
+  assert.equal(await clouds.count(), 3);
+  await page.locator('.cloud-item[data-cloud="cumulus"]').click();
+  assert.equal(await page.locator('.cloud-item[data-cloud="cumulus"]').getAttribute('aria-pressed'), 'true');
+  assert.equal(await page.locator('.cloud-item[data-cloud="stratus"]').isDisabled(), true);
+  assert.equal(await page.locator('.cloud-item[data-cloud="stratocumulus"]').isDisabled(), true);
+  assert.equal(await page.locator('#chk-cloud-checked').isEnabled(), true);
+  await expectStoredChecklistValue(page, 'cloud_cumulus', true);
+
+  // Finishing an incomplete checklist must not show the finale or silently mark it complete.
+  await page.locator('#btn-next').click();
+  assert.equal(await page.locator('#grand-finale-overlay').evaluate(
+    element => element.classList.contains('hidden')), true);
+  assert.equal(await page.locator('#finish-status').isVisible(), true);
+  assert.equal(await page.locator('#current-step-num').textContent(), '1',
+    'The completion gate must take the user to the first incomplete card');
+
+  assert.equal(await checklist.isVisible(), true);
+  assert.deepEqual(pageErrors, [],
+    'Checklist interactions must not produce browser runtime errors');
+  await context.close();
+});
+
+async function expectStoredChecklistValue(page, key, expected) {
+  const found = await page.evaluate(({key, expected}) => {
+    for (let index = 0; index < localStorage.length; index++) {
+      const raw = localStorage.getItem(localStorage.key(index));
+      if (!raw) continue;
+      try {
+        const data = JSON.parse(raw);
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          return data[key] === expected;
+        }
+      } catch {
+        // Ignore unrelated non-JSON storage entries.
+      }
+    }
+    return false;
+  }, {key, expected});
+  assert.equal(found, true, 'Expected checklist value "' + key + '" to be persisted');
+}
