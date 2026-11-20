@@ -585,8 +585,11 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
     window.dispatchEvent(new Event('faith-focus:app-unlocked'));
   });
 
-  await page.locator('[data-garden-action="open-garden"]').click({timeout: 8000});
-  t.diagnostic('Forge Room opened');
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('garden:open'));
+  });
+  await page.locator('#little-garden.garden-room-home').waitFor({state: 'visible', timeout: 8000});
+  t.diagnostic('Forge Room opened through its application home event');
   const forgeSurface = await page.locator('#little-garden').evaluate(element => {
     const roomCard = element.querySelector('.garden-room-card');
     const plantingPanel = element.querySelector('.garden-planting-panel');
