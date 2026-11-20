@@ -76,6 +76,8 @@ test('the Diary uses a distinct blue-and-honey watercolor paper treatment', () =
   assert.match(diaryTheme, /#private-diary-entry:focus-visible/);
   assert.match(diaryTheme, /pointer-events:\s*none/);
   assert.match(diaryTheme, /diary-archive-dialog/);
+  assert.match(diaryTheme, /diary-archive-date-button/);
+  assert.match(diaryTheme, /diary-archive-empty/);
 });
 
 test('the Forge Room retains its illustration beneath watercolor pigment and paper grain', () => {
