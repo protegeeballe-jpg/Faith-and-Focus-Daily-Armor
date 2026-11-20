@@ -29,9 +29,11 @@ const contentTypes = {
 test('the real app loads and its account, navigation, quote, checklist, and Settings buttons respond to clicks', {
   skip: chromium ? false : 'Playwright is not installed in this environment'
 }, async () => {
+  const missingFiles = [];
   const server = createServer(async (request, response) => {
+    let requestedPath = '(unknown)';
     try {
-      const requestedPath = decodeURIComponent(
+      requestedPath = decodeURIComponent(
         new URL(request.url || '/', 'http://127.0.0.1').pathname
       );
       const relativePath = requestedPath === '/' ? 'index.html' : requestedPath.replace(/^\/+/, '');
@@ -50,6 +52,7 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
       });
       response.end(content);
     } catch {
+      missingFiles.push(requestedPath);
       response.writeHead(404).end('Not found');
     }
   });
@@ -69,7 +72,25 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
     });
     const page = await context.newPage();
     const pageErrors = [];
+    const consoleMessages = [];
+    const failedRequests = [];
+    const serviceWorkerMessages = [];
     page.on('pageerror', error => pageErrors.push(error.message));
+    page.on('console', message => {
+      if (message.type() === 'error' || message.type() === 'warning') {
+        consoleMessages.push(message.type() + ': ' + message.text());
+      }
+    });
+    page.on('requestfailed', request => {
+      failedRequests.push({
+        url: request.url(),
+        error: request.failure()?.errorText || 'unknown request failure'
+      });
+    });
+    context.on('serviceworker', worker => {
+      worker.on('console', message => serviceWorkerMessages.push(message.type() + ': ' + message.text()));
+      worker.on('pageerror', error => serviceWorkerMessages.push('pageerror: ' + error.message));
+    });
 
     const address = server.address();
     await page.goto('http://127.0.0.1:' + address.port + '/index.html', {
@@ -80,10 +101,35 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
     // Exercise the actual offline shell as a controlled page, not only a
     // network-loaded tab. The service worker must finish its full precache
     // before we reload into the controlled session.
-    await page.waitForFunction(async () => {
-      const registration = await navigator.serviceWorker.getRegistration();
-      return registration?.active?.state === 'activated';
-    }, null, { timeout: 20000 });
+    try {
+      await page.waitForFunction(async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        return registration?.active?.state === 'activated';
+      }, null, { timeout: 20000 });
+    } catch (error) {
+      const registrationState = await page.evaluate(async () => {
+        const registration = await navigator.serviceWorker.getRegistration();
+        return {
+          isSecureContext: window.isSecureContext,
+          serviceWorkerAvailable: 'serviceWorker' in navigator,
+          registrationFound: Boolean(registration),
+          scope: registration?.scope || null,
+          activeState: registration?.active?.state || null,
+          installingState: registration?.installing?.state || null,
+          waitingState: registration?.waiting?.state || null,
+          controller: navigator.serviceWorker.controller?.scriptURL || null
+        };
+      });
+      throw new Error('Service worker did not activate. ' + JSON.stringify({
+        registrationState,
+        missingFiles,
+        pageErrors,
+        consoleMessages,
+        failedRequests,
+        serviceWorkerMessages,
+        cause: error.message
+      }));
+    }
     await page.waitForFunction(() => Boolean(navigator.serviceWorker.controller), null, {
       timeout: 20000
     });
