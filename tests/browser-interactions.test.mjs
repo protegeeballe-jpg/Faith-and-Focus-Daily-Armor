@@ -472,3 +472,87 @@ async function assertPointerHitTarget(locator, profileName) {
   assert.equal(hitTest.hitTarget, true,
     profileName + ': another element must not cover the control hit area');
 }
+
+
+test('Chromium: watercolor paper layers are visible and decorative edges never intercept clicks', {
+  timeout: 30000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({
+    serviceWorkers: 'block',
+    permissions: [],
+    viewport: {width: 1366, height: 768}
+  });
+  const page = await context.newPage();
+  await page.goto(host.url, {waitUntil: 'load'});
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+
+  const cardTexture = await page.locator('.garden-checklist-scene .step-card').first().evaluate(element => ({
+    backgroundImage: getComputedStyle(element).backgroundImage,
+    edgePointerEvents: getComputedStyle(element, '::after').pointerEvents,
+    edgeBackground: getComputedStyle(element, '::after').backgroundImage,
+    isolation: getComputedStyle(element).isolation
+  }));
+  assert.match(cardTexture.backgroundImage, /radial-gradient/);
+  assert.match(cardTexture.backgroundImage, /repeating-linear-gradient/);
+  assert.match(cardTexture.edgeBackground, /radial-gradient/);
+  assert.equal(cardTexture.edgePointerEvents, 'none');
+  assert.equal(cardTexture.isolation, 'isolate');
+
+  const quoteLauncher = page.locator('.guide-quote-launch').first();
+  await quoteLauncher.click();
+  const quoteTexture = await page.locator('.guide-quote-card').evaluate(element => ({
+    backgroundImage: getComputedStyle(element).backgroundImage,
+    edgePointerEvents: getComputedStyle(element, '::after').pointerEvents,
+    edgeBackground: getComputedStyle(element, '::after').backgroundImage,
+    washBackground: getComputedStyle(element.querySelector('.guide-quote-wash')).backgroundImage,
+    washOpacity: Number(getComputedStyle(element.querySelector('.guide-quote-wash')).opacity)
+  }));
+  assert.match(quoteTexture.backgroundImage, /radial-gradient/);
+  assert.match(quoteTexture.backgroundImage, /repeating-linear-gradient/);
+  assert.match(quoteTexture.edgeBackground, /radial-gradient/);
+  assert.equal(quoteTexture.edgePointerEvents, 'none');
+  assert.match(quoteTexture.washBackground, /radial-gradient/);
+  assert.ok(quoteTexture.washOpacity >= 0.8,
+    'The pigment wash must be visible rather than an imperceptible decoration');
+
+  const closeButton = page.locator('#anim-modal [data-action="closeModal"]');
+  await assertPointerHitTarget(closeButton, 'watercolor quote modal close');
+  await closeButton.click();
+  await assertPointerHitTarget(quoteLauncher, 'watercolor quote launcher');
+  await quoteLauncher.click();
+  assert.equal(await page.locator('#anim-modal').evaluate(
+    modal => !modal.classList.contains('hidden')), true,
+    'Watercolor edge layers must not block the real quote launcher');
+  await page.locator('#anim-modal [data-action="closeModal"]').click();
+
+  await context.close();
+
+  const reducedContext = await browser.newContext({
+    serviceWorkers: 'block',
+    reducedMotion: 'reduce'
+  });
+  const reducedPage = await reducedContext.newPage();
+  await reducedPage.goto(host.url, {waitUntil: 'load'});
+  await reducedPage.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  await reducedPage.getByRole('button', {name: 'Open Health Checklist'}).click();
+  await reducedPage.locator('.guide-quote-launch').first().click();
+  const reducedAnimation = await reducedPage.locator('.guide-quote-wash').evaluate(
+    element => getComputedStyle(element).animationDuration);
+  assert.equal(reducedAnimation, '0s',
+    'Pigment motion must respect the reduced-motion preference');
+  await reducedContext.close();
+});
