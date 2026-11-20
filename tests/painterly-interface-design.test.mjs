@@ -58,8 +58,33 @@ test('keyboard focus and reduced-motion preferences are respected throughout the
 });
 
 test('the offline shell version changes when the visual app shell changes', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v34-watercolor-paper/);
+  assert.match(serviceWorker, /faith-focus-shell-v35-diary-forge-watercolor/);
   assert.match(serviceWorker, /\.\/assets\/app\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden-room-background\.jpg/);
+});
+
+
+test('the Diary uses a distinct blue-and-honey watercolor paper treatment', () => {
+  const diaryTheme = gardenCss.slice(gardenCss.lastIndexOf('.garden-overlay.garden-diary-active {'));
+  assert.ok(diaryTheme.length > 0, 'missing Diary-specific watercolor theme');
+  assert.match(diaryTheme, /background-color:\s*#f1f7fb/);
+  assert.match(diaryTheme, /rgba\(112,\s*174,\s*211/);
+  assert.match(diaryTheme, /rgba\(244,\s*207,\s*116/);
+  assert.match(diaryTheme, /repeating-linear-gradient/);
+  assert.match(diaryTheme, /#view-diary > \.card-lavender::before/);
+  assert.match(diaryTheme, /#private-diary-entry:focus-visible/);
+  assert.match(diaryTheme, /pointer-events:\s*none/);
+  assert.match(diaryTheme, /diary-archive-dialog/);
+});
+
+test('the Forge Room retains its illustration beneath watercolor pigment and paper grain', () => {
+  const forgeTheme = gardenCss.slice(gardenCss.lastIndexOf('.garden-overlay.garden-room-home {'));
+  assert.ok(forgeTheme.length > 0, 'missing Forge Room watercolor enhancement');
+  assert.match(forgeTheme, /url\("\.\/garden-room-background\.jpg"\)/);
+  assert.match(forgeTheme, /repeating-linear-gradient/);
+  assert.match(forgeTheme, /radial-gradient/);
+  assert.match(forgeTheme, /\.garden-room-card::before/);
+  assert.match(forgeTheme, /#garden-room-background/); // intentional guard against detached artwork references
+  assert.match(forgeTheme, /pointer-events:\s*none/);
 });
