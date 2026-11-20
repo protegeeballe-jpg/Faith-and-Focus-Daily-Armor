@@ -71,7 +71,7 @@ test('the main Diary paragraph uses versioned replacement semantics and remains 
  assert.match(writing,/function unpackPrivateWritingDiary/);
  assert.match(writing,/buildPrivateWritingDiaryPayload/);
  assert.match(writing,/mergePrivateWritingDiary/);
- assert.match(writing,/unpackPrivateWritingDiary\(value\)\.text/);
+  assert.match(writing,/unpackPrivateWritingDiary\(value,dateStr\)\.text/);
  assert.doesNotMatch(writing,/mergePrivateWritingText\(localValue,remoteValue\)/);
 });
 test('ordinary progress storage is documented as not encrypted',()=>{
@@ -861,7 +861,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v35-diary-forge-watercolor/);
+ assert.match(serviceWorker,/faith-focus-shell-v36-offline-diary-notes/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -922,7 +922,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v35-diary-forge-watercolor/);
+ assert.match(serviceWorker,/faith-focus-shell-v36-offline-diary-notes/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
@@ -1096,4 +1096,40 @@ test('Claim Victory returns to the Forge Room after missed-card cleanup', () => 
  assert.match(claim,/showPage\('garden'\)/);
  assert.match(app,/if \(pageId === 'garden'\)[\s\S]*?document\.dispatchEvent\(new CustomEvent\('garden:open'\)\)/);
  assert.match(html,/data-action="closeGrandFinale"[^>]*>[\s\S]*?Claim Victory/);
+});
+
+
+test('the Diary exposes separate additional notes only through the unlocked encrypted editor', () => {
+ assert.match(html,/id="diary-additional-notes"/);
+ assert.match(html,/id="diary-additional-notes-list"[^>]*aria-live="polite"/);
+ assert.match(html,/id="diary-add-note-button"[^>]*type="button"[^>]*data-action="addPrivateDiaryNote"/);
+ assert.match(html,/id="diary-add-note-button"[^>]*aria-label="Add a separate private note"/);
+ assert.match(app,/async function addDiaryNote\(\)/);
+ assert.match(app,/addPrivateDiaryNote\(dateString\)/);
+ assert.match(app,/addPrivateDiaryNote:\(\)=>addDiaryNote\(\)/);
+ assert.match(app,/data-private-diary-note-id/);
+ assert.match(app,/schedulePrivateWritingSave\(\)/);
+ assert.match(app,/renderPrivateDiaryNotes\(dateString\)/);
+ assert.match(app,/noteEditor\.readOnly = !canEditCurrentDiary/);
+ assert.match(writing,/export async function addPrivateDiaryNote\(dateStr=getCurrentWritingDate\(\)\)/);
+ assert.match(writing,/encryptPrivatePayload\('diary',dateStr,diaryPayload,key\)/);
+ assert.match(writing,/MAX_PRIVATE_DIARY_NOTES_PER_DAY=40/);
+ assert.match(writing,/MAX_PRIVATE_DIARY_NOTE_CHARS=8000/);
+ assert.match(writing,/PRIVATE_DIARY_NOTE_ID_PATTERN/);
+ assert.match(writing,/mergePrivateWritingDiary\(localValue,remoteValue,dateString\)/);
+ assert.match(writing,/const entries=normalizePrivateDiaryEntries\(\[\.\.\.byId\.values\(\)\],dateString\)/);
+});
+
+test('encrypted Diary note writes are batched for one changed-date cloud capture', () => {
+ const start=writing.indexOf('function enqueuePrivateWritingSnapshot(');
+ const end=writing.indexOf('async function savePrivateWritingForDate(',start);
+ const writer=writing.slice(start,end);
+ assert.ok(start>=0 && end>start);
+ assert.match(writer,/window\.__faithFocusVaultBatchWrite=true/);
+ assert.match(writer,/localStorage\.setItem\(getSecureWritingStorageKey\('diary'/);
+ assert.match(writer,/localStorage\.setItem\(getSecureWritingStorageKey\('notes'/);
+ assert.match(writer,/faith-focus:local-data-changed/);
+ assert.match(vaultSync,/!window\.__faithFocusVaultBatchWrite/);
+ assert.match(vaultSync,/selectVaultReconciliationDates/);
+ assert.match(vaultSync,/await synchronizeVault\(\{ dateStrings: dates, refreshAll: shouldRefreshAll \}\)/);
 });

@@ -65,6 +65,7 @@ import {
     setWritingSecurityStatus,renderDiarySecurityUI,updatePrivateWritingAccess,
     handleDiaryKeyAction,lockPrivateWriting,savePrivateWritingForDate,
     loadPrivateWritingForDate,readPrivateDiaryEntryForDate,schedulePrivateWritingSave,flushPrivateWritingQueue,flushAndSaveCurrentPrivateWriting,
+    getPrivateDiaryNotesForDate,addPrivateDiaryNote,
     registerVoiceNoteStopHandler,stopRegisteredVoiceNoteRecording,
     savePrivateVoiceNoteForDate,createPrivateVoiceNoteDraft,savePrivateVoiceNoteSegment,finalizePrivateVoiceNoteDraft,discardEmptyPrivateVoiceNoteDraft,
     loadPrivateVoiceNotesForDate,exportPrivateVoiceNotes
@@ -191,11 +192,13 @@ import {
                 if (!diaryViewingHistoricalDate && writingCryptoKey && writingLoadedDate !== dateString) {
                     loadPrivateWritingForDate(dateString)
                         .then(async () => {
+                            renderPrivateDiaryNotes(dateString);
                             renderDiaryLocationLogs(dateString);
                             await renderDiaryVoiceNotes(dateString);
                         })
                         .catch(error => setWritingSecurityStatus('Could not decrypt this date’s private writing. ' + (error?.message || ''),'error'));
                 } else if (writingCryptoKey && !diaryViewingHistoricalDate) {
+                    renderPrivateDiaryNotes(dateString);
                     renderDiaryLocationLogs(dateString);
                     renderDiaryVoiceNotes(dateString).catch(error =>
                         setWritingSecurityStatus('Could not load saved voice notes. ' + (error?.message || ''), 'error')
@@ -1139,6 +1142,7 @@ import {
                 await loadPrivateWritingForDate(dateString);
                 console.log('[Diary Notebook] Decrypted Diary entry loaded:', { dateString });
                 diaryViewingHistoricalDate = dateString;
+                renderPrivateDiaryNotes(dateString);
                 updateDiaryDateAccess(dateString);
                 editor.value = typeof editor.value === 'string' ? editor.value : '';
                 editor.readOnly = true;
@@ -1203,6 +1207,7 @@ import {
             const editor = document.getElementById('private-diary-entry');
             const recordButton = document.getElementById('record-btn');
             const updateButton = document.getElementById('diary-update-button');
+            const addNoteButton = document.getElementById('diary-add-note-button');
 
             if (editor) {
                 editor.readOnly = !canEditCurrentDiary;
@@ -1230,6 +1235,22 @@ import {
                 updateButton.classList.toggle('hidden', !canEditCurrentDiary);
                 updateButton.disabled = !canEditCurrentDiary;
             }
+            if (addNoteButton) {
+                addNoteButton.disabled = !canEditCurrentDiary;
+                addNoteButton.setAttribute('aria-disabled', canEditCurrentDiary ? 'false' : 'true');
+                addNoteButton.title = canEditCurrentDiary
+                    ? 'Add a separate private note for today.'
+                    : 'New notes can only be added to today’s unlocked Diary page.';
+            }
+            document.querySelectorAll('[data-private-diary-note-id]').forEach(noteEditor => {
+                noteEditor.readOnly = !canEditCurrentDiary;
+                if (!canEditCurrentDiary) {
+                    noteEditor.setAttribute('aria-label',
+                        'Read-only additional Diary note for ' + formatDiaryArchiveDate(dateString));
+                } else {
+                    noteEditor.removeAttribute('aria-label');
+                }
+            });
 
             // Location check-ins are append-only history. Past dates may be viewed,
             // but their location selectors cannot be changed or used to add captures.
@@ -1238,6 +1259,108 @@ import {
                 if (isToday) checkbox.removeAttribute('aria-disabled');
                 else checkbox.setAttribute('aria-disabled', 'true');
             });
+        }
+
+
+        function renderPrivateDiaryNotes(dateString = getCurrentWritingDate()) {
+            const list = document.getElementById('diary-additional-notes-list');
+            if (!list) return;
+            list.replaceChildren();
+
+            if (!writingCryptoKey || writingLoadedDate !== dateString) {
+                const locked = document.createElement('li');
+                locked.className = 'diary-additional-notes-empty';
+                locked.textContent = 'Unlock your Diary to view additional notes.';
+                list.append(locked);
+                return;
+            }
+
+            let notes;
+            try {
+                notes = getPrivateDiaryNotesForDate(dateString);
+            } catch (error) {
+                const failed = document.createElement('li');
+                failed.className = 'diary-additional-notes-empty';
+                failed.textContent = 'Additional notes could not be opened securely. ' + (error?.message || '');
+                list.append(failed);
+                return;
+            }
+
+            if (!notes.length) {
+                const empty = document.createElement('li');
+                empty.className = 'diary-additional-notes-empty';
+                empty.textContent = 'No additional notes yet. Select Add Note to create one for this date.';
+                list.append(empty);
+                updateDiaryDateAccess(dateString);
+                return;
+            }
+
+            const canEdit = dateString === getDeviceLocalDateString()
+                && !diaryViewingHistoricalDate
+                && Boolean(writingCryptoKey)
+                && writingLoadedDate === dateString;
+            notes.forEach((note, index) => {
+                const item = document.createElement('li');
+                item.className = 'diary-note-card';
+
+                const label = document.createElement('label');
+                const editorId = 'diary-note-editor-' + note.id;
+                label.className = 'diary-note-card-label';
+                label.htmlFor = editorId;
+                const capturedAt = new Intl.DateTimeFormat(undefined, {
+                    dateStyle: 'medium',
+                    timeStyle: 'short'
+                }).format(new Date(note.createdAt));
+                label.textContent = 'Private Note ' + (index + 1) + ' · ' + capturedAt;
+
+                const editor = document.createElement('textarea');
+                editor.id = editorId;
+                editor.className = 'diary-note-editor';
+                editor.dataset.privateDiaryNoteId = note.id;
+                editor.rows = 4;
+                editor.maxLength = 8000;
+                editor.spellcheck = true;
+                editor.value = note.text;
+                editor.readOnly = !canEdit;
+                editor.placeholder = canEdit
+                    ? 'Write another thought for today. It will be encrypted and saved on this device automatically.'
+                    : 'This additional note is saved and read-only.';
+                if (!canEdit) {
+                    editor.setAttribute('aria-label',
+                        'Read-only additional Diary note ' + (index + 1) + ' for ' + formatDiaryArchiveDate(dateString));
+                }
+                item.append(label, editor);
+                list.append(item);
+            });
+            updateDiaryDateAccess(dateString);
+        }
+
+        async function addDiaryNote() {
+            const button = document.getElementById('diary-add-note-button');
+            if (!button || button.disabled) return;
+            button.disabled = true;
+            button.textContent = 'Saving…';
+            try {
+                const dateString = getCurrentWritingDate();
+                const note = await addPrivateDiaryNote(dateString);
+                renderPrivateDiaryNotes(dateString);
+                const list = document.getElementById('diary-additional-notes-list');
+                const editor = Array.from(list?.querySelectorAll('[data-private-diary-note-id]') || [])
+                    .find(item => item.dataset.privateDiaryNoteId === note.id);
+                editor?.focus({ preventScroll: false });
+                const saveStatus = document.getElementById('writing-save-status');
+                if (saveStatus) {
+                    saveStatus.textContent = navigator.onLine === false
+                        ? 'New note encrypted and saved on this device. Cloud sync will resume when you reconnect.'
+                        : 'New note encrypted and saved on this device. Cloud sync is queued.';
+                }
+            } catch (error) {
+                setWritingSecurityStatus('A new private note could not be saved. Existing Diary notes remain unchanged. '
+                    + (error?.message || ''), 'error');
+            } finally {
+                updateDiaryDateAccess(getCurrentWritingDate());
+                if (button) button.textContent = '＋ Add Note';
+            }
         }
 
         function revokeDiaryVoiceNoteUrls() {
@@ -1324,10 +1447,23 @@ import {
             });
 
             // Remove decrypted writing and history from the DOM immediately.
-            document.querySelectorAll('#private-diary-entry,.text-input').forEach(field => {
+            document.querySelectorAll('#private-diary-entry,.text-input,[data-private-diary-note-id]').forEach(field => {
                 field.value = '';
                 field.disabled = true;
             });
+            document.getElementById('diary-additional-notes-list')?.replaceChildren();
+            const privateNotesList = document.getElementById('diary-additional-notes-list');
+            if (privateNotesList) {
+                const item = document.createElement('li');
+                item.className = 'diary-additional-notes-empty';
+                item.textContent = 'Unlock your Diary to view additional notes.';
+                privateNotesList.append(item);
+            }
+            const addNoteButton = document.getElementById('diary-add-note-button');
+            if (addNoteButton) {
+                addNoteButton.disabled = true;
+                addNoteButton.setAttribute('aria-disabled', 'true');
+            }
             document.getElementById('diary-archive-panel')?.classList.add('hidden');
             document.getElementById('diary-archive-entry-written')?.replaceChildren();
             document.getElementById('diary-archive-entry-locations')?.replaceChildren();
@@ -1958,7 +2094,8 @@ import {
         }
 
         function saveData(e) {
-            if(e?.target&&(e.target.id==='private-diary-entry'||e.target.id==='diary-passphrase'||e.target.id==='diary-passphrase-confirm'||e.target.classList?.contains('text-input')))return;
+            if(e?.target&&(e.target.id==='private-diary-entry'||e.target.id==='diary-passphrase'||e.target.id==='diary-passphrase-confirm'
+                ||e.target.matches?.('[data-private-diary-note-id]')||e.target.classList?.contains('text-input')))return;
             const dateStr=document.getElementById('currentDate').value;
             // Preserve old note values until they have been encrypted during first-time setup.
             let data={};
@@ -2011,6 +2148,7 @@ import {
             if(writingCryptoKey){
                 try {
                     await loadPrivateWritingForDate(dateString);
+                    renderPrivateDiaryNotes(dateString);
                     updateDiaryDateAccess(dateString);
                     renderDiaryLocationLogs(dateString);
                     await renderDiaryVoiceNotes(dateString);
@@ -2089,6 +2227,7 @@ import {
             await handleDiaryKeyAction();
             updateDiaryDateAccess(getCurrentWritingDate());
             if (writingCryptoKey) {
+                renderPrivateDiaryNotes(getCurrentWritingDate());
                 renderDiaryLocationLogs(getCurrentWritingDate());
                 await renderDiaryVoiceNotes(getCurrentWritingDate());
             }
@@ -2392,6 +2531,7 @@ import {
             closeDiaryArchive:()=>closeDiaryArchive(),
             backDiaryArchiveList:()=>showDiaryArchiveList(),
             openDiaryArchiveDate:el=>openDiaryArchiveDate(el.dataset.date),
+            addPrivateDiaryNote:()=>addDiaryNote(),
             changeStep:el=>changeStep(Number(el.dataset.direction)),
             releaseCloud:el=>releaseCloud(el),
             closeGrandFinale:()=>closeGrandFinale(),
@@ -2442,6 +2582,7 @@ import {
             if (writingCryptoKey) {
                 try {
                     await loadPrivateWritingForDate(dateString);
+                    renderPrivateDiaryNotes(dateString);
                     updateDiaryDateAccess(dateString);
                     renderDiaryLocationLogs(dateString);
                     await renderDiaryVoiceNotes(dateString);
@@ -2454,6 +2595,12 @@ import {
         window.addEventListener('resize',resizeEcosystemCanvas,{passive:true});
         document.addEventListener('change',saveData);
         document.addEventListener('input',saveData);
+        document.addEventListener('input',event=>{
+            if(event.target?.matches?.('[data-private-diary-note-id]'))schedulePrivateWritingSave();
+        });
+        document.addEventListener('change',event=>{
+            if(event.target?.matches?.('[data-private-diary-note-id]'))schedulePrivateWritingSave();
+        });
         document.querySelectorAll('#private-diary-entry,.text-input').forEach(field=>{
             field.addEventListener('input',schedulePrivateWritingSave);
             field.addEventListener('change',schedulePrivateWritingSave);

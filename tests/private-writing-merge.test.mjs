@@ -4,6 +4,8 @@ import { webcrypto } from 'node:crypto';
 import {
     buildPrivateWritingDiaryPayload,
     buildPrivateWritingNotesPayload,
+    MAX_PRIVATE_DIARY_NOTES_PER_DAY,
+    MAX_PRIVATE_DIARY_NOTE_CHARS,
     isCurrentPrivateWritingDate,
     isValidDiaryArchiveDate,
     mergeEncryptedPrivateWritingRecords
@@ -202,4 +204,114 @@ test('archived Diary reader accepts real calendar dates and rejects impossible d
     assert.equal(isValidDiaryArchiveDate('2026-02-29'), false);
     assert.equal(isValidDiaryArchiveDate('2026-13-01'), false);
     assert.equal(isValidDiaryArchiveDate('not-a-date'), false);
+});
+
+
+test('separate notes created on two devices merge by unique id without replacing one another', async () => {
+    const key = await webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    const laptopId = dateString + '-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const phoneId = dateString + '-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const sharedId = dateString + '-cccccccccccccccccccccccccccccccc';
+    const localEntries = [
+        { id: laptopId, createdAt: 100, updatedAt: 100, text: 'Laptop thought' },
+        { id: sharedId, createdAt: 150, updatedAt: 200, text: 'Shared note, laptop edit' }
+    ];
+    const remoteEntries = [
+        { id: phoneId, createdAt: 110, updatedAt: 110, text: 'Phone thought' },
+        { id: sharedId, createdAt: 150, updatedAt: 300, text: 'Shared note, newer phone edit' }
+    ];
+    const localDiary = await encryptPrivateRecord(
+        'diary',
+        buildPrivateWritingDiaryPayload('Main entry', 'Main entry', 10, 100, localEntries, dateString),
+        key
+    );
+    const remoteDiary = await encryptPrivateRecord(
+        'diary',
+        buildPrivateWritingDiaryPayload('Main entry', 'Main entry', 10, 100, remoteEntries, dateString),
+        key
+    );
+
+    const merged = await mergeEncryptedPrivateWritingRecords(
+        dateString,
+        { diary: localDiary, notes: null },
+        { diary: remoteDiary, notes: null },
+        key
+    );
+    const diary = await decryptPrivateRecord('diary', merged.diary, key);
+    const notesById = new Map(diary.entries.map(entry => [entry.id, entry]));
+
+    assert.equal(diary.text, 'Main entry');
+    assert.equal(diary.entries.length, 3);
+    assert.equal(notesById.get(laptopId).text, 'Laptop thought');
+    assert.equal(notesById.get(phoneId).text, 'Phone thought');
+    assert.equal(notesById.get(sharedId).text, 'Shared note, newer phone edit');
+    assert.equal(notesById.get(sharedId).updatedAt, 300);
+});
+
+test('new Diary notes reject malformed, duplicate, cross-date, and over-limit records', () => {
+    const valid = {
+        id: dateString + '-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        createdAt: 100,
+        updatedAt: 100,
+        text: 'A separate thought'
+    };
+    assert.throws(
+        () => buildPrivateWritingDiaryPayload('Main', 'Main', 1, 200, [{
+            ...valid, id: '2026-11-12-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        }], dateString),
+        /identifier is invalid or duplicated/
+    );
+    assert.throws(
+        () => buildPrivateWritingDiaryPayload('Main', 'Main', 1, 200, [valid, valid], dateString),
+        /identifier is invalid or duplicated/
+    );
+    assert.throws(
+        () => buildPrivateWritingDiaryPayload('Main', 'Main', 1, 200, [{
+            ...valid, text: 'x'.repeat(MAX_PRIVATE_DIARY_NOTE_CHARS + 1)
+        }], dateString),
+        /invalid text or revision data/
+    );
+    const tooMany = Array.from({length:MAX_PRIVATE_DIARY_NOTES_PER_DAY + 1}, (_, index) => ({
+        ...valid,
+        id: dateString + '-' + String(index + 1).padStart(32, '0')
+    }));
+    assert.throws(
+        () => buildPrivateWritingDiaryPayload('Main', 'Main', 1, 200, tooMany, dateString),
+        /invalid number of additional notes/
+    );
+    const overDailyLimit = Array.from({length:MAX_PRIVATE_DIARY_NOTES_PER_DAY}, (_, index) => ({
+        ...valid,
+        id: dateString + '-' + String(index + 1).padStart(32, '0'),
+        text: 'x'.repeat(MAX_PRIVATE_DIARY_NOTE_CHARS)
+    }));
+    assert.throws(
+        () => buildPrivateWritingDiaryPayload('Main', 'Main', 1, 200, overDailyLimit, dateString),
+        /supported daily writing limit/
+    );
+});
+
+test('legacy string-only encrypted Diary entries remain compatible with separate note additions', async () => {
+    const key = await webcrypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+    const legacyDiary = await encryptPrivateRecord('diary', 'Original daily entry', key);
+    const newNote = {
+        id: dateString + '-dddddddddddddddddddddddddddddddd',
+        createdAt: 400,
+        updatedAt: 400,
+        text: 'A note added by the newer app'
+    };
+    const currentDiary = await encryptPrivateRecord(
+        'diary',
+        buildPrivateWritingDiaryPayload('Original daily entry', 'Original daily entry', 0, 400, [newNote], dateString),
+        key
+    );
+    const merged = await mergeEncryptedPrivateWritingRecords(
+        dateString,
+        { diary: legacyDiary, notes: null },
+        { diary: currentDiary, notes: null },
+        key
+    );
+    const diary = await decryptPrivateRecord('diary', merged.diary, key);
+    assert.equal(diary.text, 'Original daily entry');
+    assert.equal(diary.entries.length, 1);
+    assert.equal(diary.entries[0].text, 'A note added by the newer app');
 });

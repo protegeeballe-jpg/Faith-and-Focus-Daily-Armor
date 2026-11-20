@@ -17,9 +17,13 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
         const PRIVATE_NOTE_IDS=['note-success','note-priorities','note-gratitude-others','note-gratitude-god'];
         const PRIVATE_NOTE_META_KEY='__privateNoteUpdatedAt';
         const PRIVATE_DIARY_META_KEY='__privateDiaryUpdatedAt';
+        const MAX_PRIVATE_DIARY_NOTES_PER_DAY=40;
+        const MAX_PRIVATE_DIARY_NOTE_CHARS=8000;
+        const MAX_PRIVATE_DIARY_NOTE_TOTAL_CHARS=300000;
+        const PRIVATE_DIARY_NOTE_ID_PATTERN=/^(\d{4}-\d{2}-\d{2})-([a-f0-9]{32})$/;
         let writingCryptoKey=null,writingLoadedDate=null,writingSaveTimer=null,writingSavePromise=Promise.resolve();
         let writingLoadedNoteValues=null,writingLoadedNoteMeta={};
-        let writingLoadedDiaryValue=null,writingLoadedDiaryMeta=0;
+        let writingLoadedDiaryValue=null,writingLoadedDiaryMeta=0,writingLoadedDiaryEntries=[];
         let vaultPrimaryKey=null,legacyMigrationRequired=false,legacyKeyUnavailable=false;
         let voiceNoteSavePromise=Promise.resolve();
         let voiceNoteStopHandler=async()=>{};
@@ -126,7 +130,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                         try{
                             const migrationResult=await migratePreviousDiaryRecords(previousKey);
                             writingCryptoKey=vaultPrimaryKey;
-                            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+                            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];
                             await loadPrivateWritingForDate(getCurrentWritingDate());
                             localStorage.removeItem(WRITING_CONFIG_KEY);
                             updatePrivateWritingAccess();
@@ -137,7 +141,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                             return {legacyMigrationRequired:false,legacyMigrated:true,quarantinedCount:migrationResult.quarantinedCount||0};
                         }catch(error){
                             writingCryptoKey=null;
-                            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+                            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];
                             updatePrivateWritingAccess();
                             setWritingSecurityStatus('Your account is open, but the previous Diary records could not be migrated safely. The original encrypted entries remain preserved. You can retry the one-time Diary migration from this screen. '+(error?.message||''),'error');
                             console.warn('[Diary migration] Automatic migration with the verified account credential did not complete.',error);
@@ -146,7 +150,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                     }
                 }
                 writingCryptoKey=null;
-                writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+                writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];
                 updatePrivateWritingAccess();
                 setWritingSecurityStatus(legacyKeyUnavailable
                     ?'Some encrypted Diary entries still need their previous key, but its saved settings are missing on this device. Your original encrypted entries remain untouched.'
@@ -155,7 +159,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                 return {legacyMigrationRequired:true,legacyKeyUnavailable};
             }
             writingCryptoKey=vaultPrimaryKey;
-            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];
             await migrateLegacyPrivateWriting(writingCryptoKey);
             await loadPrivateWritingForDate(getCurrentWritingDate());
             // Remove the obsolete verifier only after current-key records and
@@ -169,9 +173,10 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
         export function clearVaultEncryptionKey(){
             vaultPrimaryKey=null;
             writingCryptoKey=null;
-            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+            writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];
             writingLoadedNoteValues=null;
             writingLoadedNoteMeta={};
+            writingLoadedDiaryEntries=[];
             legacyMigrationRequired=false;
             legacyKeyUnavailable=false;
             updatePrivateWritingAccess();
@@ -276,7 +281,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                 if(voiceRecords.length)await restoreEncryptedVoiceNotes(nextVoiceRecords);
 
                 writingCryptoKey=targetKey;
-                writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;
+                writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];
                 legacyMigrationRequired=false;
             }catch(error){
                 migrated.forEach(item=>{
@@ -342,9 +347,48 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
         }
 
         // Older encrypted Diary records contain a plain string. Accept those as
-        // revision 0, while new records preserve an explicit per-day edit revision.
-        function unpackPrivateWritingDiary(value){
-            if(typeof value==='string')return {text:value,revision:0};
+        // revision 0, while new records preserve independent, append-safe note entries.
+        function normalizePrivateDiaryEntries(entries,dateString=null){
+            if(!Array.isArray(entries)||entries.length>MAX_PRIVATE_DIARY_NOTES_PER_DAY){
+                throw new Error('The encrypted Diary contains an invalid number of additional notes.');
+            }
+            const seen=new Set();
+            let totalCharacters=0;
+            const normalized=entries.map(entry=>{
+                if(!entry||typeof entry!=='object'||Array.isArray(entry)
+                    ||Object.keys(entry).sort().join(',')!=='createdAt,id,text,updatedAt'
+                    ||typeof entry.id!=='string'){
+                    throw new Error('An additional Diary note has an unsupported format.');
+                }
+                const match=PRIVATE_DIARY_NOTE_ID_PATTERN.exec(entry.id);
+                if(!match||dateString&&match[1]!==dateString||seen.has(entry.id)){
+                    throw new Error('An additional Diary note identifier is invalid or duplicated.');
+                }
+                if(!Number.isSafeInteger(entry.createdAt)||entry.createdAt<0
+                    ||!Number.isSafeInteger(entry.updatedAt)||entry.updatedAt<entry.createdAt
+                    ||typeof entry.text!=='string'||entry.text.length>MAX_PRIVATE_DIARY_NOTE_CHARS){
+                    throw new Error('An additional Diary note contains invalid text or revision data.');
+                }
+                totalCharacters+=entry.text.length;
+                if(totalCharacters>MAX_PRIVATE_DIARY_NOTE_TOTAL_CHARS){
+                    throw new RangeError('The additional Diary notes exceed the supported daily writing limit.');
+                }
+                seen.add(entry.id);
+                return {
+                    id:entry.id,
+                    createdAt:entry.createdAt,
+                    updatedAt:entry.updatedAt,
+                    text:entry.text
+                };
+            });
+            return normalized.sort((left,right)=>
+                left.createdAt-right.createdAt||left.id.localeCompare(right.id)
+            );
+        }
+
+        // String-only Diary ciphertext from earlier app versions remains readable.
+        function unpackPrivateWritingDiary(value,dateString=null){
+            if(typeof value==='string')return {text:value,revision:0,entries:[]};
             if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.text!=='string'){
                 throw new Error('The encrypted Diary entry has an unsupported format.');
             }
@@ -352,32 +396,53 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
             if(!Number.isSafeInteger(revision)||revision<0){
                 throw new Error('The private Diary revision is invalid.');
             }
-            return {text:value.text,revision};
+            return {
+                text:value.text,
+                revision,
+                entries:normalizePrivateDiaryEntries(value.entries===undefined?[]:value.entries,dateString)
+            };
         }
 
-        export function buildPrivateWritingDiaryPayload(text,previousText='',previousRevision=0,updatedAt=Date.now()){
-            if(typeof text!=='string'||typeof previousText!=='string'
+        export function buildPrivateWritingDiaryPayload(
+            text,previousText='',previousRevision=0,updatedAt=Date.now(),entries=[],dateString=null
+        ){
+            if(typeof text!=='string'||text.length>MAX_PRIVATE_DIARY_NOTE_TOTAL_CHARS
+                ||typeof previousText!=='string'
                 ||!Number.isSafeInteger(previousRevision)||previousRevision<0
                 ||!Number.isSafeInteger(updatedAt)||updatedAt<0){
                 throw new TypeError('A valid Diary entry and revision are required.');
             }
             const revision=text===previousText?previousRevision:Math.max(updatedAt,previousRevision+1);
             if(!Number.isSafeInteger(revision))throw new RangeError('The Diary revision is outside the supported range.');
-            return {text,[PRIVATE_DIARY_META_KEY]:revision};
+            return {
+                text,
+                [PRIVATE_DIARY_META_KEY]:revision,
+                entries:normalizePrivateDiaryEntries(entries,dateString)
+            };
         }
 
-        function mergePrivateWritingDiary(localValue,remoteValue){
-            const local=unpackPrivateWritingDiary(localValue);
-            const remote=unpackPrivateWritingDiary(remoteValue);
-            if(local.text===remote.text){
-                return {text:remote.text,[PRIVATE_DIARY_META_KEY]:Math.max(local.revision,remote.revision)};
+        function mergePrivateWritingDiary(localValue,remoteValue,dateString){
+            const local=unpackPrivateWritingDiary(localValue,dateString);
+            const remote=unpackPrivateWritingDiary(remoteValue,dateString);
+            const byId=new Map();
+            for(const entry of [...local.entries,...remote.entries]){
+                const previous=byId.get(entry.id);
+                if(!previous){
+                    byId.set(entry.id,entry);
+                    continue;
+                }
+                if(previous.createdAt!==entry.createdAt){
+                    throw new Error('An additional Diary note identifier refers to conflicting creation data. Both device copies remain preserved.');
+                }
+                if(entry.updatedAt>=previous.updatedAt)byId.set(entry.id,entry);
             }
-            // A newer edit replaces the previous text; it is never concatenated.
-            // Revision 0 is the legacy format. When two legacy entries conflict,
-            // keep the remote copy as the deterministic compatibility fallback.
-            return local.revision>remote.revision
-                ?{text:local.text,[PRIVATE_DIARY_META_KEY]:local.revision}
-                :{text:remote.text,[PRIVATE_DIARY_META_KEY]:remote.revision};
+            const entries=normalizePrivateDiaryEntries([...byId.values()],dateString);
+            const textValue=local.text===remote.text
+                ?{text:remote.text,[PRIVATE_DIARY_META_KEY]:Math.max(local.revision,remote.revision)}
+                :local.revision>remote.revision
+                    ?{text:local.text,[PRIVATE_DIARY_META_KEY]:local.revision}
+                    :{text:remote.text,[PRIVATE_DIARY_META_KEY]:remote.revision};
+            return {...textValue,entries};
         }
 
         export function buildPrivateWritingNotesPayload(notes,previousValues={},previousMeta={},updatedAt=Date.now()){
@@ -454,7 +519,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                     throw new Error('A private '+(kind==='diary'?'Diary':'reflection')+' record could not be decrypted for a safe merge. Both device copies remain preserved.');
                 }
                 const mergedValue=kind==='diary'
-                    ?mergePrivateWritingDiary(localValue,remoteValue)
+                    ?mergePrivateWritingDiary(localValue,remoteValue,dateStr)
                     :mergePrivateWritingNotes(localValue,remoteValue);
                 if(samePrivateWritingValue(mergedValue,remoteValue))return remoteRecord;
                 if(samePrivateWritingValue(mergedValue,localValue))return localRecord;
@@ -707,7 +772,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                 const saveStatus=document.getElementById('writing-save-status');
                 if(saveStatus)saveStatus.textContent='Encrypted writing is unlocked for this session.';
             }catch(error){
-                writingCryptoKey=null;writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;updatePrivateWritingAccess();
+                writingCryptoKey=null;writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];updatePrivateWritingAccess();
                 console.error('[Diary migration] Migration failed after passphrase verification or during conversion:',error);
                 const message=previousPassphraseVerified
                     ?'Your previous Diary passphrase was accepted, but the migration could not finish safely. Original encrypted entries remain preserved. See the browser console for the exact failure reason.'
@@ -722,23 +787,46 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
         function getPrivateWritingPayload(){
             const diary=document.getElementById('private-diary-entry')?.value||'',notes={};
             PRIVATE_NOTE_IDS.forEach(id=>{notes[id]=document.getElementById(id)?.value||'';});
-            return {diary,notes};
+            const editors=new Map(Array.from(
+                document.querySelectorAll('[data-private-diary-note-id]')
+            ).map(editor=>[editor.dataset.privateDiaryNoteId,editor]));
+            const entries=writingLoadedDiaryEntries.map(entry=>{
+                const editor=editors.get(entry.id);
+                const text=editor?editor.value:entry.text;
+                return text===entry.text
+                    ?{...entry}
+                    :{...entry,text,updatedAt:Math.max(Date.now(),entry.updatedAt+1)};
+            });
+            return {diary,notes,entries};
         }
         function enqueuePrivateWritingSnapshot(dateStr,payload,key){
             if(!key||!dateStr||!isCurrentPrivateWritingDate(dateStr))return Promise.resolve();
             const task=async()=>{
                 const diaryPayload=buildPrivateWritingDiaryPayload(
-                    payload.diary,typeof writingLoadedDiaryValue==='string'?writingLoadedDiaryValue:'',writingLoadedDiaryMeta
+                    payload.diary,
+                    typeof writingLoadedDiaryValue==='string'?writingLoadedDiaryValue:'',
+                    writingLoadedDiaryMeta,
+                    Date.now(),
+                    payload.entries||writingLoadedDiaryEntries,
+                    dateStr
                 );
                 const notesPayload=buildPrivateWritingNotesPayload(
                     payload.notes,writingLoadedNoteValues||{},writingLoadedNoteMeta
                 );
                 const diary=await encryptPrivatePayload('diary',dateStr,diaryPayload,key);
                 const notes=await encryptPrivatePayload('notes',dateStr,notesPayload,key);
-                localStorage.setItem(getSecureWritingStorageKey('diary',dateStr),diary);
-                localStorage.setItem(getSecureWritingStorageKey('notes',dateStr),notes);
+                const previousBatchWrite=window.__faithFocusVaultBatchWrite===true;
+                window.__faithFocusVaultBatchWrite=true;
+                try{
+                    localStorage.setItem(getSecureWritingStorageKey('diary',dateStr),diary);
+                    localStorage.setItem(getSecureWritingStorageKey('notes',dateStr),notes);
+                }finally{
+                    if(previousBatchWrite)window.__faithFocusVaultBatchWrite=true;
+                    else delete window.__faithFocusVaultBatchWrite;
+                }
                 writingLoadedDiaryValue=payload.diary;
                 writingLoadedDiaryMeta=diaryPayload[PRIVATE_DIARY_META_KEY];
+                writingLoadedDiaryEntries=diaryPayload.entries.map(entry=>({...entry}));
                 writingLoadedNoteValues={...payload.notes};
                 writingLoadedNoteMeta={...notesPayload[PRIVATE_NOTE_META_KEY]};
                 window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed',{detail:{dateString:dateStr}}));
@@ -772,19 +860,48 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
             const record=localStorage.getItem(getSecureWritingStorageKey('diary',dateStr));
             if(!record)return '';
             const value=await decryptPrivatePayload('diary',dateStr,record,writingCryptoKey);
-            return unpackPrivateWritingDiary(value).text;
+            return unpackPrivateWritingDiary(value,dateStr).text;
+        }
+
+        export function getPrivateDiaryNotesForDate(dateStr=writingLoadedDate){
+            if(!writingCryptoKey||!dateStr||writingLoadedDate!==dateStr){
+                throw new Error('Unlock the matching Diary date before reading its additional notes.');
+            }
+            return writingLoadedDiaryEntries.map(entry=>({...entry}));
+        }
+
+        export async function addPrivateDiaryNote(dateStr=getCurrentWritingDate()){
+            if(!writingCryptoKey)throw new Error('Unlock your Diary before adding a private note.');
+            if(!dateStr||writingLoadedDate!==dateStr||!isCurrentPrivateWritingDate(dateStr)){
+                throw new Error('New notes can only be added to today’s Diary page. Previous dates are read-only.');
+            }
+            const payload=getPrivateWritingPayload();
+            if(payload.entries.length>=MAX_PRIVATE_DIARY_NOTES_PER_DAY){
+                throw new RangeError('This date has reached its additional-note limit. Your saved notes remain unchanged.');
+            }
+            const random=crypto.getRandomValues(new Uint8Array(16));
+            const id=dateStr+'-'+Array.from(random,byte=>byte.toString(16).padStart(2,'0')).join('');
+            const now=Date.now();
+            const entry={id,createdAt:now,updatedAt:now,text:''};
+            const key=writingCryptoKey;
+            await enqueuePrivateWritingSnapshot(dateStr,{
+                ...payload,
+                entries:[...payload.entries,entry]
+            },key);
+            return {...entry};
         }
 
         async function loadPrivateWritingForDate(dateStr){
             if(!writingCryptoKey)return;
             if(writingSaveTimer){clearTimeout(writingSaveTimer);writingSaveTimer=null;}
             await writingSavePromise;
-            let diaryText='',diaryRevision=0,notes={},noteMeta={};
+            let diaryText='',diaryRevision=0,diaryEntries=[],notes={},noteMeta={};
             const diaryRecord=localStorage.getItem(getSecureWritingStorageKey('diary',dateStr)),notesRecord=localStorage.getItem(getSecureWritingStorageKey('notes',dateStr));
             if(diaryRecord){
-                const diary=unpackPrivateWritingDiary(await decryptPrivatePayload('diary',dateStr,diaryRecord,writingCryptoKey));
+                const diary=unpackPrivateWritingDiary(await decryptPrivatePayload('diary',dateStr,diaryRecord,writingCryptoKey),dateStr);
                 diaryText=diary.text;
                 diaryRevision=diary.revision;
+                diaryEntries=diary.entries;
             }
             if(notesRecord){
                 const unpacked=unpackPrivateWritingNotes(
@@ -797,6 +914,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
             PRIVATE_NOTE_IDS.forEach(id=>{const field=document.getElementById(id);if(field)field.value=typeof notes[id]==='string'?notes[id]:'';});
             writingLoadedDiaryValue=diaryText;
             writingLoadedDiaryMeta=diaryRevision;
+            writingLoadedDiaryEntries=diaryEntries.map(entry=>({...entry}));
             writingLoadedNoteValues={...notes};
             writingLoadedNoteMeta={...noteMeta};
             writingLoadedDate=dateStr;
@@ -814,7 +932,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                 await flushPrivateVoiceNoteQueue();
                 await savePrivateWritingForDate(writingLoadedDate);
                 await writingSavePromise;
-                writingCryptoKey=null;writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedNoteValues=null;writingLoadedNoteMeta={};updatePrivateWritingAccess();
+                writingCryptoKey=null;writingLoadedDate=null;writingLoadedDiaryValue=null;writingLoadedDiaryMeta=0;writingLoadedDiaryEntries=[];writingLoadedNoteValues=null;writingLoadedNoteMeta={};writingLoadedDiaryEntries=[];updatePrivateWritingAccess();
                 setWritingSecurityStatus('Locked. Your saved private writing and voice notes remain encrypted on this device.','info');
             }catch(error){setWritingSecurityStatus('Could not finish encrypted saving, so the writing remains unlocked. '+(error?.message||''),'error');}
         }
@@ -919,6 +1037,7 @@ export async function flushAndSaveCurrentPrivateWritingForLock(){
 }
 export {
     WRITING_CONFIG_KEY,WRITING_DIARY_PREFIX,WRITING_NOTES_PREFIX,PRIVATE_NOTE_IDS,
+    MAX_PRIVATE_DIARY_NOTES_PER_DAY,MAX_PRIVATE_DIARY_NOTE_CHARS,
     writingCryptoKey,writingLoadedDate,hasWritingCrypto,getSecureWritingStorageKey,getCurrentWritingDate,
     setWritingSecurityStatus,renderDiarySecurityUI,updatePrivateWritingAccess,
     handleDiaryKeyAction,lockPrivateWriting,savePrivateWritingForDate,loadPrivateWritingForDate,schedulePrivateWritingSave
