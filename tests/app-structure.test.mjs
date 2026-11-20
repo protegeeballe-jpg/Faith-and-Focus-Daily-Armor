@@ -322,7 +322,7 @@ test('breathing guide uses a single explicit modal action and completes five 4-2
  assert.match(appCss,/@keyframes guide-breath-out/);
 });
 test('water reminders use the quote immediately without an animation wait',()=>{
- assert.doesNotMatch(app,/drinkGuideTimeout|waiting-for-drink|5-second water guide|5000\)/);
+ assert.doesNotMatch(app,/drinkGuideTimeout|waiting-for-drink|5-second water guide|Please watch the 5-second water guide/);
  assert.match(app,/Your turn\. Have water if you wish, at a comfortable pace\./);
  assert.match(app,/I've had my water\. Show my checkbox/);
  assert.doesNotMatch(app,/buildGuideIllustrationSvg|createWatercolorGuidePlayer/);
