@@ -379,7 +379,28 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             modal => !modal.classList.contains('hidden')), true,
             profile.name + ': guide action must open its modal (' + target + ')');
 
-          await page.locator('#modal-complete-btn').click();
+          const primaryAction = page.locator('#modal-complete-btn');
+          const guideType = await button.getAttribute('data-modal');
+
+          if (guideType === 'breathing') {
+            // Breathing is a two-stage action: start the timed exercise, then complete it.
+            // Use Playwright's deterministic clock so the five 12-second cycles do not
+            // require a wall-clock minute and the real application timer logic still runs.
+            await page.clock.install();
+            assert.match(await primaryAction.textContent(), /Start 5 breathing cycles/);
+            await primaryAction.click();
+            assert.equal(await primaryAction.isDisabled(), true,
+              profile.name + ': breathing action must disable its start button while running');
+            assert.equal(await page.locator('#breathing-phase').textContent(), 'Breathe in');
+            await page.clock.runFor(60_000);
+            assert.equal(await primaryAction.isDisabled(), false,
+              profile.name + ': breathing action must re-enable after five completed cycles');
+            assert.match(await primaryAction.textContent(), /Good job!/);
+            await primaryAction.click();
+          } else {
+            await primaryAction.click();
+          }
+
           assert.equal(await page.locator('#anim-modal').evaluate(
             modal => modal.classList.contains('hidden')), true,
             profile.name + ': completing the guide must close its modal');
