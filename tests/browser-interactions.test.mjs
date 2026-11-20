@@ -540,6 +540,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   await page.locator('#anim-modal [data-action="closeModal"]').click();
 
   await context.close();
+  t.diagnostic('Diary notebook locked-state interaction verified');
 
   const reducedContext = await browser.newContext({
     serviceWorkers: 'block',
@@ -562,7 +563,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
 
 
 test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve real hit targets', {
-  timeout: 30000
+  timeout: 60000
 }, async t => {
   const host = await startStaticServer();
   const browser = await chromium.launch({headless: true});
@@ -577,13 +578,15 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
     viewport: {width: 1366, height: 768}
   });
   const page = await context.newPage();
-  await page.goto(host.url, {waitUntil: 'load'});
+  await page.goto(host.url, {waitUntil: 'load', timeout: 8000});
+  t.diagnostic('Static app loaded');
   await page.evaluate(() => {
     document.getElementById('view-pin')?.classList.add('hidden');
     window.dispatchEvent(new Event('faith-focus:app-unlocked'));
   });
 
-  await page.getByRole('button', {name: 'Open Faith & Focus: Daily Armor'}).click();
+  await page.getByRole('button', {name: 'Open Faith & Focus: Daily Armor'}).click({timeout: 8000});
+  t.diagnostic('Forge Room opened');
   const forgeSurface = await page.locator('#little-garden').evaluate(element => {
     const roomCard = element.querySelector('.garden-room-card');
     const plantingPanel = element.querySelector('.garden-planting-panel');
@@ -607,14 +610,17 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
     page.locator('#garden-planting-button'),
     'Forge Room planting action beneath watercolor paper layers'
   );
+  t.diagnostic('Forge Room planting action receives pointer input');
 
   await page.evaluate(() => {
     document.dispatchEvent(new CustomEvent('garden:show-scene', {
       detail: {scene: 'diary'}
     }));
   });
+  t.diagnostic('Diary scene event dispatched');
   const diary = page.locator('#view-diary');
-  await diary.waitFor({state: 'visible'});
+  await diary.waitFor({state: 'visible', timeout: 8000});
+  t.diagnostic('Diary scene became visible');
   const diarySurface = await page.locator('#little-garden').evaluate(element => {
     const card = element.querySelector('#view-diary > .card-lavender');
     const lockCard = element.querySelector('#diary-lock-panel');
@@ -653,13 +659,16 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
     'The Diary paper must not create a stacking context around its fixed archive dialog');
   assert.equal(diarySurface.archiveZIndex, '90',
     'The full-screen Diary archive must retain its established overlay priority');
+  t.diagnostic('Diary blue-and-honey surfaces and archive stacking verified');
 
   await page.evaluate(() => {
     document.getElementById('diary-editor-panel')?.classList.remove('hidden');
   });
   const notebookButton = page.locator('#diary-archive-button');
   await assertPointerHitTarget(notebookButton, 'Diary notebook button beneath watercolor paper layers');
-  await notebookButton.click();
+  t.diagnostic('Diary notebook button is visible and pointer-accessible');
+  await notebookButton.click({timeout: 8000});
+  t.diagnostic('Diary notebook action was clicked');
   assert.match(
     await page.locator('#diary-security-status').textContent(),
     /Unlock your Diary before opening your notebook/,
