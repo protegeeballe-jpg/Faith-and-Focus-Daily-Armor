@@ -47,7 +47,9 @@ test('the real app loads and its account, navigation, quote, checklist, and Sett
       const content = await readFile(filePath);
       response.writeHead(200, {
         'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-        'Cache-Control': 'no-store',
+        // A service-worker script must be revalidated as a script, while
+        // application assets and pages stay uncached in this test harness.
+        'Cache-Control': requestedPath.endsWith('/sw.js') ? 'no-cache' : 'no-store',
         'X-Content-Type-Options': 'nosniff'
       });
       response.end(content);
