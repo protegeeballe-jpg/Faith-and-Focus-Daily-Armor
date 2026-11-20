@@ -585,7 +585,7 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
     window.dispatchEvent(new Event('faith-focus:app-unlocked'));
   });
 
-  await page.getByRole('button', {name: 'Open Faith & Focus: Daily Armor'}).click({timeout: 8000});
+  await page.locator('[data-garden-action="open-garden"]').click({timeout: 8000});
   t.diagnostic('Forge Room opened');
   const forgeSurface = await page.locator('#little-garden').evaluate(element => {
     const roomCard = element.querySelector('.garden-room-card');
