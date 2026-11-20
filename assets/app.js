@@ -504,7 +504,7 @@ import {
             const breathingCharacter = document.querySelector('#modal-animation-target .watercolor-guide-svg--breathe');
             const activeBreathingPhase = getBreathingAnimationPhase(phase.name);
             if (activeModalGuidePlayer) activeModalGuidePlayer.setBreathingPhase(activeBreathingPhase);
-            else if (breathingCharacter) breathingCharacter.dataset.breathPhase = activeBreathingPhase;
+            if (breathingCharacter && !activeModalGuidePlayer) breathingCharacter.dataset.breathPhase = getBreathingAnimationPhase(phase.name);
             phaseEl.textContent = phase.name;
             document.getElementById('breathing-tip').textContent = phase.tip;
             document.getElementById('breathing-count').textContent = 'Cycle ' + breathingCycle + ' of 5';
