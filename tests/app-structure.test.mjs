@@ -1097,3 +1097,39 @@ test('Claim Victory returns to the Forge Room after missed-card cleanup', () => 
  assert.match(app,/if \(pageId === 'garden'\)[\s\S]*?document\.dispatchEvent\(new CustomEvent\('garden:open'\)\)/);
  assert.match(html,/data-action="closeGrandFinale"[^>]*>[\s\S]*?Claim Victory/);
 });
+
+
+test('the Diary exposes separate additional notes only through the unlocked encrypted editor', () => {
+ assert.match(html,/id="diary-additional-notes"/);
+ assert.match(html,/id="diary-additional-notes-list"[^>]*aria-live="polite"/);
+ assert.match(html,/id="diary-add-note-button"[^>]*type="button"[^>]*data-action="addPrivateDiaryNote"/);
+ assert.match(html,/id="diary-add-note-button"[^>]*aria-label="Add a separate private note"/);
+ assert.match(app,/async function addDiaryNote\(\)/);
+ assert.match(app,/addPrivateDiaryNote\(dateString\)/);
+ assert.match(app,/addPrivateDiaryNote:\(\)=>addDiaryNote\(\)/);
+ assert.match(app,/data-private-diary-note-id/);
+ assert.match(app,/schedulePrivateWritingSave\(\)/);
+ assert.match(app,/renderPrivateDiaryNotes\(dateString\)/);
+ assert.match(app,/noteEditor\.readOnly = !canEditCurrentDiary/);
+ assert.match(writing,/export async function addPrivateDiaryNote\(dateStr=getCurrentWritingDate\(\)\)/);
+ assert.match(writing,/encryptPrivatePayload\('diary',dateStr,diaryPayload,key\)/);
+ assert.match(writing,/MAX_PRIVATE_DIARY_NOTES_PER_DAY=40/);
+ assert.match(writing,/MAX_PRIVATE_DIARY_NOTE_CHARS=8000/);
+ assert.match(writing,/PRIVATE_DIARY_NOTE_ID_PATTERN/);
+ assert.match(writing,/mergePrivateWritingDiary\(localValue,remoteValue,dateString\)/);
+ assert.match(writing,/const entries=normalizePrivateDiaryEntries\(\[\.\.\.byId\.values\(\)\],dateString\)/);
+});
+
+test('encrypted Diary note writes are batched for one changed-date cloud capture', () => {
+ const start=writing.indexOf('function enqueuePrivateWritingSnapshot(');
+ const end=writing.indexOf('async function savePrivateWritingForDate(',start);
+ const writer=writing.slice(start,end);
+ assert.ok(start>=0 && end>start);
+ assert.match(writer,/window\.__faithFocusVaultBatchWrite=true/);
+ assert.match(writer,/localStorage\.setItem\(getSecureWritingStorageKey\('diary'/);
+ assert.match(writer,/localStorage\.setItem\(getSecureWritingStorageKey\('notes'/);
+ assert.match(writer,/faith-focus:local-data-changed/);
+ assert.match(vaultSync,/!window\.__faithFocusVaultBatchWrite/);
+ assert.match(vaultSync,/selectVaultReconciliationDates/);
+ assert.match(vaultSync,/await synchronizeVault\(\{ dateStrings: dates, refreshAll: shouldRefreshAll \}\)/);
+});
