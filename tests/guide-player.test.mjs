@@ -82,7 +82,7 @@ test('finite playback, reduced-motion behavior, paper stage, and offline caching
   assert.match(css, /guide-motion-fallback/);
   assert.match(css, /guide-playback-paused/);
   assert.match(css, /#faf6f0/i);
-  assert.match(serviceWorker, /faith-focus-shell-v31-watercolor-player-lifecycle/);
+  assert.match(serviceWorker, /faith-focus-shell-v32-articulated-storyboards/);
   assert.match(serviceWorker, /\.\/assets\/guide-player\.js/);
 });
 

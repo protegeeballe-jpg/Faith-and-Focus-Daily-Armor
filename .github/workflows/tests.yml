@@ -27,6 +27,8 @@ jobs:
         run: |
           node --check assets/app.js
           node --check assets/watercolor-illustrations.js
+          node --check assets/character-appearance.js
+          node --check assets/storyboard-choreographer.js
           node --check assets/guide-player.js
           node --check assets/missed-card-notifications.js
           node --check sw.js

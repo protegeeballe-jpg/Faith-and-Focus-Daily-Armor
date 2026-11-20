@@ -65,12 +65,15 @@ test('Chromium renders hydration, 4–2–6 breathing, and live cloud selection'
     const result = await page.evaluate(() => window.__guidePlayerBrowserResult);
     assert.equal(result.error, undefined, result.error || 'Browser smoke test failed.');
     assert.deepEqual(pageErrors, [], 'The browser reported an uncaught page error.');
-    assert.equal(result.hydrationAnimation, 'wgi-drink-reach');
+    assert.equal(result.hydrationAnimation, 'wgi-story-start-4-rightArm');
+    assert.equal(result.storyboardCount, 23);
+    assert.equal(result.storyboardAnimations.length, 22);
+    assert.equal(new Set(result.storyboardAnimations).size, 22);
     assert.equal(result.hydrationMoved, true);
     assert.ok(result.breathingScales.inhale > result.breathingScales.resting);
     assert.ok(result.cloudTransforms.cumulus !== 'none');
     assert.ok(result.cloudTransforms.stratus !== result.cloudTransforms.cumulus);
-    assert.equal(result.cloudIdleAnimation, 'wgi-cloud-drift');
+    assert.equal(result.cloudIdleAnimation, 'wgi-story-cloud-checked-cloud');
   } finally {
     await browser?.close();
     await new Promise(resolve => server.close(resolve));

@@ -8,6 +8,8 @@
   <style>
     body { margin: 0; padding: 24px; background: #fbf8ef; }
     .fixture-row { display: grid; grid-template-columns: 1fr; gap: 16px; max-width: 420px; margin: 0 auto 24px; }
+    #all-guides { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-width:900px; margin:0 auto; }
+    #all-guides .watercolor-guide-stage { min-width:0; min-height:100px; border:1px solid #e6ddce; border-radius:12px; background:#fffaf2; }
   </style>
 </head>
 <body>
@@ -15,9 +17,10 @@
     <div id="hydration-stage" class="watercolor-guide-stage"></div>
     <div id="breathing-stage" class="watercolor-guide-stage watercolor-guide-stage--breathing"></div>
     <div id="cloud-stage" class="watercolor-guide-stage watercolor-guide-stage--cloud"></div>
+    <section id="all-guides" aria-label="All 23 storyboard browser fixtures"></section>
   </main>
   <script type="module">
-    import { buildGuideIllustrationSvg } from '../assets/watercolor-illustrations.js';
+    import { GUIDE_ILLUSTRATION_IDS, buildGuideIllustrationSvg } from '../assets/watercolor-illustrations.js';
     import { createWatercolorGuidePlayer } from '../assets/guide-player.js';
 
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -43,7 +46,7 @@
       const hydrationStyle = getComputedStyle(drinkingArm);
 
       requireValue(hydrationStage.dataset.playbackMode === 'finite', 'Hydration mode was not finite.');
-      requireValue(hydrationStyle.animationName === 'wgi-drink-reach', 'Hydration arm keyframes are not active.');
+      requireValue(hydrationStyle.animationName === 'wgi-story-start-4-rightArm', 'Hydration arm keyframes are not active.');
       requireValue(hydrationStyle.animationIterationCount === '1', 'Hydration did not use one finite demonstration.');
       requireValue(hydrationStyle.animationPlayState === 'running', 'Hydration animation was paused before completion.');
       requireValue(hydrationStartTransform !== hydrationEndTransform, 'Hydration character did not visibly move in Chromium.');
@@ -76,7 +79,7 @@
       });
       const cloudDrift = cloudStage.querySelector('.wgi-cloud-drift');
       const selectableCloud = cloudStage.querySelector('.wgi-cloud');
-      requireValue(getComputedStyle(cloudDrift).animationName === 'wgi-cloud-drift', 'Cloud idle drift was not active on its outer group.');
+      requireValue(getComputedStyle(cloudDrift).animationName === 'wgi-story-cloud-checked-cloud', 'Cloud idle drift was not active on its outer group.');
       requireValue(getComputedStyle(selectableCloud).animationName === 'none', 'Cloud selection transform is still masked by an animation.');
       requireValue(cloudPlayer.setCloudSelection('cumulus'), 'Cumulus selection was rejected.');
       await wait(950);
@@ -93,12 +96,43 @@
       requireValue(Number.isFinite(stratocumulusOpacity) && Math.abs(stratocumulusOpacity - 0.78) < 0.01,
         'Stratocumulus selection opacity did not settle near 0.78; computed: ' + stratocumulusOpacity);
 
+
+      const allGuides = document.getElementById('all-guides');
+      const actionAnimations = [];
+      GUIDE_ILLUSTRATION_IDS.forEach((id) => {
+        const stage = document.createElement('div');
+        stage.className = 'watercolor-guide-stage';
+        stage.innerHTML = buildGuideIllustrationSvg(id);
+        allGuides.append(stage);
+        const svg = stage.querySelector('.watercolor-guide-svg');
+        requireValue(svg.dataset.guideId === id, 'Guide ID metadata did not match ' + id + '.');
+        requireValue(Boolean(svg.dataset.setting && svg.dataset.camera && svg.dataset.propKind),
+          'Storyboard metadata is incomplete for ' + id + '.');
+        if (id === 'mid-2') {
+          requireValue(svg.dataset.playbackRule === 'timer-driven', 'Breathing lost its timer-driven policy.');
+          return;
+        }
+        const primaryPart = id === 'cloud-checked'
+          ? svg.querySelector('.wgi-cloud-drift')
+          : svg.querySelector('[data-primary-motion="true"]');
+        requireValue(Boolean(primaryPart), 'Missing articulated primary motion target for ' + id + '.');
+        const animationName = getComputedStyle(primaryPart).animationName;
+        requireValue(animationName.startsWith('wgi-story-' + id + '-'),
+          'Action-specific keyframe did not load for ' + id + ': ' + animationName);
+        actionAnimations.push(animationName);
+      });
+      requireValue(GUIDE_ILLUSTRATION_IDS.length === 23, 'The browser fixture did not cover 23 guide IDs.');
+      requireValue(actionAnimations.length === 22, 'The 22 non-timer storyboards were not animated.');
+      requireValue(new Set(actionAnimations).size === 22, 'Two different guide IDs share a primary motion sequence.');
+
       hydrationPlayer.destroy();
       breathingPlayer.destroy();
       cloudPlayer.destroy();
       window.__guidePlayerBrowserResult = {
         ready: true,
         hydrationAnimation: hydrationStyle.animationName,
+        storyboardAnimations: actionAnimations,
+        storyboardCount: GUIDE_ILLUSTRATION_IDS.length,
         hydrationMoved: hydrationStartTransform !== hydrationEndTransform,
         breathingScales: { resting: restingScale, inhale: inhaleScale },
         breathingTransitions: { inhale: inhaleTransition },

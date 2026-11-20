@@ -1,3 +1,7 @@
+import { buildCharacterRigMarkup, buildWatercolorDefs } from './character-appearance.js';
+import { getGuideStoryboard, buildGuideStoryboardStylesheet } from './storyboard-choreographer.js';
+import { GUIDE_PLAYBACK_SPECS } from './guide-player.js';
+
 const SCENES = Object.freeze({
   "loc-home": { title: "A peaceful place at home", label: "A watercolor home scene with a welcoming doorway and garden flowers", kind: "home", pose: "relaxed" },
   "loc-office": { title: "A calm moment at work", label: "A watercolor work scene with a sunlit window, desk, and leafy plant", kind: "office", pose: "relaxed" },
@@ -46,57 +50,6 @@ const CHARACTER_SEQUENCES = new Set([
   "heart", "float", "write", "boop", "night", "celebrate"
 ]);
 
-function characterMarkup(pose) {
-  const sequence = CHARACTER_SEQUENCES.has(pose) ? pose : "relaxed";
-  return [
-    '<g class="wgi-character wgi-character--' + sequence + '">',
-      '<ellipse class="wgi-character-shadow" cx="150" cy="170" rx="35" ry="5" fill="#93aa9a" opacity=".24"/>',
-      '<g class="wgi-lower-body">',
-        '<path d="M139 142 L134 164 M161 142 L167 164" fill="none" stroke="#596b78" stroke-width="11" stroke-linecap="round"/>',
-        '<path d="M119 165 Q132 160 140 165 Q142 171 126 172 Q117 172 119 165Z M160 165 Q174 160 182 165 Q184 171 168 172 Q159 172 160 165Z" fill="#e4b07f" stroke="#b5815c" stroke-width="1.4"/>',
-      '</g>',
-      '<g class="wgi-arm wgi-arm--left">',
-        '<path d="M130 108 Q116 121 120 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-        '<path d="M130 108 Q125 109 122 116" fill="none" stroke="#82ad9d" stroke-width="12" stroke-linecap="round"/>',
-        '<ellipse cx="120" cy="141" rx="5.5" ry="6.5" fill="#e0a17e" stroke="#b87e68" stroke-width="1.2"/>',
-        '<path d="M116 139 L113 136 M120 137 L119 133" fill="none" stroke="#b87e68" stroke-width="1.1" stroke-linecap="round"/>',
-      '</g>',
-      '<g class="wgi-arm wgi-arm--right">',
-        '<path d="M170 108 Q184 121 180 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-        '<path d="M170 108 Q175 109 178 116" fill="none" stroke="#82ad9d" stroke-width="12" stroke-linecap="round"/>',
-        '<ellipse cx="180" cy="141" rx="5.5" ry="6.5" fill="#e0a17e" stroke="#b87e68" stroke-width="1.2"/>',
-        '<path d="M184 139 L187 136 M180 137 L181 133" fill="none" stroke="#b87e68" stroke-width="1.1" stroke-linecap="round"/>',
-      '</g>',
-      '<g class="wgi-torso">',
-        '<path d="M139 81 L137 99 M161 81 L163 99" stroke="#d79a78" stroke-width="7" stroke-linecap="round"/>',
-        '<path d="M130 105 Q150 96 170 105 L176 144 Q150 154 124 144Z" fill="url(#wgi-shirt)" stroke="#6d9687" stroke-width="2" stroke-linejoin="round"/>',
-        '<path d="M137 111 Q150 117 163 111" fill="none" stroke="#eff8e9" stroke-width="2" opacity=".7" stroke-linecap="round"/>',
-        '<path d="M143 148 Q150 151 157 148" fill="none" stroke="#6d9687" stroke-width="1.3" opacity=".45"/>',
-      '</g>',
-      '<g class="wgi-head">',
-        '<circle cx="150" cy="73" r="22" fill="url(#wgi-skin)" stroke="#aa735e" stroke-width="1.8"/>',
-        '<path d="M128 72 Q126 48 150 48 Q174 49 172 73 Q162 62 150 64 Q138 62 128 72Z" fill="#4d403b" stroke="#3a3534" stroke-width="1.5" stroke-linejoin="round"/>',
-        '<path d="M136 69 Q141 66 145 69 M155 69 Q159 66 164 69" fill="none" stroke="#65483f" stroke-width="1.5" stroke-linecap="round"/>',
-        '<g class="wgi-eyes-open">',
-          '<ellipse cx="142" cy="75" rx="2.1" ry="2.8" fill="#443632"/>',
-          '<ellipse cx="158" cy="75" rx="2.1" ry="2.8" fill="#443632"/>',
-          '<circle cx="142.7" cy="74.2" r=".7" fill="#fff8ec"/>',
-          '<circle cx="158.7" cy="74.2" r=".7" fill="#fff8ec"/>',
-        '</g>',
-        '<g class="wgi-eyes-closed" fill="none" stroke="#704b43" stroke-width="1.9" stroke-linecap="round">',
-          '<path d="M137.5 76 Q142 80 146.5 76"/>',
-          '<path d="M153.5 76 Q158 80 162.5 76"/>',
-        '</g>',
-        '<path class="wgi-mouth-smile" d="M143.5 85 Q150 91 156.5 85" fill="none" stroke="#965b52" stroke-width="1.9" stroke-linecap="round"/>',
-        '<ellipse class="wgi-mouth-sip" cx="150" cy="86" rx="2.6" ry="3.5" fill="#965b52"/>',
-        '<ellipse class="wgi-mouth-yawn" cx="150" cy="86" rx="3.8" ry="5.1" fill="#965b52"/>',
-        '<ellipse cx="135" cy="82" rx="4.2" ry="2.7" fill="#eea3a1" opacity=".68"/>',
-        '<ellipse cx="165" cy="82" rx="4.2" ry="2.7" fill="#eea3a1" opacity=".68"/>',
-      '</g>',
-    '</g>'
-  ].join("");
-}
-
 export const GUIDE_ILLUSTRATION_IDS = Object.freeze(Object.keys(SCENES));
 
 export const GUIDE_ANIMATION_SEQUENCES = Object.freeze(Object.fromEntries(
@@ -112,43 +65,93 @@ export function getBreathingAnimationPhase(phaseName) {
   return phases[phaseName] || "rest";
 }
 
+function escapeXml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;'
+  })[character]);
+}
+
+function sceneDetailFor(storyboard, scene) {
+  let detail = DETAIL_ART[scene.kind] || DETAIL_ART.gratitude;
+  if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'water-glass') {
+    detail = detail.replace(/<path d="M213 68[\s\S]*?(?=<path class="wgi-water-drop")/, '');
+  }
+  if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'pencil') {
+    detail = detail.replace(/<path class="wgi-pencil"[\s\S]*?<path d="M260 123[\s\S]*?<\/path>/, '');
+  }
+  if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'phone') {
+    detail = detail.replace(/<rect x="285" y="119" width="17" height="29"[\s\S]*?<circle cx="293" cy="143" r="1.5" fill="#edf6ee"\/>/, '');
+  }
+  return detail;
+}
+
 export function buildGuideIllustrationSvg(id) {
-  const scene = SCENES[id] || SCENES["start-1"];
-  const detail = DETAIL_ART[scene.kind] || DETAIL_ART.gratitude;
-  const sequence = CHARACTER_SEQUENCES.has(scene.pose) ? scene.pose : "relaxed";
-  const breathPhase = sequence === "breathe" ? ' data-breath-phase="rest"' : "";
-  return '<svg class="watercolor-guide-svg watercolor-guide-svg--' + sequence + '" data-sequence="' + sequence + '"' + breathPhase + ' viewBox="0 0 320 190" role="img" aria-label="' + scene.label + '" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
-    '<title>' + scene.title + '</title>' +
-    '<defs>' +
-      '<radialGradient id="wgi-wash" cx="49%" cy="45%" r="62%"><stop offset="0" stop-color="#fffdf2" stop-opacity=".96"/><stop offset=".72" stop-color="#e9eee2" stop-opacity=".55"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
-      '<linearGradient id="wgi-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
-      '<linearGradient id="wgi-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
-      '<linearGradient id="wgi-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6df9f"/><stop offset="1" stop-color="#d5ad67"/></linearGradient>' +
-    '</defs>' +
-    '<ellipse cx="160" cy="93" rx="151" ry="83" fill="url(#wgi-wash)"/>' +
+  if (typeof id !== 'string' || !Object.prototype.hasOwnProperty.call(SCENES, id)) {
+    throw new Error('[GuideSecurityError] Unregistered illustration guideId: "' + String(id) + '"');
+  }
+
+  const scene = SCENES[id];
+  const storyboard = getGuideStoryboard(id);
+  const playback = GUIDE_PLAYBACK_SPECS[id];
+  const sequence = CHARACTER_SEQUENCES.has(scene.pose) ? scene.pose : 'relaxed';
+  const prefix = 'wgi-' + id;
+  const rightHandProp = storyboard.prop.attachment === 'right-hand'
+    ? storyboard.prop.kind
+    : null;
+  const lighting = storyboard.timeOfDay;
+  const theme = LIGHTING_THEMES[lighting] || LIGHTING_THEMES.ambient;
+  const character = buildCharacterRigMarkup({
+    pose: sequence,
+    prefix,
+    rightHandProp,
+    primaryMotionPart: storyboard.primaryPart
+  });
+  const detail = sceneDetailFor(storyboard, scene);
+  const breathPhase = playback.playbackMode === 'timer-driven'
+    ? ' data-breath-phase="rest"'
+    : '';
+  const cloudState = playback.playbackMode === 'interactive'
+    ? ' data-cloud-selection="idle"'
+    : '';
+
+  return '<svg class="watercolor-guide-svg watercolor-guide-svg--' + sequence +
+    ' watercolor-guide-svg--camera-' + storyboard.camera + '" data-guide-id="' + id +
+    '" data-sequence="' + sequence + '" data-camera="' + storyboard.camera + '" data-lighting="' + lighting +
+    '" data-setting="' + storyboard.setting + '" data-prop-kind="' + storyboard.prop.kind +
+    '" data-prop-attachment="' + storyboard.prop.attachment + '" data-playback-rule="' +
+    storyboard.playbackRule + '" data-duration-ms="' + storyboard.durationMs + '"' +
+    breathPhase + cloudState +
+    ' viewBox="0 0 320 190" role="img" aria-label="' + escapeXml(scene.label) +
+    '" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
+    '<title>' + escapeXml(scene.title) + '</title>' +
+    buildWatercolorDefs(prefix, lighting) +
+    '<style>' + buildGuideStoryboardStylesheet(id) + '</style>' +
+    '<rect x="0" y="0" width="320" height="190" fill="url(#' + prefix + '-sky)"/>' +
+    '<ellipse cx="160" cy="91" rx="153" ry="84" fill="url(#' + prefix + '-paper-wash)" filter="url(#' + prefix + '-pigment-grain)"/>' +
+    '<rect x="0" y="0" width="320" height="190" fill="url(#' + prefix + '-paper-fleck)" opacity=".38"/>' +
+    '<rect x="0" y="0" width="320" height="190" fill="' + theme.ambientOverlay +
+    '" opacity="' + theme.ambientOpacity + '"/>' +
+    '<path d="M0 157 Q76 147 130 157 Q191 166 249 155 Q282 150 320 157 V190 H0Z" fill="url(#' +
+    prefix + '-ground)"/>' +
     '<path d="M18 157 Q76 147 130 157 Q191 166 249 155 Q282 150 304 157" fill="none" stroke="#c4d7c3" stroke-width="6" opacity=".35" stroke-linecap="round"/>' +
     '<path d="M25 162 Q83 154 132 163 M218 163 Q267 153 298 162" fill="none" stroke="#a9c7b4" stroke-width="2" opacity=".65" stroke-linecap="round"/>' +
-    '<g class="wgi-scene-art">' + detail + '</g>' +
-    characterMarkup(scene.pose) +
-    '<g class="wgi-sparkles" fill="url(#wgi-gold)"><path d="M47 77 L51 68 L55 77 L64 81 L55 85 L51 94 L47 85 L38 81Z"/><path d="M292 61 L295 54 L298 61 L305 64 L298 67 L295 74 L292 67 L285 64Z" transform="scale(.85  .85) translate(53 14)"/></g>' +
+    '<g class="wgi-scene-art" filter="url(#' + prefix + '-pigment-grain)">' + detail + '</g>' +
+    '<g class="wgi-character-pigment" filter="url(#' + prefix + '-pigment-grain)">' + character + '</g>' +
+    '<g class="wgi-sparkles" fill="url(#' + prefix + '-gold)"><path d="M47 77 L51 68 L55 77 L64 81 L55 85 L51 94 L47 85 L38 81Z"/><path d="M292 61 L295 54 L298 61 L305 64 L298 67 L295 74 L292 67 L285 64Z" transform="scale(.85 .85) translate(53 14)"/></g>' +
     '<g fill="#94b58a" opacity=".9"><path d="M30 155 Q38 139 45 155 Q38 151 30 155Z"/><path d="M48 160 Q55 145 62 160 Q55 156 48 160Z"/><path d="M276 158 Q283 142 290 158 Q283 154 276 158Z"/></g>' +
     '</svg>';
 }
 
 export function buildVictoryCharacterSvg() {
-  const character = characterMarkup("celebrate")
-    .replaceAll("url(#wgi-shirt)", "url(#wgi-victory-shirt)")
-    .replaceAll("url(#wgi-skin)", "url(#wgi-victory-skin)");
+  const prefix = 'wgi-victory';
+  const character = buildCharacterRigMarkup({ pose: 'celebrate', prefix });
   return '<svg class="finale-character-svg" viewBox="0 0 320 190" role="img" aria-label="A joyful watercolor character celebrating with a bright smile and both arms raised" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
     '<title>A joyful little celebration</title>' +
-    '<defs>' +
-      '<radialGradient id="wgi-victory-wash" cx="50%" cy="50%" r="62%"><stop offset="0" stop-color="#fff8df" stop-opacity=".9"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
-      '<linearGradient id="wgi-victory-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
-      '<linearGradient id="wgi-victory-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
-    '</defs>' +
-    '<ellipse cx="160" cy="96" rx="133" ry="83" fill="url(#wgi-victory-wash)"/>' +
-    character +
-    '<g class="finale-character-sparkles" fill="#e6c477"><path d="M72 62 L76 53 L80 62 L89 66 L80 70 L76 79 L72 70 L63 66Z"/><path d="M238 55 L242 46 L246 55 L255 59 L246 63 L242 72 L238 63 L229 59Z"/><circle cx="100" cy="108" r="2.6"/><circle cx="218" cy="107" r="2.6"/></g>' +
+    buildWatercolorDefs(prefix, 'ambient') +
+    '<ellipse cx="160" cy="96" rx="133" ry="83" fill="url(#' + prefix + '-paper-wash)"/>' +
+    '<path d="M30 156 Q86 145 145 158 Q213 166 290 155" fill="none" stroke="#BCD2BC" stroke-width="5" opacity=".5" stroke-linecap="round"/>' +
+    '<g class="wgi-character-pigment" filter="url(#' + prefix + '-pigment-grain)">' + character + '</g>' +
+    '<g class="finale-character-sparkles" fill="url(#' + prefix + '-gold)"><path d="M72 62 L76 53 L80 62 L89 66 L80 70 L76 79 L72 70 L63 66Z"/><path d="M238 55 L242 46 L246 55 L255 59 L246 63 L242 72 L238 63 L229 59Z"/><circle cx="100" cy="108" r="2.6"/><circle cx="218" cy="107" r="2.6"/></g>' +
     '</svg>';
 }
 
