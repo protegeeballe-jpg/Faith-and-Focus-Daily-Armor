@@ -121,8 +121,8 @@ export function buildGuideIllustrationSvg(id) {
     '<title>' + scene.title + '</title>' +
     '<defs>' +
       '<radialGradient id="wgi-wash" cx="49%" cy="45%" r="62%"><stop offset="0" stop-color="#fffdf2" stop-opacity=".96"/><stop offset=".72" stop-color="#e9eee2" stop-opacity=".55"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
-      '<linearGradient id="wgi-victory-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
-      '<linearGradient id="wgi-victory-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
+      '<linearGradient id="wgi-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
+      '<linearGradient id="wgi-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
       '<linearGradient id="wgi-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6df9f"/><stop offset="1" stop-color="#d5ad67"/></linearGradient>' +
     '</defs>' +
     '<ellipse cx="160" cy="93" rx="151" ry="83" fill="url(#wgi-wash)"/>' +
@@ -143,8 +143,8 @@ export function buildVictoryCharacterSvg() {
     '<title>A joyful little celebration</title>' +
     '<defs>' +
       '<radialGradient id="wgi-victory-wash" cx="50%" cy="50%" r="62%"><stop offset="0" stop-color="#fff8df" stop-opacity=".9"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
-      '<linearGradient id="wgi-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
-      '<linearGradient id="wgi-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
+      '<linearGradient id="wgi-victory-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
+      '<linearGradient id="wgi-victory-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
     '</defs>' +
     '<ellipse cx="160" cy="96" rx="133" ry="83" fill="url(#wgi-victory-wash)"/>' +
     character +
