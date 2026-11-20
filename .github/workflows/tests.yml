@@ -27,6 +27,7 @@ jobs:
         run: |
           node --check assets/app.js
           node --check assets/watercolor-illustrations.js
+          node --check assets/guide-player.js
           node --check assets/missed-card-notifications.js
           node --check sw.js
           node --check assets/service-worker-registration.js

@@ -1412,3 +1412,93 @@ body {position:fixed;inset:0;min-width:0;min-height:0 !important;padding-bottom:
     .watercolor-guide-svg--breathe .wgi-arm,
     .watercolor-guide-svg--breathe .wgi-head { transform: none !important; }
 }
+
+
+/* Watercolor player: warm paper, soft time-of-day wash, and deterministic playback. */
+.watercolor-guide-stage {
+    position: relative;
+    width: min(100%, 280px);
+    max-width: 280px;
+    min-height: 138px;
+    margin: .2rem auto .55rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: 24px;
+    background-color: #faf6f0;
+    background-image:
+        radial-gradient(ellipse at 18% 14%, rgba(255,255,255,.66), transparent 52%),
+        radial-gradient(ellipse at 86% 84%, rgba(214,190,158,.13), transparent 48%),
+        repeating-linear-gradient(0deg, rgba(145,119,88,.018) 0, rgba(145,119,88,.018) 1px, transparent 1px, transparent 4px);
+    box-shadow: inset 0 0 24px rgba(139,115,85,.08);
+    transition: background-color 600ms ease, box-shadow 600ms ease;
+}
+.watercolor-guide-stage[data-time-of-day="morning"] { background-color: #fcf7ee; }
+.watercolor-guide-stage[data-time-of-day="midday"] { background-color: #f8f6f0; }
+.watercolor-guide-stage[data-time-of-day="evening"] { background-color: #f7efe6; }
+.watercolor-guide-stage[data-time-of-day="night"] {
+    background-color: #232838;
+    background-image: radial-gradient(ellipse at 50% 30%, rgba(92,101,129,.3), transparent 68%);
+    box-shadow: inset 0 0 28px rgba(12,16,28,.45);
+}
+.watercolor-guide-stage--breathing { min-height: 0; max-height: 128px; margin: -.15rem auto .15rem; }
+.watercolor-guide-stage--breathing .watercolor-guide-svg { width: min(100%, 260px); max-height: 126px; }
+.watercolor-guide-stage--cloud { width: min(100%, 240px); min-height: 126px; margin: .35rem auto .75rem; }
+.watercolor-guide-stage--cloud .watercolor-guide-svg { width: min(100%, 240px); max-height: 142px; }
+.watercolor-guide-stage[data-playback-mode="finite"] .watercolor-guide-svg * {
+    animation-duration: var(--guide-duration, 4s) !important;
+    animation-iteration-count: 1 !important;
+    animation-fill-mode: forwards !important;
+}
+.watercolor-guide-stage[data-playback-state="complete"] .watercolor-guide-svg * { animation-play-state: paused; }
+.watercolor-guide-stage.guide-playback-paused .watercolor-guide-svg * { animation-play-state: paused !important; }
+.watercolor-guide-stage.guide-motion-static .watercolor-guide-svg *,
+.watercolor-guide-stage.guide-motion-static .watercolor-guide-svg {
+    animation: none !important;
+    transition: none !important;
+}
+.watercolor-guide-stage.guide-motion-static .wgi-torso,
+.watercolor-guide-stage.guide-motion-static .wgi-head,
+.watercolor-guide-stage.guide-motion-static .wgi-arm { transform: none !important; }
+.watercolor-guide-stage--cloud .wgi-cloud {
+    transform-box: view-box;
+    transform-origin: 240px 90px;
+    transition: transform 900ms ease, opacity 900ms ease;
+}
+.watercolor-guide-stage--cloud[data-cloud-selection="cumulus"] .wgi-cloud { transform: translateY(-3px) scale(1.12); }
+.watercolor-guide-stage--cloud[data-cloud-selection="stratus"] .wgi-cloud { transform: scaleX(1.2) scaleY(.82); }
+.watercolor-guide-stage--cloud[data-cloud-selection="stratocumulus"] .wgi-cloud {
+    transform: translateY(3px) scale(.96);
+    opacity: .78;
+}
+
+/* The 4–2–6 exercise timer, not CSS keyframes, owns every breathing phase. */
+.watercolor-guide-svg--breathe .wgi-breath-ring,
+.watercolor-guide-svg--breathe .wgi-breath-line {
+    animation: none !important;
+    transition: transform var(--guide-breath-transition, 0ms) cubic-bezier(.35,.05,.2,1),
+                opacity var(--guide-breath-transition, 0ms) ease;
+}
+.watercolor-guide-svg--breathe .wgi-breath-ring { transform: scale(.86); }
+.watercolor-guide-svg--breathe .wgi-breath-ring--two { transform: scale(.78); }
+.watercolor-guide-svg--breathe[data-breath-phase="inhale"] .wgi-breath-ring,
+.watercolor-guide-svg--breathe[data-breath-phase="hold"] .wgi-breath-ring { transform: scale(1.13); }
+.watercolor-guide-svg--breathe[data-breath-phase="inhale"] .wgi-breath-ring--two,
+.watercolor-guide-svg--breathe[data-breath-phase="hold"] .wgi-breath-ring--two { transform: scale(1.02); }
+.watercolor-guide-svg--breathe[data-breath-phase="exhale"] .wgi-breath-ring,
+.watercolor-guide-svg--breathe[data-breath-phase="rest"] .wgi-breath-ring { transform: scale(.86); }
+.watercolor-guide-svg--breathe[data-breath-phase="exhale"] .wgi-breath-ring--two,
+.watercolor-guide-svg--breathe[data-breath-phase="rest"] .wgi-breath-ring--two { transform: scale(.78); }
+.watercolor-guide-svg--breathe[data-breath-phase="inhale"] .wgi-breath-line,
+.watercolor-guide-svg--breathe[data-breath-phase="hold"] .wgi-breath-line { opacity: .9; }
+.watercolor-guide-svg--breathe[data-breath-phase="exhale"] .wgi-breath-line,
+.watercolor-guide-svg--breathe[data-breath-phase="rest"] .wgi-breath-line { opacity: .38; }
+
+@media (prefers-reduced-motion: reduce) {
+    .watercolor-guide-stage, .watercolor-guide-stage *,
+    .watercolor-guide-stage *::before, .watercolor-guide-stage *::after {
+        animation: none !important;
+        transition: none !important;
+    }
+}

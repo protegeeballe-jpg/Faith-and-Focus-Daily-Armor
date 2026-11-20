@@ -137,6 +137,6 @@ test('the spoken congratulatory cue remains removed while the instrumental fanfa
 });
 
 test('the updated animation module remains part of the versioned offline application shell', () => {
-  assert.ok(serviceWorker.includes('faith-focus-shell-v30-expressive-watercolor-characters'));
+  assert.ok(serviceWorker.includes('faith-focus-shell-v31-watercolor-player-lifecycle'));
   assert.ok(serviceWorker.includes('./assets/watercolor-illustrations.js'));
 });
