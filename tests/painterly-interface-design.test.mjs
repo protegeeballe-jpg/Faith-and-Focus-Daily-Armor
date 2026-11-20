@@ -58,7 +58,7 @@ test('keyboard focus and reduced-motion preferences are respected throughout the
 });
 
 test('the offline shell version changes when the visual app shell changes', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v30-expressive-watercolor-characters/);
+  assert.match(serviceWorker, /faith-focus-shell-v31-watercolor-player-lifecycle/);
   assert.match(serviceWorker, /\.\/assets\/app\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden-room-background\.jpg/);
