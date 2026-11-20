@@ -290,17 +290,13 @@ test('Chromium: every in-card guide action button receives a real pointer click'
         modal => modal.classList.contains('hidden')), true,
         'Guide modal close action failed for: ' + type + '/' + target);
     }
-  }
 
-  // Every generated Read quote launcher must also be visible and receive pointer input.
-  for (let step = 2; step <= 5; step++) {
-    if (step > 2) await page.locator('#btn-next').click();
-    const launchers = page.locator('#card-step-' + step + ' .guide-quote-launch');
-    const count = await launchers.count();
-    assert.ok(count > 0, 'Expected generated guide launchers in card ' + step);
-    for (let index = 0; index < count; index++) {
-      const launcher = launchers.nth(index);
-      await launcher.click();
+    // The generated Read quote launcher is another distinct control inside each card.
+    const launchers = card.locator('.guide-quote-launch');
+    const launcherCount = await launchers.count();
+    assert.ok(launcherCount > 0, 'Expected generated guide launchers in card ' + step);
+    for (let index = 0; index < launcherCount; index++) {
+      await launchers.nth(index).click();
       assert.equal(await page.locator('#anim-modal').evaluate(
         modal => !modal.classList.contains('hidden')), true,
         'Read quote launcher did not receive click in card ' + step);
