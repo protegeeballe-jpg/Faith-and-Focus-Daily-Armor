@@ -540,6 +540,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   await page.locator('#anim-modal [data-action="closeModal"]').click();
 
   await context.close();
+  t.diagnostic('Diary notebook locked-state interaction verified');
 
   const reducedContext = await browser.newContext({
     serviceWorkers: 'block',
@@ -557,5 +558,142 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
     element => getComputedStyle(element).animationDuration);
   assert.equal(reducedAnimation, '0s',
     'Pigment motion must respect the reduced-motion preference');
+  await reducedContext.close();
+});
+
+
+test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve real hit targets', {
+  timeout: 60000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({
+    serviceWorkers: 'block',
+    permissions: [],
+    viewport: {width: 1366, height: 768}
+  });
+  const page = await context.newPage();
+  await page.goto(host.url, {waitUntil: 'load', timeout: 8000});
+  t.diagnostic('Static app loaded');
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+
+  await page.evaluate(() => {
+    document.dispatchEvent(new Event('garden:open'));
+  });
+  await page.locator('#little-garden.garden-room-home').waitFor({state: 'visible', timeout: 8000});
+  t.diagnostic('Forge Room opened through its application home event');
+  const forgeSurface = await page.locator('#little-garden').evaluate(element => {
+    const roomCard = element.querySelector('.garden-room-card');
+    const plantingPanel = element.querySelector('.garden-planting-panel');
+    return {
+      scene: element.classList.contains('garden-room-home'),
+      backgroundImage: getComputedStyle(element).backgroundImage,
+      roomEdge: getComputedStyle(roomCard, '::before').backgroundImage,
+      roomEdgePointerEvents: getComputedStyle(roomCard, '::before').pointerEvents,
+      plantingBackground: getComputedStyle(plantingPanel).backgroundImage,
+      roomRadius: getComputedStyle(roomCard).borderRadius
+    };
+  });
+  assert.equal(forgeSurface.scene, true, 'The Forge Room must remain the active home scene');
+  assert.match(forgeSurface.backgroundImage, /garden-room-background\.jpg/);
+  assert.match(forgeSurface.backgroundImage, /repeating-linear-gradient/);
+  assert.match(forgeSurface.roomEdge, /radial-gradient/);
+  assert.equal(forgeSurface.roomEdgePointerEvents, 'none');
+  assert.match(forgeSurface.plantingBackground, /repeating-linear-gradient/);
+  assert.match(forgeSurface.roomRadius, /29px/);
+  await assertPointerHitTarget(
+    page.locator('#garden-planting-button'),
+    'Forge Room planting action beneath watercolor paper layers'
+  );
+  t.diagnostic('Forge Room planting action receives pointer input');
+
+  await page.evaluate(() => {
+    document.dispatchEvent(new CustomEvent('garden:show-scene', {
+      detail: {scene: 'diary'}
+    }));
+  });
+  t.diagnostic('Diary scene event dispatched');
+  const diary = page.locator('#view-diary');
+  await diary.waitFor({state: 'visible', timeout: 8000});
+  t.diagnostic('Diary scene became visible');
+  const diarySurface = await page.locator('#little-garden').evaluate(element => {
+    const card = element.querySelector('#view-diary > .card-lavender');
+    const lockCard = element.querySelector('#diary-lock-panel');
+    const editor = element.querySelector('#private-diary-entry');
+    return {
+      active: element.classList.contains('garden-diary-active'),
+      backgroundColor: getComputedStyle(element).backgroundColor,
+      backgroundImage: getComputedStyle(element).backgroundImage,
+      cardBackground: getComputedStyle(card).backgroundImage,
+      cardEdge: getComputedStyle(card, '::before').backgroundImage,
+      cardEdgePointerEvents: getComputedStyle(card, '::before').pointerEvents,
+      lockBackground: getComputedStyle(lockCard).backgroundImage,
+      editorBackground: getComputedStyle(editor).backgroundImage,
+      editorBorder: getComputedStyle(editor).borderColor,
+      archiveBackground: getComputedStyle(element.querySelector('.diary-archive-dialog')).backgroundImage,
+      archiveBackdrop: getComputedStyle(element.querySelector('#diary-archive-panel')).backgroundColor,
+      archiveCloseHeight: getComputedStyle(element.querySelector('.diary-archive-close')).minHeight,
+      cardIsolation: getComputedStyle(card).isolation,
+      archiveZIndex: getComputedStyle(element.querySelector('#diary-archive-panel')).zIndex
+    };
+  });
+  assert.equal(diarySurface.active, true, 'The Diary-specific theme must be scoped to the Diary scene');
+  assert.equal(diarySurface.backgroundColor, 'rgb(241, 247, 251)');
+  assert.match(diarySurface.backgroundImage, /repeating-linear-gradient/);
+  assert.match(diarySurface.cardBackground, /radial-gradient/);
+  assert.match(diarySurface.cardBackground, /repeating-linear-gradient/);
+  assert.match(diarySurface.cardEdge, /radial-gradient/);
+  assert.equal(diarySurface.cardEdgePointerEvents, 'none');
+  assert.match(diarySurface.lockBackground, /rgba\(239, 204, 116/);
+  assert.match(diarySurface.editorBackground, /repeating-linear-gradient/);
+  assert.match(diarySurface.editorBorder, /112, 157, 188/);
+  assert.match(diarySurface.archiveBackground, /radial-gradient/);
+  assert.match(diarySurface.archiveBackdrop, /29, 54, 72/);
+  assert.equal(diarySurface.archiveCloseHeight, '44px');
+  assert.equal(diarySurface.cardIsolation, 'auto',
+    'The Diary paper must not create a stacking context around its fixed archive dialog');
+  assert.equal(diarySurface.archiveZIndex, '90',
+    'The full-screen Diary archive must retain its established overlay priority');
+  t.diagnostic('Diary blue-and-honey surfaces and archive stacking verified');
+
+  await page.evaluate(() => {
+    document.getElementById('diary-editor-panel')?.classList.remove('hidden');
+  });
+  const notebookButton = page.locator('#diary-archive-button');
+  await assertPointerHitTarget(notebookButton, 'Diary notebook button beneath watercolor paper layers');
+  t.diagnostic('Diary notebook button is visible and pointer-accessible');
+  await notebookButton.click({timeout: 8000});
+  t.diagnostic('Diary notebook action was clicked');
+  assert.match(
+    await page.locator('#diary-security-status').textContent(),
+    /Unlock your Diary before opening your notebook/,
+    'The Diary notebook control must still receive and handle its click while locked'
+  );
+
+  await context.close();
+
+  const reducedContext = await browser.newContext({
+    serviceWorkers: 'block',
+    reducedMotion: 'reduce'
+  });
+  const reducedPage = await reducedContext.newPage();
+  await reducedPage.goto(host.url, {waitUntil: 'load'});
+  await reducedPage.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+    document.getElementById('little-garden')?.classList.add('garden-room-home');
+  });
+  const reducedRoomMotion = await reducedPage.locator('.garden-room-card').evaluate(
+    element => getComputedStyle(element, '::before').animationDuration);
+  assert.equal(reducedRoomMotion, '0s',
+    'Forge Room decorative effects must respect reduced-motion preferences');
   await reducedContext.close();
 });
