@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { hasVerifiedDeviceSession } from '../assets/vault-sync.js';
+import { hasVerifiedDeviceSession, selectVaultReconciliationDates } from '../assets/vault-sync.js';
 
 const syncSource = readFileSync(new URL('../assets/vault-sync.js', import.meta.url), 'utf8');
 const sessionSource = readFileSync(new URL('../assets/vault-session.js', import.meta.url), 'utf8');
@@ -65,7 +65,7 @@ test('Diary writes and voice notes share a debounced cloud queue with guarded fo
   assert.match(syncSource, /function queueVaultSync\(/);
   assert.match(syncSource, /await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
   assert.match(syncSource, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(syncSource, /await synchronizeVault\(\)/);
+  assert.match(syncSource, /await synchronizeVault\(\{ dateStrings: dates, refreshAll: shouldRefreshAll \}\)/);
   assert.match(syncSource, /function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
   assert.match(syncSource, /function handleOnline\(\)/);
   assert.ok(syncSource.includes("window.addEventListener('online', handleOnline);"));
@@ -96,4 +96,36 @@ test('startup listeners are installed before the first cloud await and buffered 
   assert.match(start, /if \(pendingDailySyncDates\.size \|\| pendingFullVaultRefresh\)\s*\{\s*queueVaultSync\(\{ refreshAll: true, immediate: true \}\)/);
   assert.match(start, /removeVaultSyncListeners\(\)/);
   assert.match(syncSource, /function installVaultLocalListeners\(\)/);
+});
+
+
+test('routine sync reconciles only changed dates while full refresh reconciles the remote index', () => {
+  const index = {
+    '2026-11-18': 'remote-a',
+    '2026-11-19': 'remote-b',
+    '2026-11-20': 'remote-c',
+    'not-a-date': 'invalid'
+  };
+  assert.deepEqual(
+    selectVaultReconciliationDates(index, ['2026-11-20', '2026-11-20', 'not-a-date'], false),
+    ['2026-11-20']
+  );
+  assert.deepEqual(
+    selectVaultReconciliationDates(index, ['2026-11-20'], true),
+    ['2026-11-18', '2026-11-19', '2026-11-20']
+  );
+  assert.deepEqual(selectVaultReconciliationDates(index, [], false), []);
+});
+
+test('Diary encrypted write batches are captured once after both encrypted records are committed', () => {
+  const writingSource = readFileSync(new URL('../assets/writing-security.js', import.meta.url), 'utf8');
+  const captureStart = writingSource.indexOf('function enqueuePrivateWritingSnapshot(');
+  const captureEnd = writingSource.indexOf('async function savePrivateWritingForDate(', captureStart);
+  const writer = writingSource.slice(captureStart, captureEnd);
+  assert.match(writer, /window\.__faithFocusVaultBatchWrite=true/);
+  assert.ok(writer.indexOf("localStorage.setItem(getSecureWritingStorageKey('diary'") <
+    writer.indexOf("localStorage.setItem(getSecureWritingStorageKey('notes'"));
+  assert.ok(writer.indexOf("localStorage.setItem(getSecureWritingStorageKey('notes'") <
+    writer.indexOf("window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed'"));
+  assert.match(syncSource, /!window\.__faithFocusVaultBatchWrite/);
 });
