@@ -67,7 +67,9 @@ test('Chromium renders hydration, 4–2–6 breathing, and live cloud selection'
     assert.deepEqual(pageErrors, [], 'The browser reported an uncaught page error.');
     assert.equal(result.hydrationAnimation, 'wgi-story-start-4-rightArm');
     assert.equal(result.storyboardCount, 23);
+    assert.equal(result.prefersReducedMotion, false);
     assert.equal(result.storyboardAnimations.length, 22);
+    assert.equal(result.storyboardMotionVerified, 22);
     assert.equal(new Set(result.storyboardAnimations).size, 22);
     assert.equal(result.hydrationMoved, true);
     assert.ok(result.breathingScales.inhale > result.breathingScales.resting);
