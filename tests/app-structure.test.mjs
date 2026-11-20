@@ -71,7 +71,7 @@ test('the main Diary paragraph uses versioned replacement semantics and remains 
  assert.match(writing,/function unpackPrivateWritingDiary/);
  assert.match(writing,/buildPrivateWritingDiaryPayload/);
  assert.match(writing,/mergePrivateWritingDiary/);
- assert.match(writing,/unpackPrivateWritingDiary\(value\)\.text/);
+  assert.match(writing,/unpackPrivateWritingDiary\(value,dateStr\)\.text/);
  assert.doesNotMatch(writing,/mergePrivateWritingText\(localValue,remoteValue\)/);
 });
 test('ordinary progress storage is documented as not encrypted',()=>{
