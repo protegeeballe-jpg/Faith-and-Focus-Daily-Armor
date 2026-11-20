@@ -16,52 +16,58 @@ test('every checklist and location guide has its own accessible watercolor SVG s
   assert.equal(GUIDE_ILLUSTRATION_IDS.length, 23);
   for (const id of GUIDE_ILLUSTRATION_IDS) {
     const svg = buildGuideIllustrationSvg(id);
-    assert.match(svg, /^<svg class="watercolor-guide-svg"/);
-    assert.match(svg, /role="img" aria-label="/);
-    assert.match(svg, /<title>/);
-    assert.ok(svg.includes('</svg>'), 'unfinished illustration for ' + id);
+    assert.ok(svg.startsWith('<svg class="watercolor-guide-svg"'));
+    assert.ok(svg.includes('role="img" aria-label='));
+    assert.ok(svg.includes('<title>'));
+    assert.ok(svg.endsWith('</svg>'), 'unfinished illustration for ' + id);
   }
 });
 
 test('all three emotional cloud types render as separate painted SVG illustrations', () => {
   for (const kind of ['cumulus', 'stratus', 'stratocumulus']) {
     const svg = buildWatercolorCloudSvg(kind);
-    assert.match(svg, new RegExp('watercolor-cloud-' + kind));
-    assert.match(svg, /<svg/);
-    assert.match(svg, /<g class="wcc-cloud/);
+    assert.ok(svg.includes('watercolor-cloud-' + kind));
+    assert.ok(svg.includes('<svg'));
+    assert.ok(svg.includes('<g class="wcc-cloud'));
   }
-  assert.match(html, /watercolor-cloud-cumulus/);
-  assert.match(html, /watercolor-cloud-stratus/);
-  assert.match(html, /watercolor-cloud-stratocumulus/);
+  assert.ok(html.includes('watercolor-cloud-cumulus'));
+  assert.ok(html.includes('watercolor-cloud-stratus'));
+  assert.ok(html.includes('watercolor-cloud-stratocumulus'));
   assert.equal((html.match(/data-cloud="(?:cumulus|stratus|stratocumulus)"/g) || []).length, 3);
 });
 
-test('the health checklist mounts the watercolor scene without changing guide completion actions', () => {
-  assert.match(app, /buildGuideIllustrationSvg\\(checkboxId\\)/);
-  assert.match(app, /buildWatercolorCloudSvg\\(item\\.kind\\)/);
-  assert.match(app, /activeModalAction = 'start-breathing'/);
-  assert.match(app, /activeModalAction = 'waiting-for-drink'/);
-  assert.match(app, /function completeAnimation\\(\\)/);
-  assert.match(app, /chk\\.dataset\\.guideUnlocked = 'true'/);
+test('the health checklist mounts watercolor scenes without changing guide completion actions', () => {
+  assert.ok(app.includes('buildGuideIllustrationSvg(checkboxId)'));
+  assert.ok(app.includes('buildWatercolorCloudSvg(item.kind)'));
+  assert.ok(app.includes("activeModalAction = 'start-breathing'"));
+  assert.ok(app.includes("activeModalAction = 'waiting-for-drink'"));
+  assert.ok(app.includes('function completeAnimation()'));
+  assert.ok(app.includes("chk.dataset.guideUnlocked = 'true'"));
 });
 
-test('the Grand Finale uses the watercolor shield and trophy while Claim Victory still returns to the Forge Room', () => {
-  assert.match(html, /class="finale-watercolor-svg"/);
-  assert.match(html, /class="finale-trophy-svg"/);
-  assert.match(html, /data-action="closeGrandFinale"[^>]*>[\\s\\S]*?Claim Victory/);
-  const closeHandler = app.slice(app.indexOf('async function closeGrandFinale()'), app.indexOf('function loadData()'));
-  assert.match(closeHandler, /showPage\\('garden'\\)/);
+test('the Grand Finale uses watercolor shield and trophy art while Claim Victory still returns to the Forge Room', () => {
+  assert.ok(html.includes('class="finale-watercolor-svg"'));
+  assert.ok(html.includes('class="finale-trophy-svg"'));
+  assert.ok(html.includes('data-action="closeGrandFinale"'));
+  assert.ok(html.includes('Claim Victory'));
+  const closeStart = app.indexOf('async function closeGrandFinale()');
+  const loadStart = app.indexOf('function loadData()', closeStart);
+  const closeHandler = app.slice(closeStart, loadStart);
+  assert.ok(closeHandler.includes("showPage('garden')"));
 });
 
-test('only the spoken congratulatory cue is removed and all new illustration motion respects reduced-motion settings', () => {
-  assert.doesNotMatch(app, /speakProudCue|SpeechSynthesisUtterance|speechSynthesis\\.speak/);
-  assert.match(app, /playFanfareSound\\(\\)/);
-  assert.match(css, /@media\\s*\\(prefers-reduced-motion:\\s*reduce\\)[\\s\\S]*?watercolor-guide-svg/s);
-  assert.match(css, /\\.watercolor-cloud-svg/);
-  assert.match(css, /\\.finale-watercolor-svg/);
+test('the spoken congratulatory cue is removed while the instrumental fanfare and reduced-motion support remain', () => {
+  assert.ok(!app.includes('speakProudCue'));
+  assert.ok(!app.includes('SpeechSynthesisUtterance'));
+  assert.ok(!app.includes('speechSynthesis.speak'));
+  assert.ok(app.includes('playFanfareSound();'));
+  assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'));
+  assert.ok(css.includes('.watercolor-guide-svg'));
+  assert.ok(css.includes('.watercolor-cloud-svg'));
+  assert.ok(css.includes('.finale-watercolor-svg'));
 });
 
 test('the new illustration module is part of the versioned offline application shell', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v29-watercolor-illustrations/);
-  assert.match(serviceWorker, /\\.\\/assets\\/watercolor-illustrations\\.js/);
+  assert.ok(serviceWorker.includes('faith-focus-shell-v29-watercolor-illustrations'));
+  assert.ok(serviceWorker.includes('./assets/watercolor-illustrations.js'));
 });
