@@ -15,12 +15,12 @@ let celebrationCanvas=null,celebrationContext=null,celebrationParticles=[],celeb
             const cx=Math.max(0,Math.min(1,Number(origin.x??.5)))*width;
             const cy=Math.max(0,Math.min(1,Number(origin.y??.6)))*height;
             const count=Math.max(0,Math.min(140,Number(options.particleCount)||30));
-            const colors=['#81c784','#ff80ab','#ffd54f','#64b5f6'];
+            const colors=['#9fbea0','#e9a8ae','#e9c879','#9fc8d6','#bda9d5'];
             for(let i=0;i<count&&celebrationParticles.length<180;i++){
                 const angle=-Math.PI/2+(Math.random()-.5)*(Math.PI*Math.min(1.8,(Number(options.spread)||50)/50));
                 const speed=2+Math.random()*3.2;
                 celebrationParticles.push({x:cx,y:cy,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed-1,
-                    color:colors[i%4],size:3+Math.random()*3,rotation:Math.random()*Math.PI,spin:(Math.random()-.5)*.16,life:1});
+                    color:colors[i%colors.length],shape:i%3,size:3+Math.random()*3,rotation:Math.random()*Math.PI,spin:(Math.random()-.5)*.16,life:1});
             }
             if(celebrationFrame===null)celebrationFrame=requestAnimationFrame(renderConfetti);
         }
@@ -33,7 +33,15 @@ let celebrationCanvas=null,celebrationContext=null,celebrationParticles=[],celeb
             for(const p of celebrationParticles){
                 p.x+=p.vx;p.y+=p.vy;p.vy+=.075;p.vx*=.993;p.rotation+=p.spin;p.life-=.018;
                 ctx.save();ctx.globalAlpha=Math.max(0,p.life);ctx.translate(p.x,p.y);ctx.rotate(p.rotation);
-                ctx.fillStyle=p.color;ctx.fillRect(-p.size/2,-p.size/2,p.size,p.size*.65);ctx.restore();
+                ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=3;
+                if(p.shape===0){
+                    ctx.beginPath();ctx.ellipse(0,0,p.size*.55,p.size*.9,0,0,Math.PI*2);ctx.fill();
+                }else if(p.shape===1){
+                    ctx.beginPath();ctx.moveTo(0,-p.size);ctx.bezierCurveTo(p.size*.9,-p.size*.35,p.size*.8,p.size*.75,0,p.size);ctx.bezierCurveTo(-p.size*.8,p.size*.75,-p.size*.9,-p.size*.35,0,-p.size);ctx.fill();
+                }else{
+                    ctx.beginPath();for(let point=0;point<8;point++){const radius=point%2===0?p.size:p.size*.32;const angle=(Math.PI/4)*point-Math.PI/2;const x=Math.cos(angle)*radius;const y=Math.sin(angle)*radius;if(point===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);}ctx.closePath();ctx.fill();
+                }
+                ctx.restore();
             }
             if(celebrationParticles.length)celebrationFrame=requestAnimationFrame(renderConfetti);
             else ctx.clearRect(0,0,w,h);
@@ -44,6 +52,7 @@ import {
     loadLocationCheckinEntries, saveLocationCheckin
 } from './location-checkin.js';
 import { GARDEN_STORAGE_KEY } from './garden-model.js';
+import { buildGuideIllustrationSvg, buildWatercolorCloudSvg } from './watercolor-illustrations.js';
 import { DAILY_RESET_MARKER_PREFIX, createDailyResetMarker } from './daily-reset.js';
 import {
     MAX_VOICE_NOTE_BYTES, MAX_VOICE_NOTE_DURATION_MS, VOICE_NOTE_TARGET_BITRATE,
@@ -306,66 +315,6 @@ import {
         }
 
 
-        function buildStretchingCartoon(mini = false) {
-            const label = 'Two people, a man and a woman, raising their arms overhead for a gentle stretch.';
-            return '<div class="stretch-demo-wrap'+(mini?' stretch-demo-preview':'')+'" role="img" aria-label="'+label+'">' +
-                '<svg class="stretch-demo-svg" viewBox="0 0 320 190" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
-                '<defs>' +
-                    '<linearGradient id="stretch-sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5fbff"/><stop offset="1" stop-color="#fff8ec"/></linearGradient>' +
-                    '<linearGradient id="stretch-man-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#76b9a7"/><stop offset="1" stop-color="#3f8778"/></linearGradient>' +
-                    '<linearGradient id="stretch-woman-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffb0a8"/><stop offset="1" stop-color="#e77e91"/></linearGradient>' +
-                '</defs>' +
-                '<rect x="4" y="4" width="312" height="180" rx="22" fill="url(#stretch-sky)"/>' +
-                '<circle class="stretch-demo-sun" cx="160" cy="26" r="11" fill="#f5cf72" opacity=".8"/>' +
-                '<path d="M145 26 H133 M187 26 H175 M160 11 V3 M160 49 V41 M148 14 L142 8 M178 44 L172 38 M148 38 L142 44 M178 8 L172 14" stroke="#e8bd58" stroke-width="2.5" stroke-linecap="round" opacity=".8"/>' +
-                '<path d="M23 166 Q160 158 297 166" fill="none" stroke="#d7e7dc" stroke-width="3" stroke-linecap="round"/>' +
-                '<ellipse cx="95" cy="168" rx="34" ry="5" fill="#a9c3b7" opacity=".3"/><ellipse cx="225" cy="168" rx="34" ry="5" fill="#a9c3b7" opacity=".3"/>' +
-
-                /* Man: short dark hair, teal top and navy trousers. */
-                '<g class="stretch-man">' +
-                    '<path d="M78 117 Q72 137 72 160 M106 117 Q112 137 116 160" fill="none" stroke="#344b63" stroke-width="12" stroke-linecap="round"/>' +
-                    '<path d="M58 161 Q71 155 81 162 Q84 168 69 170 Q56 171 58 161Z" fill="#f0be74" stroke="#b17e49" stroke-width="1.8"/>' +
-                    '<path d="M106 162 Q118 155 130 162 Q132 169 117 170 Q105 171 106 162Z" fill="#f0be74" stroke="#b17e49" stroke-width="1.8"/>' +
-                    '<g class="stretch-man-upper">' +
-                        '<path d="M84 59 Q95 55 106 59 L116 118 Q95 127 74 118 Z" fill="url(#stretch-man-shirt)" stroke="#3a756b" stroke-width="2.3" stroke-linejoin="round"/>' +
-                        '<path d="M88 64 Q95 70 102 64" fill="none" stroke="#d6f1e7" stroke-width="2" stroke-linecap="round"/>' +
-                        '<path d="M95 72 V116" stroke="#3e8276" stroke-width="2" opacity=".35"/>' +
-                        '<path d="M86 112 Q95 116 104 112" fill="none" stroke="#a8d8c9" stroke-width="2" opacity=".75"/>' +
-                        '<path d="M87 42 L87 59 M103 42 L103 59" stroke="#bd805f" stroke-width="6" stroke-linecap="round"/>' +
-                        '<circle cx="95" cy="37" r="16" fill="#d99b78" stroke="#a86e50" stroke-width="2"/>' +
-                        '<path d="M79 37 Q77 17 95 17 Q112 17 112 36 Q103 28 94 30 Q86 29 79 37Z" fill="#493a36" stroke="#302b2b" stroke-width="2" stroke-linejoin="round"/>' +
-                        '<path d="M86 39 Q88 41 90 39 M100 39 Q102 41 104 39" fill="none" stroke="#3b302c" stroke-width="2" stroke-linecap="round"/>' +
-                        '<path d="M91 48 Q95 51 100 48" fill="none" stroke="#864e45" stroke-width="2" stroke-linecap="round"/>' +
-                    '</g>' +
-                    '<g class="stretch-arm stretch-man-left"><path d="M80 75 Q66 84 60 105" fill="none" stroke="#d99b78" stroke-width="10" stroke-linecap="round"/><circle cx="60" cy="106" r="5.5" fill="#d99b78" stroke="#a86e50" stroke-width="1.5"/></g>' +
-                    '<g class="stretch-arm stretch-man-right"><path d="M110 75 Q124 84 130 105" fill="none" stroke="#d99b78" stroke-width="10" stroke-linecap="round"/><circle cx="130" cy="106" r="5.5" fill="#d99b78" stroke="#a86e50" stroke-width="1.5"/></g>' +
-                '</g>' +
-
-                /* Woman: long dark hair, coral top and plum leggings. */
-                '<g class="stretch-woman">' +
-                    '<path d="M208 117 Q202 137 199 160 M238 117 Q244 137 248 160" fill="none" stroke="#58445f" stroke-width="12" stroke-linecap="round"/>' +
-                    '<path d="M184 161 Q197 155 207 162 Q210 168 195 170 Q182 171 184 161Z" fill="#f0be74" stroke="#b17e49" stroke-width="1.8"/>' +
-                    '<path d="M238 162 Q250 155 262 162 Q264 169 249 170 Q237 171 238 162Z" fill="#f0be74" stroke="#b17e49" stroke-width="1.8"/>' +
-                    '<g class="stretch-woman-upper">' +
-                        '<path d="M214 59 Q225 55 236 59 L246 118 Q225 127 204 118 Z" fill="url(#stretch-woman-shirt)" stroke="#bd6477" stroke-width="2.3" stroke-linejoin="round"/>' +
-                        '<path d="M218 65 Q225 71 232 65" fill="none" stroke="#ffe4df" stroke-width="2" stroke-linecap="round"/>' +
-                        '<path d="M225 72 V116" stroke="#bd6477" stroke-width="2" opacity=".3"/>' +
-                        '<path d="M216 112 Q225 116 234 112" fill="none" stroke="#ffe2df" stroke-width="2" opacity=".75"/>' +
-                        '<path d="M217 42 L217 59 M233 42 L233 59" stroke="#d99b78" stroke-width="6" stroke-linecap="round"/>' +
-                        '<path d="M208 38 Q205 13 226 13 Q246 14 243 42 L243 65 Q238 75 234 61 L237 39 Q226 28 216 39 L216 62 Q209 70 205 59Z" fill="#493a36" stroke="#302b2b" stroke-width="2" stroke-linejoin="round"/>' +
-                        '<circle cx="225" cy="37" r="16" fill="#d99b78" stroke="#a86e50" stroke-width="2"/>' +
-                        '<path d="M209 36 Q208 19 225 19 Q242 19 241 36 Q231 27 223 30 Q215 29 209 36Z" fill="#493a36"/>' +
-                        '<ellipse cx="219" cy="38" rx="1.8" ry="2.5" fill="#3b302c"/><ellipse cx="231" cy="38" rx="1.8" ry="2.5" fill="#3b302c"/>' +
-                        '<path d="M220 48 Q225 52 230 48" fill="none" stroke="#864e45" stroke-width="2" stroke-linecap="round"/>' +
-                        '<circle cx="211" cy="46" r="3" fill="#ee9b9b" opacity=".65"/><circle cx="239" cy="46" r="3" fill="#ee9b9b" opacity=".65"/>' +
-                    '</g>' +
-                    '<g class="stretch-arm stretch-woman-left"><path d="M210 75 Q196 84 190 105" fill="none" stroke="#d99b78" stroke-width="10" stroke-linecap="round"/><circle cx="190" cy="106" r="5.5" fill="#d99b78" stroke="#a86e50" stroke-width="1.5"/></g>' +
-                    '<g class="stretch-arm stretch-woman-right"><path d="M240 75 Q254 84 260 105" fill="none" stroke="#d99b78" stroke-width="10" stroke-linecap="round"/><circle cx="260" cy="106" r="5.5" fill="#d99b78" stroke="#a86e50" stroke-width="1.5"/></g>' +
-                '</g>' +
-                '<g fill="#7aa99a" opacity=".8"><path d="M35 135 Q43 119 51 135 Q43 132 35 135Z"/><path d="M272 135 Q280 119 288 135 Q280 132 272 135Z"/></g>' +
-                '</svg></div>';
-        }
-
         function openModal(type, checkboxId) {
             stopBreathingTimer();
             activeModalType = type;
@@ -394,9 +343,9 @@ import {
                 const gallery = document.createElement('div');
                 gallery.className = 'cloud-intro-gallery';
                 const cloudItems = [
-                    { className: 'cloud-intro-item cloud-cumulus', art: '☁️', label: 'Cumulus' },
-                    { className: 'cloud-intro-item cloud-stratus', art: '🌫️', label: 'Stratus' },
-                    { className: 'cloud-intro-item cloud-stratocumulus', art: '🌥️', rain: '💧💧', label: 'Stratocumulus' }
+                    { className: 'cloud-intro-item cloud-cumulus', kind: 'cumulus', label: 'Cumulus' },
+                    { className: 'cloud-intro-item cloud-stratus', kind: 'stratus', label: 'Stratus' },
+                    { className: 'cloud-intro-item cloud-stratocumulus', kind: 'stratocumulus', label: 'Stratocumulus' }
                 ];
                 cloudItems.forEach(item => {
                     const card = document.createElement('div');
@@ -404,13 +353,7 @@ import {
                     const art = document.createElement('span');
                     art.className = 'cloud-art';
                     art.setAttribute('aria-hidden', 'true');
-                    art.textContent = item.art;
-                    if (item.rain) {
-                        const rain = document.createElement('span');
-                        rain.className = 'cloud-rain';
-                        rain.textContent = item.rain;
-                        art.append(rain);
-                    }
+                    art.innerHTML = buildWatercolorCloudSvg(item.kind);
                     const label = document.createElement('span');
                     label.textContent = item.label;
                     card.append(art, label);
@@ -439,35 +382,17 @@ import {
                     node.textContent = text;
                     breathingPanel.append(node);
                 });
-                target.append(breathingPanel);
+                const illustration = document.createElement('div');
+                illustration.className = 'watercolor-guide-stage watercolor-guide-stage--breathing';
+                illustration.innerHTML = buildGuideIllustrationSvg(checkboxId);
+                target.append(illustration, breathingPanel);
                 instructions.textContent = guide.line;
                 button.textContent = 'Start 5 breathing cycles';
             } else {
-                let motionClass = '';
-                if (guide.drink) motionClass = 'drinking';
-                else if (['start-3','mid-1'].includes(checkboxId)) motionClass = 'stretching';
-                else if (['start-2','sleep-4'].includes(checkboxId)) motionClass = 'praying';
-                else if (['start-1','end-1','sleep-1','sleep-2'].includes(checkboxId)) motionClass = 'thinking';
-                else if (['end-2'].includes(checkboxId)) motionClass = 'writing';
-                else if (['mid-5','cloud-checked'].includes(checkboxId)) motionClass = 'floating';
-                else if (['end-4'].includes(checkboxId)) motionClass = 'boop';
-                else if (['sleep-3'].includes(checkboxId)) motionClass = 'thinking';
-                const propMotion = ['end-2'].includes(checkboxId) ? 'writing' : (['mid-5','cloud-checked'].includes(checkboxId) ? 'floating' : (checkboxId === 'sleep-3' ? 'screen-away' : ''));
-                if (['start-3','mid-1'].includes(checkboxId)) {
-                    // This is a fixed, developer-authored SVG illustration; no user text is parsed as markup.
-                    target.innerHTML = buildStretchingCartoon(false);
-                } else {
-                    const scene = document.createElement('div');
-                    scene.className = 'guide-scene';
-                    const person = document.createElement('span');
-                    person.className = 'guide-person ' + motionClass;
-                    person.textContent = String(guide.person || '');
-                    const prop = document.createElement('span');
-                    prop.className = 'guide-prop ' + (guide.drink ? 'guide-cup ' : '') + propMotion;
-                    prop.textContent = String(guide.prop || '');
-                    scene.append(person, prop);
-                    target.append(scene);
-                }
+                const illustration = document.createElement('div');
+                illustration.className = 'watercolor-guide-stage';
+                illustration.innerHTML = buildGuideIllustrationSvg(checkboxId);
+                target.append(illustration);
                 const speech = document.createElement('div');
                 speech.className = 'guide-speech';
                 speech.id = 'guide-speech';
@@ -663,15 +588,6 @@ import {
             updateCloudProgress();
             saveData();
             updateEcosystemTree({trunk:true});
-        }
-
-        function speakProudCue() {
-            if ('speechSynthesis' in window) {
-                const utterance = new SpeechSynthesisUtterance("I am so proud of you!");
-                utterance.pitch = 1.2;
-                utterance.rate = 0.95;
-                window.speechSynthesis.speak(utterance);
-            }
         }
 
         function playPopSound() {
@@ -1987,7 +1903,6 @@ import {
 
                 trophyBanner.classList.remove('hidden');
                 playFanfareSound();
-                setTimeout(speakProudCue, 400);
                 confetti({ particleCount: 120, spread: 90, origin: { y: 0.3 } });
 
                 grandFinale.classList.remove('hidden');

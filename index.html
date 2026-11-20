@@ -788,17 +788,17 @@
                         <span class="font-bold text-sky-900">Low-Level (Raw Emotions):</span>
                         <div class="mt-2 space-y-2">
                             <button type="button" data-cloud="cumulus" aria-pressed="false" data-action="releaseCloud" class="cloud-item cloud-cumulus">
-                                <span class="cloud-art" aria-hidden="true">☁️</span>
+                                <span class="cloud-art" aria-hidden="true"><svg class="watercolor-cloud-svg watercolor-cloud-cumulus" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg" focusable="false"><ellipse cx="51" cy="55" rx="38" ry="8" fill="#9bb9bc" opacity=".12"/><g class="wcc-cloud wcc-cumulus"><path d="M18 48 C10 44 12 31 23 29 C26 16 43 13 51 24 C62 14 79 21 79 34 C94 35 96 51 85 56 H27 C22 56 19 53 18 48Z" fill="#f7fcfc" stroke="#9cbec2" stroke-width="2.6" stroke-linejoin="round"/><path d="M24 38 Q43 29 57 38 Q72 44 85 36" fill="none" stroke="#d6e8e5" stroke-width="3" stroke-linecap="round"/><path d="M33 28 Q44 20 53 29" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></g></svg></span>
                                 <span class="cloud-copy"><strong>Cumulus:</strong> Okay, just vibing. A soft, fluffy passing feeling.</span>
                                 <span class="cloud-status">Tap to release</span>
                             </button>
                             <button type="button" data-cloud="stratus" aria-pressed="false" data-action="releaseCloud" class="cloud-item cloud-stratus">
-                                <span class="cloud-art" aria-hidden="true">🌫️</span>
+                                <span class="cloud-art" aria-hidden="true"><svg class="watercolor-cloud-svg watercolor-cloud-stratus" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg" focusable="false"><ellipse cx="51" cy="55" rx="38" ry="8" fill="#9bb9bc" opacity=".12"/><g class="wcc-cloud wcc-stratus"><path d="M12 33 Q30 22 49 29 Q69 22 89 34 Q94 43 86 48 Q55 54 18 47 Q8 43 12 33Z" fill="#e3e9ee" stroke="#a6b4c0" stroke-width="2.4" stroke-linejoin="round"/><path d="M18 38 Q43 32 65 38 Q79 41 88 38 M24 44 Q52 39 79 44" fill="none" stroke="#fbfbf8" stroke-width="2.2" stroke-linecap="round" opacity=".85"/><path d="M20 29 Q42 23 62 29" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/></g></svg></span>
                                 <span class="cloud-copy"><strong>Stratus:</strong> Feeling emotionally flat or grey. Just notice it gently.</span>
                                 <span class="cloud-status">Tap to release</span>
                             </button>
                             <button type="button" data-cloud="stratocumulus" aria-pressed="false" data-action="releaseCloud" class="cloud-item cloud-stratocumulus">
-                                <span class="cloud-art" aria-hidden="true">🌥️<span class="cloud-rain">💧💧</span></span>
+                                <span class="cloud-art" aria-hidden="true"><svg class="watercolor-cloud-svg watercolor-cloud-stratocumulus" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg" focusable="false"><ellipse cx="51" cy="55" rx="38" ry="8" fill="#9bb9bc" opacity=".12"/><g class="wcc-cloud wcc-stratocumulus"><path d="M13 46 C7 39 12 29 23 28 C26 16 41 15 49 26 C60 18 75 22 77 34 C91 32 96 45 87 53 H23 C18 53 15 51 13 46Z" fill="#edf4f4" stroke="#9db7c0" stroke-width="2.5" stroke-linejoin="round"/><path d="M21 39 Q42 32 58 40 Q72 44 86 37" fill="none" stroke="#c9dfe0" stroke-width="3" stroke-linecap="round"/><path class="wcc-raindrop" d="M33 57 C28 64 29 68 34 70 C39 68 39 64 33 57Z" fill="#87bdca"/><path class="wcc-raindrop wcc-raindrop--two" d="M56 57 C51 64 52 68 57 70 C62 68 62 64 56 57Z" fill="#87bdca"/><path class="wcc-raindrop wcc-raindrop--three" d="M77 56 C72 63 73 67 78 69 C83 67 83 63 77 56Z" fill="#87bdca"/></g></svg></span>
                                 <span class="cloud-copy"><strong>Stratocumulus:</strong> Low-energy droplets. Acknowledge the heaviness without judgment.</span>
                                 <span class="cloud-status">Tap to release</span>
                             </button>
@@ -919,11 +919,67 @@
     <!-- 🏆 GRAND FINALE CONGRATULATORY OVERLAY -->
     <div id="grand-finale-overlay" class="fixed inset-0 bg-amber-950/80 backdrop-blur-md z-50 hidden flex flex-col items-center justify-start p-3 sm:p-4 text-center text-white" role="dialog" aria-modal="true" aria-labelledby="finale-heading">
         <div class="finale-content flex flex-col items-center gap-3 w-full max-w-3xl mx-auto py-3">
-            <div class="animate-bounce text-5xl sm:text-6xl" aria-hidden="true">🎉✨</div>
+            <div class="finale-watercolor-stage" role="img" aria-label="A hand-painted shield of daily armor surrounded by leaves, blossoms, and golden light">
+                <svg class="finale-watercolor-svg" viewBox="0 0 360 184" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                    <title>A shield of faith, hope, and daily courage</title>
+                    <defs>
+                        <radialGradient id="finale-shield-wash" cx="50%" cy="48%" r="58%"><stop offset="0" stop-color="#fff8df" stop-opacity=".95"/><stop offset="1" stop-color="#e3eadc" stop-opacity="0"/></radialGradient>
+                        <linearGradient id="finale-shield-fill" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#e4eee0"/><stop offset=".52" stop-color="#b8d2c0"/><stop offset="1" stop-color="#8eafa1"/></linearGradient>
+                        <linearGradient id="finale-shield-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fae8ad"/><stop offset="1" stop-color="#c99a55"/></linearGradient>
+                    </defs>
+                    <ellipse cx="180" cy="94" rx="164" ry="81" fill="url(#finale-shield-wash)"/>
+                    <g class="finale-rays" stroke="#e6c879" stroke-width="2.2" stroke-linecap="round" opacity=".66">
+                        <path d="M180 9 V24 M126 22 L135 36 M234 22 L225 36 M85 56 L104 64 M275 56 L256 64 M69 111 L97 109 M291 111 L263 109"/>
+                    </g>
+                    <g class="finale-laurel finale-laurel--left" fill="#9fbd97" stroke="#6f9878" stroke-width="1.4">
+                        <path d="M124 151 Q89 126 78 82 Q74 52 92 34" fill="none" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M99 113 Q76 111 70 95 Q91 91 99 113Z"/><path d="M91 90 Q67 81 68 64 Q90 68 91 90Z"/>
+                        <path d="M89 67 Q81 44 96 34 Q108 55 89 67Z"/><path d="M111 135 Q91 137 83 123 Q102 115 111 135Z"/>
+                    </g>
+                    <g class="finale-laurel finale-laurel--right" fill="#a9c6a2" stroke="#729778" stroke-width="1.4">
+                        <path d="M236 151 Q271 126 282 82 Q286 52 268 34" fill="none" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M261 113 Q284 111 290 95 Q269 91 261 113Z"/><path d="M269 90 Q293 81 292 64 Q270 68 269 90Z"/>
+                        <path d="M271 67 Q279 44 264 34 Q252 55 271 67Z"/><path d="M249 135 Q269 137 277 123 Q258 115 249 135Z"/>
+                    </g>
+                    <path class="finale-shield" d="M180 31 C204 31 220 41 237 45 L233 105 C230 137 207 157 180 171 C153 157 130 137 127 105 L123 45 C140 41 156 31 180 31Z" fill="url(#finale-shield-fill)" stroke="url(#finale-shield-gold)" stroke-width="6" stroke-linejoin="round"/>
+                    <path d="M180 43 C200 43 214 51 225 54 L222 103 C219 128 201 145 180 157 C159 145 141 128 138 103 L135 54 C146 51 160 43 180 43Z" fill="none" stroke="#fff8df" stroke-width="2.2" opacity=".9"/>
+                    <g class="finale-shield-flower">
+                        <path d="M180 124 Q178 104 180 88" fill="none" stroke="#668e70" stroke-width="3" stroke-linecap="round"/>
+                        <path d="M180 112 Q160 97 153 106 Q164 122 180 112Z M180 105 Q197 88 207 98 Q198 113 180 105Z" fill="#8fb88d" stroke="#668e70" stroke-width="1.5"/>
+                        <g fill="#f1c5b4" stroke="#d99c91" stroke-width="1.4">
+                            <ellipse cx="180" cy="77" rx="8" ry="15"/><ellipse cx="180" cy="77" rx="8" ry="15" transform="rotate(72 180 84)"/>
+                            <ellipse cx="180" cy="77" rx="8" ry="15" transform="rotate(144 180 84)"/><ellipse cx="180" cy="77" rx="8" ry="15" transform="rotate(216 180 84)"/>
+                            <ellipse cx="180" cy="77" rx="8" ry="15" transform="rotate(288 180 84)"/>
+                        </g>
+                        <circle cx="180" cy="84" r="6" fill="#d7ad61"/>
+                    </g>
+                    <g class="finale-sparkles" fill="#e8c77a">
+                        <path d="M42 54 L47 43 L52 54 L63 59 L52 64 L47 75 L42 64 L31 59Z"/>
+                        <path d="M302 51 L306 42 L310 51 L319 55 L310 59 L306 68 L302 59 L293 55Z"/>
+                        <circle cx="105" cy="39" r="3.5"/><circle cx="257" cy="39" r="3.5"/><circle cx="78" cy="139" r="3"/><circle cx="282" cy="140" r="3"/>
+                    </g>
+                </svg>
+            </div>
             <h1 id="finale-heading" class="text-2xl sm:text-3xl font-bold handwriting">Your Daily Armor Is Complete!</h1>
             <div id="trophy-banner" class="finale-trophy-banner hidden" role="status" aria-live="polite">
             <div class="bg-gradient-to-r from-yellow-200 via-amber-100 to-yellow-200 border-4 border-amber-400 p-3 sm:p-4 rounded-3xl text-center shadow-lg">
-                <div class="text-5xl animate-bounce">🏆✨</div>
+                <div class="finale-trophy-art" role="img" aria-label="A watercolor golden trophy framed by small leaves and blossoms">
+                    <svg class="finale-trophy-svg" viewBox="0 0 180 104" xmlns="http://www.w3.org/2000/svg" focusable="false">
+                        <title>A little trophy for today's progress</title>
+                        <defs><linearGradient id="finale-cup-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f8e7a7"/><stop offset=".58" stop-color="#e4bd6c"/><stop offset="1" stop-color="#bd8d4e"/></linearGradient></defs>
+                        <g class="finale-trophy-leaves" fill="#9fbd97" stroke="#789b7b" stroke-width="1.2">
+                            <path d="M45 83 Q19 62 24 31 Q40 44 45 83Z"/><path d="M42 65 Q20 65 14 49 Q33 43 42 65Z"/>
+                            <path d="M135 83 Q161 62 156 31 Q140 44 135 83Z"/><path d="M138 65 Q160 65 166 49 Q147 43 138 65Z"/>
+                        </g>
+                        <path class="finale-trophy-cup" d="M58 22 H122 V42 C122 61 108 73 90 75 C72 73 58 61 58 42Z" fill="url(#finale-cup-gold)" stroke="#b68b4f" stroke-width="2.5" stroke-linejoin="round"/>
+                        <path d="M58 29 H43 C42 48 49 58 68 59 M122 29 H137 C138 48 131 58 112 59" fill="none" stroke="#c49a59" stroke-width="7" stroke-linecap="round"/>
+                        <path d="M90 74 V88 M72 89 H108" fill="none" stroke="#a87f4d" stroke-width="6" stroke-linecap="round"/>
+                        <path d="M74 88 Q90 83 106 88 L111 96 H69Z" fill="#d6b16c" stroke="#a87f4d" stroke-width="2"/>
+                        <path d="M82 39 L90 31 L98 39 L90 47Z" fill="#fff5d2" opacity=".9"/>
+                        <g fill="#e6b2a9"><circle cx="42" cy="23" r="4"/><circle cx="138" cy="23" r="4"/></g>
+                        <g fill="#e5c477"><path d="M24 14 L27 7 L30 14 L37 17 L30 20 L27 27 L24 20 L17 17Z"/><path d="M150 16 L153 9 L156 16 L163 19 L156 22 L153 29 L150 22 L143 19Z"/></g>
+                    </svg>
+                </div>
                 <h2 class="text-xl sm:text-2xl font-bold text-amber-900 handwriting mt-1">All 6 Cards Completed!</h2>
                 <p class="text-xs sm:text-sm text-amber-800 font-semibold mt-1">"I am so proud of you!" You earned <strong>+100 Daily Confidence Points</strong> today! 💯</p>
             </div>
