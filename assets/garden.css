@@ -982,7 +982,7 @@ input[type="reset"] {
     box-shadow: 0 3px 12px rgba(71, 84, 62, .065);
 }
 .garden-checklist-scene .checklist-header-button,
-.garden-checklist-scene .guide-launch {
+.garden-checklist-scene .guide-quote-launch {
     min-height: 44px;
 }
 .garden-checklist-scene .checklist-date-input {
