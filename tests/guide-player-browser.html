@@ -22,6 +22,7 @@
   <script type="module">
     import { GUIDE_ILLUSTRATION_IDS, buildGuideIllustrationSvg } from '../assets/watercolor-illustrations.js';
     import { createWatercolorGuidePlayer } from '../assets/guide-player.js';
+    import { getGuideStoryboard } from '../assets/storyboard-choreographer.js';
 
     const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const requireValue = (condition, message) => {
@@ -33,6 +34,7 @@
     };
 
     try {
+      const prefersReducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
       const hydrationStage = document.getElementById('hydration-stage');
       hydrationStage.innerHTML = buildGuideIllustrationSvg('start-4');
       const hydrationPlayer = createWatercolorGuidePlayer({
@@ -46,10 +48,17 @@
       const hydrationStyle = getComputedStyle(drinkingArm);
 
       requireValue(hydrationStage.dataset.playbackMode === 'finite', 'Hydration mode was not finite.');
-      requireValue(hydrationStyle.animationName === 'wgi-story-start-4-rightArm', 'Hydration arm keyframes are not active.');
-      requireValue(hydrationStyle.animationIterationCount === '1', 'Hydration did not use one finite demonstration.');
-      requireValue(hydrationStyle.animationPlayState === 'running', 'Hydration animation was paused before completion.');
-      requireValue(hydrationStartTransform !== hydrationEndTransform, 'Hydration character did not visibly move in Chromium.');
+      requireValue(prefersReducedMotion
+        ? hydrationStyle.animationName === 'none'
+        : hydrationStyle.animationName === 'wgi-story-start-4-rightArm',
+        'Hydration animation did not respect the motion preference.');
+      if (!prefersReducedMotion) {
+        requireValue(hydrationStyle.animationIterationCount === '1', 'Hydration did not use one finite demonstration.');
+        requireValue(hydrationStyle.animationPlayState === 'running', 'Hydration animation was paused before completion.');
+        requireValue(hydrationStartTransform !== hydrationEndTransform, 'Hydration character did not visibly move in Chromium.');
+      } else {
+        requireValue(hydrationStartTransform === hydrationEndTransform, 'Hydration moved despite reduced motion being requested.');
+      }
 
       const breathingStage = document.getElementById('breathing-stage');
       breathingStage.innerHTML = buildGuideIllustrationSvg('mid-2');
@@ -64,12 +73,17 @@
       const inhaleScale = scaleFromMatrix(getComputedStyle(breathRing).transform);
       const inhaleTransition = getComputedStyle(breathRing).transitionDuration;
       requireValue(breathRing.ownerSVGElement.dataset.breathPhase === 'inhale', 'Breathing phase did not reach the SVG.');
-      requireValue(inhaleTransition.includes('4s'), 'Breathing inhale did not use the four-second transition.');
+      requireValue(prefersReducedMotion ? inhaleTransition === '0s' : inhaleTransition.includes('4s'),
+        'Breathing inhale transition did not respect the motion preference.');
       requireValue(Number.isFinite(inhaleScale) && inhaleScale > restingScale, 'Breathing ring did not expand on inhale.');
       requireValue(breathingPlayer.setBreathingPhase('hold'), 'Breathing hold phase was rejected.');
-      requireValue(getComputedStyle(breathRing).transitionDuration.includes('2s'), 'Breathing hold did not use the two-second transition.');
+      const holdTransition = getComputedStyle(breathRing).transitionDuration;
+      requireValue(prefersReducedMotion ? holdTransition === '0s' : holdTransition.includes('2s'),
+        'Breathing hold transition did not respect the motion preference.');
       requireValue(breathingPlayer.setBreathingPhase('exhale'), 'Breathing exhale phase was rejected.');
-      requireValue(getComputedStyle(breathRing).transitionDuration.includes('6s'), 'Breathing exhale did not use the six-second transition.');
+      const exhaleTransition = getComputedStyle(breathRing).transitionDuration;
+      requireValue(prefersReducedMotion ? exhaleTransition === '0s' : exhaleTransition.includes('6s'),
+        'Breathing exhale transition did not respect the motion preference.');
 
       const cloudStage = document.getElementById('cloud-stage');
       cloudStage.innerHTML = buildGuideIllustrationSvg('cloud-checked');
@@ -99,12 +113,14 @@
 
       const allGuides = document.getElementById('all-guides');
       const actionAnimations = [];
-      GUIDE_ILLUSTRATION_IDS.forEach((id) => {
+      const storyboardMotionChanges = [];
+      for (const id of GUIDE_ILLUSTRATION_IDS) {
         const stage = document.createElement('div');
         stage.className = 'watercolor-guide-stage';
         stage.innerHTML = buildGuideIllustrationSvg(id);
         allGuides.append(stage);
         const svg = stage.querySelector('.watercolor-guide-svg');
+        const storyboard = getGuideStoryboard(id);
         requireValue(svg.dataset.guideId === id, 'Guide ID metadata did not match ' + id + '.');
         requireValue(Boolean(svg.dataset.setting && svg.dataset.camera && svg.dataset.propKind),
           'Storyboard metadata is incomplete for ' + id + '.');
@@ -117,21 +133,51 @@
           : svg.querySelector('[data-primary-motion="true"]');
         requireValue(Boolean(primaryPart), 'Missing articulated primary motion target for ' + id + '.');
         const animationName = getComputedStyle(primaryPart).animationName;
+        if (prefersReducedMotion) {
+          requireValue(animationName === 'none', 'Action animation remained active under reduced motion for ' + id + '.');
+          actionAnimations.push(animationName);
+          continue;
+        }
+
         requireValue(animationName.startsWith('wgi-story-' + id + '-'),
           'Action-specific keyframe did not load for ' + id + ': ' + animationName);
+        const animation = primaryPart.getAnimations().find((item) => item.animationName === animationName);
+        requireValue(Boolean(animation), 'Missing browser animation object for ' + id + '.');
+        animation.pause();
+        await animation.ready;
+        const duration = animation.effect?.getTiming().duration;
+        requireValue(Number.isFinite(duration) && duration > 0, 'Invalid browser animation duration for ' + id + '.');
+        const movementFrame = storyboard.motion[storyboard.primaryPart]?.find(([, x, y, rotation, scale]) =>
+          x !== 0 || y !== 0 || rotation !== 0 || scale !== 1);
+        requireValue(Boolean(movementFrame), 'Missing authored non-rest frame for ' + id + '.');
+        animation.currentTime = 0;
+        const restingTransform = getComputedStyle(primaryPart).transform;
+        animation.currentTime = duration * movementFrame[0] / 100;
+        const actionTransform = getComputedStyle(primaryPart).transform;
+        requireValue(actionTransform !== restingTransform,
+          'Primary rig part did not apply its authored motion frame for ' + id + '.');
         actionAnimations.push(animationName);
-      });
+        storyboardMotionChanges.push(id);
+      }
       requireValue(GUIDE_ILLUSTRATION_IDS.length === 23, 'The browser fixture did not cover 23 guide IDs.');
-      requireValue(actionAnimations.length === 22, 'The 22 non-timer storyboards were not animated.');
-      requireValue(new Set(actionAnimations).size === 22, 'Two different guide IDs share a primary motion sequence.');
+      requireValue(actionAnimations.length === 22, 'The 22 non-timer storyboards were not accounted for.');
+      if (prefersReducedMotion) {
+        requireValue(actionAnimations.every((name) => name === 'none'), 'Reduced motion left a storyboard animation active.');
+        requireValue(storyboardMotionChanges.length === 0, 'A storyboard motion was sampled while reduced motion was active.');
+      } else {
+        requireValue(new Set(actionAnimations).size === 22, 'Two different guide IDs share a primary motion sequence.');
+        requireValue(storyboardMotionChanges.length === 22, 'Not every storyboard primary part visibly applied its authored motion.');
+      }
 
       hydrationPlayer.destroy();
       breathingPlayer.destroy();
       cloudPlayer.destroy();
       window.__guidePlayerBrowserResult = {
         ready: true,
+        prefersReducedMotion,
         hydrationAnimation: hydrationStyle.animationName,
         storyboardAnimations: actionAnimations,
+        storyboardMotionVerified: storyboardMotionChanges.length,
         storyboardCount: GUIDE_ILLUSTRATION_IDS.length,
         hydrationMoved: hydrationStartTransform !== hydrationEndTransform,
         breathingScales: { resting: restingScale, inhale: inhaleScale },
