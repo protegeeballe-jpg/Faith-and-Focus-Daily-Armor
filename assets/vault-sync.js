@@ -570,7 +570,8 @@ function installLocalStorageHooks() {
 
   const wrappedSetItem = function (key, value) {
     const result = originalSetItem.call(this, key, value);
-    if (this === window.localStorage && !applyingRemotePacket && !window.__faithFocusVaultMigration) {
+    if (this === window.localStorage && !applyingRemotePacket
+        && !window.__faithFocusVaultMigration && !window.__faithFocusVaultBatchWrite) {
       const dateString = dateFromDailyKey(String(key));
       if (dateString) scheduleCapture(dateString);
       else if (key === GARDEN_STORAGE_KEY || key === 'user_confidence_score') scheduleCapture();
@@ -582,7 +583,8 @@ function installLocalStorageHooks() {
 
   const wrappedRemoveItem = function (key) {
     const result = originalRemoveItem.call(this, key);
-    if (this === window.localStorage && !applyingRemotePacket) {
+    if (this === window.localStorage && !applyingRemotePacket
+        && !window.__faithFocusVaultBatchWrite) {
       const dateString = dateFromDailyKey(String(key));
       if (dateString) scheduleCapture(dateString);
       else if (key === GARDEN_STORAGE_KEY || key === 'user_confidence_score') scheduleCapture();
@@ -898,9 +900,17 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
   return false;
 }
 
-function synchronizeVault() {
+export function selectVaultReconciliationDates(remoteIndex, requestedDateStrings = [], refreshAll = false) {
+  if (refreshAll) {
+    return Object.keys(remoteIndex || {}).filter(isValidDateString).sort();
+  }
+  return [...new Set((Array.isArray(requestedDateStrings) ? requestedDateStrings : [])
+    .filter(isValidDateString))].sort();
+}
+
+function synchronizeVault(options = { refreshAll: true }) {
   if (!activeVault || activeVault.offlineOnly === true) return Promise.resolve();
-  const operation = syncQueue.catch(() => {}).then(() => performVaultSync());
+  const operation = syncQueue.catch(() => {}).then(() => performVaultSync(options));
   syncQueue = operation.catch(() => {});
   return operation;
 }
@@ -945,7 +955,8 @@ function queueVaultSync({ dateString = null, refreshAll = false, immediate = fal
       }
 
       if (!isCurrent()) return;
-      await synchronizeVault();
+      status('Synchronizing the latest encrypted notes and voice recordings…', 'info');
+      await synchronizeVault({ dateStrings: dates, refreshAll: shouldRefreshAll });
     });
 
     localChangeSyncQueue = operation.catch(error => {
@@ -963,30 +974,45 @@ function queueVaultSync({ dateString = null, refreshAll = false, immediate = fal
   }, delay);
 }
 
-async function performVaultSync() {
+async function performVaultSync({ dateStrings = [], refreshAll = false } = {}) {
   if (!activeVault || activeVault.offlineOnly === true) return;
   try {
     status('Checking your encrypted vault…');
     const index = await fetchRemoteIndex();
     const remoteDates = Object.keys(index).filter(isValidDateString).sort();
-    console.log('[Vault Sync] Shared index received:', { vaultId: activeVault.vaultId, key: activeVault.vaultId + ':index', remoteDateCount: remoteDates.length, remoteDates });
+    const reconciliationDates = selectVaultReconciliationDates(index, dateStrings, refreshAll);
+    console.log('[Vault Sync] Shared index received:', {
+      vaultId: activeVault.vaultId,
+      key: activeVault.vaultId + ':index',
+      remoteDateCount: remoteDates.length,
+      reconciliationDateCount: reconciliationDates.length,
+      refreshAll,
+      reconciliationDates
+    });
     let restored = 0;
 
-    for (const dateString of remoteDates) {
+    // A normal Diary edit reconciles only its own date. Full-index reconciliation
+    // remains reserved for sign-in, reconnect, and guarded foreground refreshes.
+    for (const dateString of reconciliationDates) {
       const remoteUpdatedAt = typeof index[dateString] === 'string' ? index[dateString] : null;
       if (await reconcileDay(dateString, remoteUpdatedAt)) restored += 1;
     }
 
-    const localRecords = await listLocalDailyPackets();
-    for (const record of localRecords) {
-      if (!record.dirty || Object.hasOwn(index, record.dateString)) continue;
-      // Re-read the remote date before uploading. The index can change while
-      // this pass is running, so even dates absent from the initial index must
-      // go through the same guarded reconciliation path.
-      await reconcileDay(record.dateString, null);
+    if (refreshAll) {
+      const localRecords = await listLocalDailyPackets();
+      for (const record of localRecords) {
+        if (!record.dirty || Object.hasOwn(index, record.dateString)) continue;
+        // Re-read the remote date before uploading. The index can change while
+        // this pass is running, so even dates absent from the initial index must
+        // go through the same guarded reconciliation path.
+        await reconcileDay(record.dateString, null);
+      }
     }
 
-    const finalLocalRecords = await listLocalDailyPackets();
+    const finalLocalRecords = refreshAll
+      ? await listLocalDailyPackets()
+      : (await Promise.all(reconciliationDates.map(dateString => getLocalDailyPacket(dateString))))
+        .filter(Boolean);
     const pendingRecords = finalLocalRecords.filter(record => record.dirty);
     if (pendingRecords.length) {
       const pendingDates = pendingRecords.map(record => record.dateString).sort();
