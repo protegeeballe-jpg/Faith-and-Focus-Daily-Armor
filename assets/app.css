@@ -1453,14 +1453,14 @@ body {position:fixed;inset:0;min-width:0;min-height:0 !important;padding-bottom:
 }
 .watercolor-guide-stage[data-playback-state="complete"] .watercolor-guide-svg * { animation-play-state: paused; }
 .watercolor-guide-stage.guide-playback-paused .watercolor-guide-svg * { animation-play-state: paused !important; }
-.watercolor-guide-stage.guide-motion-static .watercolor-guide-svg *,
-.watercolor-guide-stage.guide-motion-static .watercolor-guide-svg {
+.watercolor-guide-stage.guide-motion-fallback .watercolor-guide-svg *,
+.watercolor-guide-stage.guide-motion-fallback .watercolor-guide-svg {
     animation: none !important;
     transition: none !important;
 }
-.watercolor-guide-stage.guide-motion-static .wgi-torso,
-.watercolor-guide-stage.guide-motion-static .wgi-head,
-.watercolor-guide-stage.guide-motion-static .wgi-arm { transform: none !important; }
+.watercolor-guide-stage.guide-motion-fallback .wgi-torso,
+.watercolor-guide-stage.guide-motion-fallback .wgi-head,
+.watercolor-guide-stage.guide-motion-fallback .wgi-arm { transform: none !important; }
 .watercolor-guide-stage--cloud .wgi-cloud {
     transform-box: view-box;
     transform-origin: 240px 90px;

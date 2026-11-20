@@ -85,7 +85,7 @@ export function createWatercolorGuidePlayer({ guideId, stage, modal = null, lowP
     const paused = !modalOpen || doc?.visibilityState === 'hidden' ||
       stage.isConnected === false || !inViewport;
 
-    stage.classList.toggle('guide-motion-static', staticFallback);
+    stage.classList.toggle('guide-motion-fallback', staticFallback);
     stage.classList.toggle('guide-playback-paused', !staticFallback && paused);
 
     if (staticFallback) stage.dataset.playbackState = 'static';

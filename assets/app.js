@@ -541,6 +541,7 @@ import {
         }
 
         function completeAnimation() {
+            activeModalGuidePlayer?.complete();
             const chk = activeTargetCheckboxId
                 ? (document.getElementById('chk-' + activeTargetCheckboxId) || document.querySelector('[data-id="' + activeTargetCheckboxId + '"]'))
                 : null;

@@ -66,7 +66,7 @@ test('the cloud character follows the selected cloud without taking over persist
 test('finite playback, reduced-motion behavior, paper stage, and offline caching are wired', () => {
   assert.match(css, /data-playback-mode="finite"/);
   assert.match(css, /animation-iteration-count:\s*1/);
-  assert.match(css, /guide-motion-static/);
+  assert.match(css, /guide-motion-fallback/);
   assert.match(css, /guide-playback-paused/);
   assert.match(css, /#faf6f0/i);
   assert.match(serviceWorker, /faith-focus-shell-v31-watercolor-player-lifecycle/);
