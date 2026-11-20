@@ -52,7 +52,10 @@ import {
     loadLocationCheckinEntries, saveLocationCheckin
 } from './location-checkin.js';
 import { GARDEN_STORAGE_KEY } from './garden-model.js';
-import { buildGuideIllustrationSvg, buildWatercolorCloudSvg } from './watercolor-illustrations.js';
+import {
+    buildGuideIllustrationSvg, buildWatercolorCloudSvg, buildVictoryCharacterSvg,
+    getBreathingAnimationPhase
+} from './watercolor-illustrations.js';
 import { DAILY_RESET_MARKER_PREFIX, createDailyResetMarker } from './daily-reset.js';
 import {
     MAX_VOICE_NOTE_BYTES, MAX_VOICE_NOTE_DURATION_MS, VOICE_NOTE_TARGET_BITRATE,
@@ -450,6 +453,8 @@ import {
                     if (breathingCycle > 5) {
                         stopBreathingTimer();
                         document.getElementById('breathing-phase').textContent = 'Amazing work!';
+                        const breathingCharacter = document.querySelector('#modal-animation-target .watercolor-guide-svg--breathe');
+                        if (breathingCharacter) breathingCharacter.dataset.breathPhase = getBreathingAnimationPhase('Complete');
                         document.getElementById('breathing-tip').textContent = 'Five gentle cycles complete. Take a normal, comfortable breath.';
                         document.getElementById('breathing-count').textContent = '5 / 5 cycles';
                         document.getElementById('breathing-clock').textContent = 'You did it!';
@@ -473,6 +478,8 @@ import {
             const phase = breathingPhases[breathingPhaseIndex];
             const phaseEl = document.getElementById('breathing-phase');
             if (!phaseEl) return;
+            const breathingCharacter = document.querySelector('#modal-animation-target .watercolor-guide-svg--breathe');
+            if (breathingCharacter) breathingCharacter.dataset.breathPhase = getBreathingAnimationPhase(phase.name);
             phaseEl.textContent = phase.name;
             document.getElementById('breathing-tip').textContent = phase.tip;
             document.getElementById('breathing-count').textContent = 'Cycle ' + breathingCycle + ' of 5';
@@ -1901,6 +1908,11 @@ import {
                 localStorage.setItem('user_confidence_score', currentScore + 100);
                 updateScoreDisplay();
 
+                const finaleCharacterStage = document.getElementById('finale-character-stage');
+                if (finaleCharacterStage) {
+                    finaleCharacterStage.replaceChildren();
+                    finaleCharacterStage.innerHTML = buildVictoryCharacterSvg();
+                }
                 trophyBanner.classList.remove('hidden');
                 playFanfareSound();
                 confetti({ particleCount: 120, spread: 90, origin: { y: 0.3 } });
