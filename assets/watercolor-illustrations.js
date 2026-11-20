@@ -121,8 +121,8 @@ export function buildGuideIllustrationSvg(id) {
     '<title>' + scene.title + '</title>' +
     '<defs>' +
       '<radialGradient id="wgi-wash" cx="49%" cy="45%" r="62%"><stop offset="0" stop-color="#fffdf2" stop-opacity=".96"/><stop offset=".72" stop-color="#e9eee2" stop-opacity=".55"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
-      '<linearGradient id="wgi-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
-      '<linearGradient id="wgi-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
+      '<linearGradient id="wgi-victory-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
+      '<linearGradient id="wgi-victory-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
       '<linearGradient id="wgi-gold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6df9f"/><stop offset="1" stop-color="#d5ad67"/></linearGradient>' +
     '</defs>' +
     '<ellipse cx="160" cy="93" rx="151" ry="83" fill="url(#wgi-wash)"/>' +
@@ -136,6 +136,9 @@ export function buildGuideIllustrationSvg(id) {
 }
 
 export function buildVictoryCharacterSvg() {
+  const character = characterMarkup("celebrate")
+    .replaceAll("url(#wgi-shirt)", "url(#wgi-victory-shirt)")
+    .replaceAll("url(#wgi-skin)", "url(#wgi-victory-skin)");
   return '<svg class="finale-character-svg" viewBox="0 0 320 190" role="img" aria-label="A joyful watercolor character celebrating with a bright smile and both arms raised" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
     '<title>A joyful little celebration</title>' +
     '<defs>' +
@@ -144,7 +147,7 @@ export function buildVictoryCharacterSvg() {
       '<linearGradient id="wgi-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
     '</defs>' +
     '<ellipse cx="160" cy="96" rx="133" ry="83" fill="url(#wgi-victory-wash)"/>' +
-    characterMarkup("celebrate") +
+    character +
     '<g class="finale-character-sparkles" fill="#e6c477"><path d="M72 62 L76 53 L80 62 L89 66 L80 70 L76 79 L72 70 L63 66Z"/><path d="M238 55 L242 46 L246 55 L255 59 L246 63 L242 72 L238 63 L229 59Z"/><circle cx="100" cy="108" r="2.6"/><circle cx="218" cy="107" r="2.6"/></g>' +
     '</svg>';
 }
