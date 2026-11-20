@@ -345,7 +345,7 @@ test('animal stickers are removed from checklist launchers while Show me animati
  const watercolor=readFileSync(new URL('../assets/watercolor-illustrations.js',import.meta.url),'utf8');
  assert.match(app,/buildGuideIllustrationSvg\(checkboxId\)/);
  assert.match(watercolor,/export function buildGuideIllustrationSvg/);
- assert.match(watercolor,/class="watercolor-guide-svg"/);
+ assert.match(watercolor,/class="watercolor-guide-svg watercolor-guide-svg--/);
  assert.doesNotMatch(app,/guide-person /);
  assert.doesNotMatch(app,/function buildStretchingCartoon/);
 });
@@ -868,7 +868,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v29-watercolor-illustrations/);
+ assert.match(serviceWorker,/faith-focus-shell-v30-expressive-watercolor-characters/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -929,7 +929,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v29-watercolor-illustrations/);
+ assert.match(serviceWorker,/faith-focus-shell-v30-expressive-watercolor-characters/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
