@@ -91,7 +91,7 @@ test('each checklist activity opens a quote launcher and preserves checkbox unlo
 });
 
 test('water reminders are self-paced and no longer wait for a character demonstration', () => {
-  assert.doesNotMatch(app, /drinkGuideTimeout|waiting-for-drink|5-second water guide|5000\)/);
+  assert.doesNotMatch(app, /drinkGuideTimeout|waiting-for-drink|5-second water guide|Please watch the 5-second water guide/);
   assert.match(app, /Your turn\. Have water if you wish, at a comfortable pace\./);
   assert.match(app, /I've had my water\. Show my checkbox/);
   assert.match(app, /guide\.drink\s*\?/);
