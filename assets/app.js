@@ -52,11 +52,7 @@ import {
     loadLocationCheckinEntries, saveLocationCheckin
 } from './location-checkin.js';
 import { GARDEN_STORAGE_KEY } from './garden-model.js';
-import {
-    buildGuideIllustrationSvg, buildWatercolorCloudSvg, buildVictoryCharacterSvg,
-    getBreathingAnimationPhase
-} from './watercolor-illustrations.js';
-import { createWatercolorGuidePlayer } from './guide-player.js';
+import { getGuideQuote } from './guide-quotes.js';
 import { DAILY_RESET_MARKER_PREFIX, createDailyResetMarker } from './daily-reset.js';
 import {
     MAX_VOICE_NOTE_BYTES, MAX_VOICE_NOTE_DURATION_MS, VOICE_NOTE_TARGET_BITRATE,
@@ -78,7 +74,6 @@ import {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         let currentStep = 1;
         let lastObservedDeviceDate = null;
-        let activeModalType = null;
         let activeTargetCheckboxId = null;
         let mediaRecorder, audioChunks = [];
         let activeVoiceNoteDate = null;
@@ -276,9 +271,6 @@ import {
 
 
         let breathingTimer = null;
-        let drinkGuideTimeout = null;
-        let activeModalGuidePlayer = null;
-        let cloudGuidePlayer = null;
         let activeModalAction = "complete";
         let breathingCycle = 0;
         let breathingPhaseIndex = 0;
@@ -297,10 +289,10 @@ import {
             "start-1":{title:"Three grateful things",line:"Let's find three small things to appreciate. They can be as simple as a safe moment, a kind word, or a warm drink.",person:"🧑",prop:"🌼",action:"Think of three things. You can jot them down mentally or in your own words."},
             "start-2":{title:"Prayer and intention",line:"Let's pause together. Set a kind intention for yourself and the people you care about. Take the moment in your own way.",person:"🧑",prop:"🙏",action:"Take a quiet moment for prayer or a positive intention."},
             "start-3":{title:"Gentle movement",line:"Let's loosen up. Roll your shoulders gently, stretch your arms, and move only within a comfortable range.",person:"🧑",prop:"🙆",action:"Try a few gentle stretches. Stop if anything hurts."},
-            "start-4":{title:"A little hydration",line:"I brought my glass! Watch me take a refreshing sip. Now it's your turn. Enjoy some water at a comfortable pace.",person:"👧",prop:"🥛",action:"Drink your water. No need to rush.",drink:true},
+            "start-4":{title:"A little hydration",line:"Take a moment to enjoy some water. Sip slowly and comfortably, then continue when you're ready.",person:"👧",prop:"🥛",action:"Drink your water. No need to rush.",drink:true},
             "mid-1":{title:"Posture and stretch",line:"Let's reset our posture. Unclench your jaw, relax your shoulders, sit or stand comfortably, then stretch gently.",person:"🧑",prop:"🧘",action:"Take a comfortable posture and stretch gently."},
             "mid-2":{title:"Breathe with me",line:"We'll do five gentle 4–2–6 cycles: breathe in for 4, pause softly for 2, and breathe out for 6. Keep it comfortable. Never force or hold if uncomfortable.",person:"🧑",prop:"🌬️",action:"Start the five guided breathing cycles.",breathing:true},
-            "mid-3":{title:"Midday water break",line:"A tiny water break can help you pause. Watch me take a sip, then have some water if it's available.",person:"👧",prop:"💧",action:"Drink some water at your own pace.",drink:true},
+            "mid-3":{title:"Midday water break",line:"Step away from the rush for a moment. Have some water if it is available, and sip at your own pace.",person:"👧",prop:"💧",action:"Drink some water at your own pace.",drink:true},
             "mid-4":{title:"Check how you feel",line:"Let's gently check in. What emotion is here right now? What thought is asking for your attention? You don't have to judge or fix it.",person:"🧑",prop:"💗",action:"Name what you're feeling, even if the answer is 'not sure'."},
             "mid-5":{title:"Let a thought drift by",line:"Imagine a thought floating past like a cloud. You can notice it without holding on. Let it drift away in its own time.",person:"🧑",prop:"☁️",action:"Notice one thought and practice letting it pass."},
             "end-1":{title:"Three wins today",line:"Let's celebrate three things you managed today. Tiny wins count: showing up, trying again, or taking a pause.",person:"🧑",prop:"🏆",action:"Write or think of three things you feel good about."},
@@ -315,24 +307,49 @@ import {
             "cloud-checked":{title:"Cloud check",line:"Choose a thought or feeling you want to release. Tap one of the clouds on your card and watch it drift away. You can leave any thought alone if you're not ready.",person:"🧑",prop:"☁️💨",action:"Release a cloud thought when you're ready."}
         };
 
-        function stopBreathingTimer() {
-            if (breathingTimer) { clearInterval(breathingTimer); breathingTimer = null; }
-            if (drinkGuideTimeout) { clearTimeout(drinkGuideTimeout); drinkGuideTimeout = null; }
+        function createGuideQuoteCard(guideId) {
+            const card = document.createElement('figure');
+            card.className = 'guide-quote-card';
+            card.dataset.guideQuoteId = guideId;
+            card.setAttribute('role', 'group');
+            card.setAttribute('aria-label', 'Daily reflection');
+
+            const wash = document.createElement('span');
+            wash.className = 'guide-quote-wash';
+            wash.setAttribute('aria-hidden', 'true');
+
+            const ornament = document.createElement('span');
+            ornament.className = 'guide-quote-ornament';
+            ornament.setAttribute('aria-hidden', 'true');
+            ornament.textContent = '“';
+
+            const quote = document.createElement('blockquote');
+            quote.className = 'guide-quote-text';
+            quote.textContent = getGuideQuote(guideId);
+
+            card.append(wash, ornament, quote);
+            return card;
         }
 
+        function renderCloudGuideQuote() {
+            const target = document.getElementById('cloud-guide-quote');
+            if (target) target.replaceChildren(createGuideQuoteCard('cloud-checked'));
+        }
+
+        function stopBreathingTimer() {
+            if (breathingTimer) { clearInterval(breathingTimer); breathingTimer = null; }
+        }
 
         function openModal(type, checkboxId) {
             stopBreathingTimer();
-            activeModalGuidePlayer?.destroy();
-            activeModalGuidePlayer = null;
-            activeModalType = type;
             activeTargetCheckboxId = checkboxId;
             activeModalAction = "complete";
             const guide = guideContent[checkboxId] || {
-                title:"Let's do this together",line:"Take a gentle moment for this activity. Go at your own pace.",person:"🧑",prop:"✨",action:"When you're ready, tell me you've completed the activity."
+                title:"Let's do this together",
+                line:"Take a gentle moment for this activity. Go at your own pace.",
+                action:"When you're ready, tell me you've completed the activity."
             };
-            let modalGuideStage = null;
-            const target = document.getElementById('modal-animation-target');
+            const target = document.getElementById('modal-quote-target');
             const instructions = document.getElementById('modal-instructions');
             const button = document.getElementById('modal-complete-btn');
             document.querySelector('#modal-content-box h2')?.remove();
@@ -345,40 +362,11 @@ import {
             const heading = document.createElement('h2');
             heading.className = 'text-2xl font-bold text-amber-900 handwriting mb-2';
             heading.textContent = guide.title;
-            document.getElementById('modal-content-box').insertBefore(heading,target);
+            document.getElementById('modal-content-box').insertBefore(heading, target);
 
-            if (type === 'clouds') {
-                activeModalAction = "close";
-                const cloudIllustration = document.createElement('div');
-                cloudIllustration.className = 'watercolor-guide-stage watercolor-guide-stage--cloud';
-                cloudIllustration.innerHTML = buildGuideIllustrationSvg(checkboxId);
-                modalGuideStage = cloudIllustration;
-                const gallery = document.createElement('div');
-                gallery.className = 'cloud-intro-gallery';
-                const cloudItems = [
-                    { className: 'cloud-intro-item cloud-cumulus', kind: 'cumulus', label: 'Cumulus' },
-                    { className: 'cloud-intro-item cloud-stratus', kind: 'stratus', label: 'Stratus' },
-                    { className: 'cloud-intro-item cloud-stratocumulus', kind: 'stratocumulus', label: 'Stratocumulus' }
-                ];
-                cloudItems.forEach(item => {
-                    const card = document.createElement('div');
-                    card.className = item.className;
-                    const art = document.createElement('span');
-                    art.className = 'cloud-art';
-                    art.setAttribute('aria-hidden', 'true');
-                    art.innerHTML = buildWatercolorCloudSvg(item.kind);
-                    const label = document.createElement('span');
-                    label.textContent = item.label;
-                    card.append(art, label);
-                    gallery.append(card);
-                });
-                const cloudCopy = document.createElement('div');
-                cloudCopy.className = 'guide-speech cloud-intro-copy';
-                cloudCopy.textContent = 'Meet the three clouds and choose the one that best matches how you feel today. One cloud is enough; emotions can be different, and you only need to acknowledge one.';
-                target.append(cloudIllustration, gallery, cloudCopy);
-                instructions.textContent = 'Notice which feeling fits today. Choose one cloud when you feel ready.';
-                button.textContent = 'Choose one cloud';
-            } else if (guide.breathing) {
+            target.append(createGuideQuoteCard(checkboxId));
+
+            if (guide.breathing) {
                 activeModalAction = 'start-breathing';
                 const breathingPanel = document.createElement('div');
                 breathingPanel.className = 'flex flex-col items-center gap-3 w-full';
@@ -395,61 +383,28 @@ import {
                     node.textContent = text;
                     breathingPanel.append(node);
                 });
-                const illustration = document.createElement('div');
-                illustration.className = 'watercolor-guide-stage watercolor-guide-stage--breathing';
-                illustration.innerHTML = buildGuideIllustrationSvg(checkboxId);
-                modalGuideStage = illustration;
-                target.append(illustration, breathingPanel);
+                target.append(breathingPanel);
                 instructions.textContent = guide.line;
                 button.textContent = 'Start 5 breathing cycles';
             } else {
-                const illustration = document.createElement('div');
-                illustration.className = 'watercolor-guide-stage';
-                illustration.innerHTML = buildGuideIllustrationSvg(checkboxId);
-                modalGuideStage = illustration;
-                target.append(illustration);
                 const speech = document.createElement('div');
                 speech.className = 'guide-speech';
                 speech.id = 'guide-speech';
                 speech.textContent = String(guide.line || '');
                 const action = document.createElement('p');
-                action.className = 'text-xs text-slate-500 mt-3';
+                action.className = 'guide-action';
                 action.id = 'guide-action';
                 action.textContent = String(guide.action || '');
                 target.append(speech, action);
-                instructions.textContent = guide.drink ? "My turn... sip! Your turn next. Take your time." : "Let's do it at your own pace.";
-                if (guide.drink) {
-                    activeModalAction = 'waiting-for-drink';
-                    button.disabled = true;
-                    button.classList.add('opacity-50','cursor-not-allowed');
-                    button.textContent = 'Please watch the 5-second water guide…';
-                    instructions.textContent = 'Watch the short demonstration. When it finishes, it will be your turn.';
-                    drinkGuideTimeout = setTimeout(() => {
-                        const modal = document.getElementById('anim-modal');
-                        if (!modal || modal.classList.contains('hidden') || activeModalType !== type || activeTargetCheckboxId !== checkboxId) return;
-                        activeModalGuidePlayer?.complete();
-                        activeModalAction = 'complete';
-                        button.disabled = false;
-                        button.classList.remove('opacity-50','cursor-not-allowed');
-                        instructions.textContent = 'The demonstration is done. Now it is your turn. Have water if appropriate for you, at your own pace. When you are finished, tap below.';
-                        const speech = document.getElementById('guide-speech');
-                        if (speech) speech.textContent = 'My sip is done! Your turn now. Take your time and enjoy your water.';
-                        button.textContent = "I've had my water. Show my checkbox";
-                    }, 5000);
-                } else {
-                    activeModalAction = 'complete';
-                    button.textContent = "I've done it. Show my checkbox";
-                }
+                instructions.textContent = guide.drink
+                    ? 'Your turn. Have water if you wish, at a comfortable pace.'
+                    : "Let's do it at your own pace.";
+                button.textContent = guide.drink
+                    ? "I've had my water. Show my checkbox"
+                    : "I've done it. Show my checkbox";
             }
-            const modal = document.getElementById('anim-modal');
-            modal.classList.remove('hidden');
-            if (modalGuideStage && checkboxId) {
-                try {
-                    activeModalGuidePlayer = createWatercolorGuidePlayer({ guideId: checkboxId, stage: modalGuideStage, modal });
-                } catch (error) {
-                    console.warn('[Faith & Focus] Watercolor guide player unavailable; keeping the illustration motion-safe.', error);
-                }
-            }
+
+            document.getElementById('anim-modal').classList.remove('hidden');
         }
 
         function startBreathingExercise() {
@@ -474,10 +429,6 @@ import {
                     if (breathingCycle > 5) {
                         stopBreathingTimer();
                         document.getElementById('breathing-phase').textContent = 'Amazing work!';
-                        const breathingCharacter = document.querySelector('#modal-animation-target .watercolor-guide-svg--breathe');
-                        const completedBreathingPhase = getBreathingAnimationPhase('Complete');
-                        if (activeModalGuidePlayer) activeModalGuidePlayer.setBreathingPhase(completedBreathingPhase);
-                        else if (breathingCharacter) breathingCharacter.dataset.breathPhase = completedBreathingPhase;
                         document.getElementById('breathing-tip').textContent = 'Five gentle cycles complete. Take a normal, comfortable breath.';
                         document.getElementById('breathing-count').textContent = '5 / 5 cycles';
                         document.getElementById('breathing-clock').textContent = 'You did it!';
@@ -501,10 +452,6 @@ import {
             const phase = breathingPhases[breathingPhaseIndex];
             const phaseEl = document.getElementById('breathing-phase');
             if (!phaseEl) return;
-            const breathingCharacter = document.querySelector('#modal-animation-target .watercolor-guide-svg--breathe');
-            const activeBreathingPhase = getBreathingAnimationPhase(phase.name);
-            if (activeModalGuidePlayer) activeModalGuidePlayer.setBreathingPhase(activeBreathingPhase);
-            if (breathingCharacter && !activeModalGuidePlayer) breathingCharacter.dataset.breathPhase = getBreathingAnimationPhase(phase.name);
             phaseEl.textContent = phase.name;
             document.getElementById('breathing-tip').textContent = phase.tip;
             document.getElementById('breathing-count').textContent = 'Cycle ' + breathingCycle + ' of 5';
@@ -521,10 +468,6 @@ import {
         }
 
         function handleModalPrimaryAction() {
-            if (activeModalAction === 'close') {
-                closeModal();
-                return;
-            }
             if (activeModalAction === 'start-breathing') {
                 startBreathingExercise();
                 return;
@@ -534,14 +477,11 @@ import {
 
         function closeModal() {
             stopBreathingTimer();
-            activeModalGuidePlayer?.destroy();
-            activeModalGuidePlayer = null;
             document.getElementById('anim-modal').classList.add('hidden');
-            document.getElementById('modal-animation-target')?.replaceChildren();
+            document.getElementById('modal-quote-target')?.replaceChildren();
         }
 
         function completeAnimation() {
-            activeModalGuidePlayer?.complete();
             const chk = activeTargetCheckboxId
                 ? (document.getElementById('chk-' + activeTargetCheckboxId) || document.querySelector('[data-id="' + activeTargetCheckboxId + '"]'))
                 : null;
@@ -580,7 +520,6 @@ import {
         function updateCloudProgress() {
             const items = Array.from(document.querySelectorAll('.cloud-item[data-cloud]'));
             const selectedCloud = items.find(item => item.dataset.released === 'true') || null;
-            cloudGuidePlayer?.setCloudSelection(selectedCloud?.dataset.cloud || null);
             const hasReleasedCloud = Boolean(selectedCloud);
             items.forEach(item => {
                 item.disabled = hasReleasedCloud;
@@ -661,63 +600,47 @@ import {
             });
         }
 
-        function initializeCloudGuidePlayer() {
-            const stage = document.getElementById('cloud-guide-stage');
-            if (!stage || cloudGuidePlayer) return;
-            stage.innerHTML = buildGuideIllustrationSvg('cloud-checked');
-            try {
-                cloudGuidePlayer = createWatercolorGuidePlayer({ guideId: 'cloud-checked', stage });
-                const selectedCloud = document.querySelector('.cloud-item[data-cloud][data-released="true"]')?.dataset.cloud || null;
-                cloudGuidePlayer.setCloudSelection(selectedCloud);
-            } catch (error) {
-                cloudGuidePlayer = null;
-                console.warn('[Faith & Focus] Cloud guide player unavailable; keeping the illustration motion-safe.', error);
-            }
-        }
-
-        function attachChecklistCartoons() {
-            initializeCloudGuidePlayer();
+        function attachGuideQuoteLaunchers() {
+            renderCloudGuideQuote();
             document.querySelectorAll('.app-chk').forEach(chk => {
                 const label = chk.closest('label');
                 if (!label || label.closest('.guided-task-row')) return;
                 const row = document.createElement('div');
                 row.className = 'guided-task-row';
-                label.parentNode.insertBefore(row,label);
+                label.parentNode.insertBefore(row, label);
                 row.appendChild(label);
                 label.classList.add('guide-checkbox-label');
                 chk.classList.add('guide-hidden');
                 const id = chk.dataset.id;
-                // Card 6 is guided by its three individually animated cloud buttons.
                 if (id === 'cloud-checked') return;
+
                 const guideButton = document.createElement('button');
                 guideButton.type = 'button';
-                guideButton.className = 'guide-launch';
-                const playIcon = document.createElement('span');
-                playIcon.className = 'guide-play-icon';
-                playIcon.setAttribute('aria-hidden', 'true');
-                playIcon.textContent = '▶';
+                guideButton.className = 'guide-quote-launch';
+                const quoteMark = document.createElement('span');
+                quoteMark.className = 'guide-quote-mark';
+                quoteMark.setAttribute('aria-hidden', 'true');
+                quoteMark.textContent = '“';
                 const guideLabel = document.createElement('span');
-                guideLabel.textContent = 'Show me';
-                guideButton.append(playIcon, guideLabel);
-                guideButton.setAttribute('aria-label','Show animated guide for '+id);
-                guideButton.addEventListener('click',() => openModal('guided',id));
-                row.insertBefore(guideButton,label);
+                guideLabel.textContent = 'Read quote';
+                guideButton.append(quoteMark, guideLabel);
+                guideButton.setAttribute('aria-label', 'Read quote for ' + id);
+                guideButton.addEventListener('click', () => openModal('guided', id));
+                row.insertBefore(guideButton, label);
             });
             document.querySelectorAll('button[onclick^="openModal("]').forEach(button => {
-                // Hide only the old inline guide button; never hide its task heading or row.
-                // Card 6 keeps its dedicated cloud-animation launcher.
                 if (!button.closest('#card-step-6')) button.classList.add('legacy-guide-button');
             });
-            syncChecklistCartoons();
+            syncGuideQuoteLaunchers();
         }
 
-        function syncChecklistCartoons() {
+        function syncGuideQuoteLaunchers() {
             document.querySelectorAll('.app-chk').forEach(chk => {
                 const row = chk.closest('.guided-task-row');
                 const label = row?.querySelector('.guide-checkbox-label');
-                const launch = row?.querySelector('.guide-launch');
+                const launch = row?.querySelector('.guide-quote-launch');
                 const unlocked = chk.dataset.guideUnlocked === 'true' || chk.checked;
-                chk.classList.toggle('guide-hidden',!unlocked);
+                chk.classList.toggle('guide-hidden', !unlocked);
                 if (unlocked) {
                     chk.disabled = false;
                     label?.classList.add('is-unlocked');
@@ -725,7 +648,6 @@ import {
                 } else {
                     label?.classList.remove('is-unlocked');
                 }
-                // Keep "Show me" available so the user can replay the demonstration anytime.
                 launch?.classList.remove('is-hidden');
             });
         }
@@ -1953,11 +1875,6 @@ import {
                 localStorage.setItem('user_confidence_score', currentScore + 100);
                 updateScoreDisplay();
 
-                const finaleCharacterStage = document.getElementById('finale-character-stage');
-                if (finaleCharacterStage) {
-                    finaleCharacterStage.replaceChildren();
-                    finaleCharacterStage.innerHTML = buildVictoryCharacterSvg();
-                }
                 trophyBanner.classList.remove('hidden');
                 playFanfareSound();
                 confetti({ particleCount: 120, spread: 90, origin: { y: 0.3 } });
@@ -2031,7 +1948,7 @@ import {
 
             // Private diary and reflections are loaded only after the passphrase unlocks them.
             restoreCloudProgress(data);
-            syncChecklistCartoons();
+            syncGuideQuoteLaunchers();
             updateEcosystemTree();
 
             checkSectionCompletion();
@@ -2459,7 +2376,7 @@ import {
             updateDiaryDateAccess(today);
             updateDeviceClock();
             window.setInterval(updateDeviceClock,15000);
-            attachChecklistCartoons();
+            attachGuideQuoteLaunchers();
             loadData();
             updatePrivateWritingAccess();
         });
