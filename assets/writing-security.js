@@ -898,7 +898,7 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
             let diaryText='',diaryRevision=0,diaryEntries=[],notes={},noteMeta={};
             const diaryRecord=localStorage.getItem(getSecureWritingStorageKey('diary',dateStr)),notesRecord=localStorage.getItem(getSecureWritingStorageKey('notes',dateStr));
             if(diaryRecord){
-                const diary=unpackPrivateWritingDiary(await decryptPrivatePayload('diary',dateStr,diaryRecord,writingCryptoKey));
+                const diary=unpackPrivateWritingDiary(await decryptPrivatePayload('diary',dateStr,diaryRecord,writingCryptoKey),dateStr);
                 diaryText=diary.text;
                 diaryRevision=diary.revision;
                 diaryEntries=diary.entries;
