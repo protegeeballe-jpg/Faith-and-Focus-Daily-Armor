@@ -41,43 +41,83 @@ const DETAIL_ART = Object.freeze({
   sleep: '<g class="wgi-object"><path d="M258 42 C238 47 231 69 240 84 C249 100 269 102 283 91 C267 91 254 78 254 63 C254 55 255 48 258 42Z" fill="#e8c982" stroke="#c4a76f" stroke-width="1.5"/><path d="M211 136 Q239 121 278 136 V157 H211Z" fill="#d9cde6" stroke="#a999c0" stroke-width="2"/><path d="M214 136 Q240 128 260 137" fill="none" stroke="#fbf6ff" stroke-width="3" stroke-linecap="round"/><rect x="285" y="119" width="17" height="29" rx="3" fill="#9eb8bd" stroke="#6f9198" stroke-width="1.7" transform="rotate(8 293 133)"/><circle cx="293" cy="143" r="1.5" fill="#edf6ee"/><path d="M215 74 L219 67 L223 74 L230 78 L223 82 L219 89 L215 82 L208 78Z" fill="#dfc47e"/><circle cx="288" cy="56" r="2.5" fill="#e5cc8a"/></g>'
 });
 
-const ARM_POSES = Object.freeze({
-  relaxed: '<path d="M129 108 Q116 120 119 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path d="M171 108 Q184 120 181 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-  prayer: '<g class="wgi-praying-hands"><path d="M129 108 Q137 120 148 113 L151 99" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path d="M171 108 Q163 120 152 113 L149 99" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path d="M145 101 Q150 92 155 101 L153 116 Q150 120 147 116Z" fill="#f0bd98" stroke="#b87e68" stroke-width="1.3"/></g>',
-  stretch: '<g class="wgi-stretch-arms"><path d="M130 105 Q111 87 118 53" fill="none" stroke="#d79a78" stroke-width="10" stroke-linecap="round"/><path d="M170 105 Q189 87 182 53" fill="none" stroke="#d79a78" stroke-width="10" stroke-linecap="round"/><circle cx="118" cy="52" r="6" fill="#e0a17e"/><circle cx="182" cy="52" r="6" fill="#e0a17e"/></g>',
-  drink: '<path d="M129 108 Q115 120 119 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path class="wgi-drinking-arm" d="M171 108 Q185 96 194 77" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><circle cx="195" cy="76" r="5.4" fill="#e0a17e"/>',
-  breathe: '<path d="M129 108 Q117 121 122 139" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path d="M171 108 Q183 121 178 139" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-  heart: '<path d="M129 108 Q139 119 151 124" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path class="wgi-heart-hand" d="M171 108 Q165 122 151 124" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-  float: '<path d="M129 108 Q112 119 112 133" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path class="wgi-floating-arm" d="M171 108 Q190 96 188 79" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-  write: '<path d="M129 108 Q145 123 185 137" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path class="wgi-writing-arm" d="M171 108 Q182 121 203 139" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
-  boop: '<path d="M129 108 Q117 119 119 139" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path class="wgi-boop-arm" d="M171 108 Q185 91 172 77" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><circle cx="172" cy="77" r="5.5" fill="#e0a17e"/>',
-  night: '<path d="M129 108 Q116 122 123 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/><path d="M171 108 Q183 122 176 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>'
-});
+const CHARACTER_SEQUENCES = new Set([
+  "relaxed", "prayer", "stretch", "drink", "breathe",
+  "heart", "float", "write", "boop", "night", "celebrate"
+]);
 
 function characterMarkup(pose) {
-  const arms = ARM_POSES[pose] || ARM_POSES.relaxed;
-  return '<g class="wgi-character wgi-character--' + pose + '">' +
-    '<ellipse cx="150" cy="169" rx="34" ry="5" fill="#93aa9a" opacity=".24"/>' +
-    '<path d="M139 142 L134 164 M161 142 L167 164" fill="none" stroke="#596b78" stroke-width="11" stroke-linecap="round"/>' +
-    '<path d="M119 165 Q132 160 140 165 Q142 171 126 172 Q117 172 119 165Z M160 165 Q174 160 182 165 Q184 171 168 172 Q159 172 160 165Z" fill="#e4b07f" stroke="#b5815c" stroke-width="1.4"/>' +
-    '<path d="M130 105 Q150 96 170 105 L176 144 Q150 154 124 144Z" fill="url(#wgi-shirt)" stroke="#6d9687" stroke-width="2" stroke-linejoin="round"/>' +
-    '<path d="M137 111 Q150 117 163 111" fill="none" stroke="#eff8e9" stroke-width="2" opacity=".7" stroke-linecap="round"/>' +
-    arms +
-    '<path d="M137 81 L137 99 M163 81 L163 99" stroke="#d79a78" stroke-width="7" stroke-linecap="round"/>' +
-    '<circle cx="150" cy="73" r="22" fill="url(#wgi-skin)" stroke="#aa735e" stroke-width="1.8"/>' +
-    '<path d="M128 72 Q126 48 150 48 Q174 49 172 73 Q162 62 150 64 Q138 62 128 72Z" fill="#4d403b" stroke="#3a3534" stroke-width="1.5" stroke-linejoin="round"/>' +
-    '<ellipse cx="142" cy="75" rx="1.8" ry="2.5" fill="#443632"/><ellipse cx="158" cy="75" rx="1.8" ry="2.5" fill="#443632"/>' +
-    '<path d="M144 85 Q150 90 156 85" fill="none" stroke="#965b52" stroke-width="1.8" stroke-linecap="round"/>' +
-    '<ellipse cx="135" cy="82" rx="4" ry="2.4" fill="#eea3a1" opacity=".65"/><ellipse cx="165" cy="82" rx="4" ry="2.4" fill="#eea3a1" opacity=".65"/>' +
-    '</g>';
+  const sequence = CHARACTER_SEQUENCES.has(pose) ? pose : "relaxed";
+  return [
+    '<g class="wgi-character wgi-character--' + sequence + '">',
+      '<ellipse class="wgi-character-shadow" cx="150" cy="170" rx="35" ry="5" fill="#93aa9a" opacity=".24"/>',
+      '<g class="wgi-lower-body">',
+        '<path d="M139 142 L134 164 M161 142 L167 164" fill="none" stroke="#596b78" stroke-width="11" stroke-linecap="round"/>',
+        '<path d="M119 165 Q132 160 140 165 Q142 171 126 172 Q117 172 119 165Z M160 165 Q174 160 182 165 Q184 171 168 172 Q159 172 160 165Z" fill="#e4b07f" stroke="#b5815c" stroke-width="1.4"/>',
+      '</g>',
+      '<g class="wgi-arm wgi-arm--left">',
+        '<path d="M130 108 Q116 121 120 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
+        '<path d="M130 108 Q125 109 122 116" fill="none" stroke="#82ad9d" stroke-width="12" stroke-linecap="round"/>',
+        '<ellipse cx="120" cy="141" rx="5.5" ry="6.5" fill="#e0a17e" stroke="#b87e68" stroke-width="1.2"/>',
+        '<path d="M116 139 L113 136 M120 137 L119 133" fill="none" stroke="#b87e68" stroke-width="1.1" stroke-linecap="round"/>',
+      '</g>',
+      '<g class="wgi-arm wgi-arm--right">',
+        '<path d="M170 108 Q184 121 180 140" fill="none" stroke="#d79a78" stroke-width="9" stroke-linecap="round"/>',
+        '<path d="M170 108 Q175 109 178 116" fill="none" stroke="#82ad9d" stroke-width="12" stroke-linecap="round"/>',
+        '<ellipse cx="180" cy="141" rx="5.5" ry="6.5" fill="#e0a17e" stroke="#b87e68" stroke-width="1.2"/>',
+        '<path d="M184 139 L187 136 M180 137 L181 133" fill="none" stroke="#b87e68" stroke-width="1.1" stroke-linecap="round"/>',
+      '</g>',
+      '<g class="wgi-torso">',
+        '<path d="M139 81 L137 99 M161 81 L163 99" stroke="#d79a78" stroke-width="7" stroke-linecap="round"/>',
+        '<path d="M130 105 Q150 96 170 105 L176 144 Q150 154 124 144Z" fill="url(#wgi-shirt)" stroke="#6d9687" stroke-width="2" stroke-linejoin="round"/>',
+        '<path d="M137 111 Q150 117 163 111" fill="none" stroke="#eff8e9" stroke-width="2" opacity=".7" stroke-linecap="round"/>',
+        '<path d="M143 148 Q150 151 157 148" fill="none" stroke="#6d9687" stroke-width="1.3" opacity=".45"/>',
+      '</g>',
+      '<g class="wgi-head">',
+        '<circle cx="150" cy="73" r="22" fill="url(#wgi-skin)" stroke="#aa735e" stroke-width="1.8"/>',
+        '<path d="M128 72 Q126 48 150 48 Q174 49 172 73 Q162 62 150 64 Q138 62 128 72Z" fill="#4d403b" stroke="#3a3534" stroke-width="1.5" stroke-linejoin="round"/>',
+        '<path d="M136 69 Q141 66 145 69 M155 69 Q159 66 164 69" fill="none" stroke="#65483f" stroke-width="1.5" stroke-linecap="round"/>',
+        '<g class="wgi-eyes-open">',
+          '<ellipse cx="142" cy="75" rx="2.1" ry="2.8" fill="#443632"/>',
+          '<ellipse cx="158" cy="75" rx="2.1" ry="2.8" fill="#443632"/>',
+          '<circle cx="142.7" cy="74.2" r=".7" fill="#fff8ec"/>',
+          '<circle cx="158.7" cy="74.2" r=".7" fill="#fff8ec"/>',
+        '</g>',
+        '<g class="wgi-eyes-closed" fill="none" stroke="#704b43" stroke-width="1.9" stroke-linecap="round">',
+          '<path d="M137.5 76 Q142 80 146.5 76"/>',
+          '<path d="M153.5 76 Q158 80 162.5 76"/>',
+        '</g>',
+        '<path class="wgi-mouth-smile" d="M143.5 85 Q150 91 156.5 85" fill="none" stroke="#965b52" stroke-width="1.9" stroke-linecap="round"/>',
+        '<ellipse class="wgi-mouth-sip" cx="150" cy="86" rx="2.6" ry="3.5" fill="#965b52"/>',
+        '<ellipse class="wgi-mouth-yawn" cx="150" cy="86" rx="3.8" ry="5.1" fill="#965b52"/>',
+        '<ellipse cx="135" cy="82" rx="4.2" ry="2.7" fill="#eea3a1" opacity=".68"/>',
+        '<ellipse cx="165" cy="82" rx="4.2" ry="2.7" fill="#eea3a1" opacity=".68"/>',
+      '</g>',
+    '</g>'
+  ].join("");
 }
 
 export const GUIDE_ILLUSTRATION_IDS = Object.freeze(Object.keys(SCENES));
 
+export const GUIDE_ANIMATION_SEQUENCES = Object.freeze(Object.fromEntries(
+  Object.entries(SCENES).map(([id, scene]) => [id, scene.pose])
+));
+
+export function getBreathingAnimationPhase(phaseName) {
+  const phases = Object.freeze({
+    "Breathe in": "inhale",
+    "Hold softly": "hold",
+    "Breathe out": "exhale"
+  });
+  return phases[phaseName] || "rest";
+}
+
 export function buildGuideIllustrationSvg(id) {
   const scene = SCENES[id] || SCENES["start-1"];
   const detail = DETAIL_ART[scene.kind] || DETAIL_ART.gratitude;
-  return '<svg class="watercolor-guide-svg" viewBox="0 0 320 190" role="img" aria-label="' + scene.label + '" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
+  const sequence = CHARACTER_SEQUENCES.has(scene.pose) ? scene.pose : "relaxed";
+  const breathPhase = sequence === "breathe" ? ' data-breath-phase="rest"' : "";
+  return '<svg class="watercolor-guide-svg watercolor-guide-svg--' + sequence + '" data-sequence="' + sequence + '"' + breathPhase + ' viewBox="0 0 320 190" role="img" aria-label="' + scene.label + '" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
     '<title>' + scene.title + '</title>' +
     '<defs>' +
       '<radialGradient id="wgi-wash" cx="49%" cy="45%" r="62%"><stop offset="0" stop-color="#fffdf2" stop-opacity=".96"/><stop offset=".72" stop-color="#e9eee2" stop-opacity=".55"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
@@ -92,6 +132,20 @@ export function buildGuideIllustrationSvg(id) {
     characterMarkup(scene.pose) +
     '<g class="wgi-sparkles" fill="url(#wgi-gold)"><path d="M47 77 L51 68 L55 77 L64 81 L55 85 L51 94 L47 85 L38 81Z"/><path d="M292 61 L295 54 L298 61 L305 64 L298 67 L295 74 L292 67 L285 64Z" transform="scale(.85  .85) translate(53 14)"/></g>' +
     '<g fill="#94b58a" opacity=".9"><path d="M30 155 Q38 139 45 155 Q38 151 30 155Z"/><path d="M48 160 Q55 145 62 160 Q55 156 48 160Z"/><path d="M276 158 Q283 142 290 158 Q283 154 276 158Z"/></g>' +
+    '</svg>';
+}
+
+export function buildVictoryCharacterSvg() {
+  return '<svg class="finale-character-svg" viewBox="0 0 320 190" role="img" aria-label="A joyful watercolor character celebrating with a bright smile and both arms raised" xmlns="http://www.w3.org/2000/svg" focusable="false">' +
+    '<title>A joyful little celebration</title>' +
+    '<defs>' +
+      '<radialGradient id="wgi-victory-wash" cx="50%" cy="50%" r="62%"><stop offset="0" stop-color="#fff8df" stop-opacity=".9"/><stop offset="1" stop-color="#e9eee2" stop-opacity="0"/></radialGradient>' +
+      '<linearGradient id="wgi-shirt" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#a9cdbc"/><stop offset=".55" stop-color="#82b1a1"/><stop offset="1" stop-color="#6e998f"/></linearGradient>' +
+      '<linearGradient id="wgi-skin" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f0c49e"/><stop offset="1" stop-color="#d99b79"/></linearGradient>' +
+    '</defs>' +
+    '<ellipse cx="160" cy="96" rx="133" ry="83" fill="url(#wgi-victory-wash)"/>' +
+    characterMarkup("celebrate") +
+    '<g class="finale-character-sparkles" fill="#e6c477"><path d="M72 62 L76 53 L80 62 L89 66 L80 70 L76 79 L72 70 L63 66Z"/><path d="M238 55 L242 46 L246 55 L255 59 L246 63 L242 72 L238 63 L229 59Z"/><circle cx="100" cy="108" r="2.6"/><circle cx="218" cy="107" r="2.6"/></g>' +
     '</svg>';
 }
 
