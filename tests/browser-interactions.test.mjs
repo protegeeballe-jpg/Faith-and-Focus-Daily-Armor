@@ -524,7 +524,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   assert.match(quoteTexture.edgeBackground, /radial-gradient/);
   assert.equal(quoteTexture.edgePointerEvents, 'none');
   assert.match(quoteTexture.washBackground, /radial-gradient/);
-  assert.ok(quoteTexture.washOpacity > 0.6,
+  assert.ok(quoteTexture.washOpacity > 0.7,
     'The pigment wash must remain visibly present');
   assert.ok(quoteTexture.washFilter.includes('saturate(1.08)'),
     'The pigment wash must retain its richer color treatment');
