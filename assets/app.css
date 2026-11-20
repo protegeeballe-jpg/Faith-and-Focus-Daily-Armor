@@ -1502,3 +1502,10 @@ body {position:fixed;inset:0;min-width:0;min-height:0 !important;padding-bottom:
         transition: none !important;
     }
 }
+
+/* Character movement follows the same authoritative 4–2–6 phase durations as the breath rings. */
+.watercolor-guide-svg--breathe .wgi-torso,
+.watercolor-guide-svg--breathe .wgi-arm,
+.watercolor-guide-svg--breathe .wgi-head {
+    transition: transform var(--guide-breath-transition, 0ms) cubic-bezier(.35,.05,.2,1);
+}

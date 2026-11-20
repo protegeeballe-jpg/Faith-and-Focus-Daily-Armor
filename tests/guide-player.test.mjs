@@ -62,6 +62,7 @@ test('the cloud character follows the selected cloud without taking over persist
   assert.match(css, /data-cloud-selection="cumulus"/);
   assert.match(css, /data-cloud-selection="stratus"/);
   assert.match(css, /data-cloud-selection="stratocumulus"/);
+  assert.match(css, /transition: transform var\\(--guide-breath-transition, 0ms\\)/);
 });
 
 test('finite playback, reduced-motion behavior, paper stage, and offline caching are wired', () => {
