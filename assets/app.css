@@ -1254,3 +1254,16 @@ body {
         transition: none !important;
     }
 }
+
+
+/* Keep the animated wash visibly pigmented from its first frame. */
+@keyframes guide-watercolor-drift {
+    0% {
+        transform: translate(-1.5%, 0) scale(.98);
+        opacity: .76;
+    }
+    100% {
+        transform: translate(1.5%, 1.5%) scale(1.04);
+        opacity: .96;
+    }
+}
