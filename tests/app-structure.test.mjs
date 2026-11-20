@@ -120,7 +120,7 @@ test('Forge Room setup is top-aligned and the subtitle remains readable on mobil
 
 test('Forge Room keeps its illustration without the decorative window toggle',()=>{
  const gardenStart=html.indexOf('<section id="little-garden"');
- const gardenEnd=html.indexOf('<!-- 🌟 ANIMATION MODAL POPUP -->',gardenStart);
+ const gardenEnd=html.indexOf('<!-- GUIDE QUOTE MODAL -->',gardenStart);
  const gardenMarkup=html.slice(gardenStart,gardenEnd);
  const roomStart=gardenMarkup.indexOf('<section data-garden-scene="room"');
  const outdoorStart=gardenMarkup.indexOf('<section data-garden-scene="outdoors"');
@@ -184,7 +184,7 @@ test('the health checklist and encrypted diary are scenes inside the Forge Room 
  const gardenStart=html.indexOf('<section id="little-garden"');
  const diaryStart=html.indexOf('id="view-diary"');
  const checklistStart=html.indexOf('id="view-checklist"');
- const gardenEnd=html.indexOf('<!-- 🌟 ANIMATION MODAL POPUP -->');
+ const gardenEnd=html.indexOf('<!-- GUIDE QUOTE MODAL -->');
  assert.ok(gardenStart < diaryStart && diaryStart < gardenEnd);
  assert.ok(gardenStart < checklistStart && checklistStart < gardenEnd);
  assert.match(app,/garden:show-scene/);
@@ -222,7 +222,7 @@ test('seed selection is a one-time setup and becomes visibly completed after sav
 });
 test('the supplied artwork fills the Room home background and the Diary remains single',()=>{
  const gardenStart=html.indexOf('<section id="little-garden"');
- const gardenEnd=html.indexOf('<!-- 🌟 ANIMATION MODAL POPUP -->',gardenStart);
+ const gardenEnd=html.indexOf('<!-- GUIDE QUOTE MODAL -->',gardenStart);
  const gardenMarkup=html.slice(gardenStart,gardenEnd);
  const roomStart=gardenMarkup.indexOf('<section data-garden-scene="room"');
  const outdoorStart=gardenMarkup.indexOf('<section data-garden-scene="outdoors"');
@@ -398,7 +398,7 @@ test('Health Checklist hides the shared shell headers and keeps one compact tool
 });
 test('Interactive Ecosystem and trophy rewards appear only in the Grand Finale, not among checklist cards',()=>{
  const checklistStart=html.indexOf('<div id="view-checklist"');
- const checklistEnd=html.indexOf('<!-- 🌟 ANIMATION MODAL POPUP -->',checklistStart);
+ const checklistEnd=html.indexOf('<!-- GUIDE QUOTE MODAL -->',checklistStart);
  assert.ok(checklistStart>=0 && checklistEnd>checklistStart,'Checklist must end before its animation modal');
  const checklistMarkup=html.slice(checklistStart,checklistEnd);
  const finaleStart=html.indexOf('<div id="grand-finale-overlay"');
