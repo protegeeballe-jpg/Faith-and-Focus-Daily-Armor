@@ -1,0 +1,158 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+let chromium = null;
+try {
+  ({ chromium } = await import('playwright'));
+} catch {
+  // Local runs may omit Playwright. CI installs it before running this suite.
+}
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const contentTypes = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.woff2': 'font/woff2'
+};
+
+test('the real app loads and its account, navigation, quote, checklist, and Settings buttons respond to clicks', {
+  skip: chromium ? false : 'Playwright is not installed in this environment'
+}, async () => {
+  const server = createServer(async (request, response) => {
+    try {
+      const requestedPath = decodeURIComponent(
+        new URL(request.url || '/', 'http://127.0.0.1').pathname
+      );
+      const relativePath = requestedPath === '/' ? 'index.html' : requestedPath.replace(/^\/+/, '');
+      const filePath = path.resolve(root, relativePath);
+
+      if (!filePath.startsWith(root + path.sep) || filePath === root) {
+        response.writeHead(403).end();
+        return;
+      }
+
+      const content = await readFile(filePath);
+      response.writeHead(200, {
+        'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff'
+      });
+      response.end(content);
+    } catch {
+      response.writeHead(404).end('Not found');
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  let browser;
+  try {
+    browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 1200 },
+      reducedMotion: 'reduce',
+      serviceWorkers: 'block'
+    });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+
+    const address = server.address();
+    await page.goto('http://127.0.0.1:' + address.port + '/index.html', {
+      waitUntil: 'load',
+      timeout: 30000
+    });
+
+    assert.equal(await page.locator('#vault-login-form').isVisible(), true,
+      'the account sign-in form must render');
+    assert.equal(await page.locator('#vault-show-signup').isEnabled(), true);
+    await page.locator('#vault-show-signup').click();
+    assert.equal(await page.locator('#vault-signup-panel').isVisible(), true,
+      'Sign Up must open from the sign-in screen');
+    await page.locator('#vault-back-to-signin-from-signup').click();
+    assert.equal(await page.locator('#vault-signin-panel').isVisible(), true,
+      'Sign Up must return to Sign In');
+
+    await page.locator('#vault-show-recovery').click();
+    assert.equal(await page.locator('#vault-recovery-panel').isVisible(), true,
+      'Recovery must open from the sign-in screen');
+    await page.locator('#vault-back-to-signin-from-recovery').click();
+    assert.equal(await page.locator('#vault-signin-panel').isVisible(), true,
+      'Recovery must return to Sign In');
+
+    // The account service is intentionally not called by this smoke test.
+    // Signal the same post-authentication event used by the verified session
+    // flow so existing in-app click paths can be exercised without changing
+    // credentials or touching persistent user data.
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+    });
+
+    const garden = page.locator('#little-garden');
+    await garden.waitFor({ state: 'visible', timeout: 10000 });
+
+    await page.locator('#settings-open-button').click();
+    assert.equal(await page.locator('#settings-modal').evaluate(dialog => dialog.open), true,
+      'Settings must open when its gear button is clicked');
+    await page.locator('#settings-close-button').click();
+    assert.equal(await page.locator('#settings-modal').evaluate(dialog => dialog.open), false,
+      'Settings must close from its close button');
+
+    await page.locator('#little-garden button[data-action="showPage"][data-page="checklist"]').click();
+    assert.equal(await page.locator('#view-checklist').isVisible(), true,
+      'the Health Checklist navigation button must open the checklist scene');
+
+    await page.locator('#btn-next').click();
+    assert.equal(await page.locator('#card-step-2').isVisible(), true,
+      'Next Card must advance the checklist');
+
+    const readQuote = page.locator('.guide-quote-launch[aria-label="Read quote for start-1"]');
+    await readQuote.waitFor({ state: 'visible', timeout: 10000 });
+    await readQuote.click();
+    assert.equal(await page.locator('#anim-modal').isVisible(), true,
+      'Read quote must open the activity modal');
+    assert.equal(
+      (await page.locator('#modal-quote-target blockquote').textContent()).trim(),
+      'Three priceless sparks upon the page, To light the morning’s opening stage.',
+      'the activity modal must render the supplied quote'
+    );
+
+    await page.locator('#modal-complete-btn').click();
+    assert.equal(await page.locator('#anim-modal').isVisible(), false,
+      'the activity completion button must close the modal');
+    const gratefulCheckbox = page.locator('.app-chk[data-id="start-1"]');
+    assert.equal(await gratefulCheckbox.isEnabled(), true,
+      'completing the guide must unlock its checklist checkbox');
+    assert.equal(await gratefulCheckbox.isVisible(), true,
+      'the unlocked checklist checkbox must become visible');
+    await gratefulCheckbox.check();
+    assert.equal(await gratefulCheckbox.isChecked(), true,
+      'the unlocked checklist checkbox must accept a click');
+
+    await page.locator('#btn-prev').click();
+    assert.equal(await page.locator('#card-step-1').isVisible(), true,
+      'Previous Card must return to the prior checklist card');
+
+    assert.deepEqual(pageErrors, [],
+      'the actual application must not produce uncaught JavaScript errors while its controls are exercised');
+
+    await context.close();
+  } finally {
+    await browser?.close();
+    await new Promise(resolve => server.close(resolve));
+  }
+});
