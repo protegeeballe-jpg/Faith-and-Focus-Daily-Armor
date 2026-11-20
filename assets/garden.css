@@ -1516,3 +1516,141 @@ input[type="reset"] {
     position: relative;
     z-index: 1;
 }
+
+
+/* Separate encrypted Diary notes: individual sheets, never mixed into the main entry. */
+.garden-overlay.garden-diary-active .diary-additional-notes {
+    border-color: rgba(112, 157, 188, .42);
+    border-radius: 20px 16px 22px 17px / 16px 20px 17px 19px;
+    background-color: rgba(239, 247, 251, .84);
+    background-image:
+        radial-gradient(ellipse at 5% 5%, rgba(112, 174, 211, .18), transparent 38%),
+        radial-gradient(ellipse at 96% 8%, rgba(244, 207, 116, .23), transparent 40%),
+        repeating-linear-gradient(96deg, rgba(70, 105, 128, .018) 0 .4px, transparent .4px 5px);
+    background-size: 100% 100%, 100% 100%, 8px 8px;
+    box-shadow: inset 0 0 16px rgba(94, 145, 174, .06);
+}
+.diary-additional-notes-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .8rem;
+}
+.diary-additional-notes-header h3 {
+    color: #254f69;
+}
+.diary-additional-notes-header p {
+    max-width: 38rem;
+    color: #496d84;
+    line-height: 1.45;
+}
+.diary-add-note-button {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: .35rem;
+    min-height: 44px;
+    padding: .55rem .8rem;
+    border: 1px solid rgba(98, 148, 181, .52);
+    border-radius: 12px 10px 14px 11px;
+    background:
+        radial-gradient(ellipse at 94% 6%, rgba(244, 214, 139, .34), transparent 48%),
+        linear-gradient(145deg, rgba(255,255,255,.96), rgba(232,244,250,.96));
+    color: #254f69;
+    font-size: .72rem;
+    font-weight: 800;
+    box-shadow: 0 2px 5px rgba(55, 99, 126, .08);
+    cursor: pointer;
+}
+.diary-add-note-button > span {
+    font-size: 1.05rem;
+    line-height: 1;
+}
+.diary-add-note-button:hover:not(:disabled) {
+    border-color: rgba(76, 136, 174, .72);
+    background:
+        radial-gradient(ellipse at 94% 6%, rgba(244, 214, 139, .42), transparent 50%),
+        linear-gradient(145deg, #fff, #e7f2f8);
+}
+.diary-add-note-button:disabled {
+    opacity: .48;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+.diary-add-note-button:focus-visible,
+.diary-note-editor:focus-visible {
+    outline: 3px solid rgba(51, 119, 160, .82);
+    outline-offset: 3px;
+}
+.diary-additional-notes-list {
+    display: grid;
+    gap: .65rem;
+    margin: .75rem 0 0;
+    padding: 0;
+    list-style: none;
+}
+.diary-note-card {
+    min-width: 0;
+    padding: .75rem;
+    border: 1px solid rgba(120, 164, 192, .34);
+    border-radius: 16px 13px 18px 14px / 13px 17px 14px 16px;
+    background:
+        radial-gradient(ellipse at 96% 4%, rgba(244, 214, 139, .17), transparent 42%),
+        radial-gradient(ellipse at 4% 96%, rgba(112, 174, 211, .15), transparent 40%),
+        rgba(255, 254, 247, .92);
+    box-shadow: 0 3px 10px rgba(55, 99, 126, .06), inset 0 0 12px rgba(112, 157, 188, .05);
+}
+.diary-note-card-label {
+    display: block;
+    margin: 0 0 .45rem;
+    color: #80672f;
+    font-size: .62rem;
+    font-weight: 800;
+    letter-spacing: .025em;
+}
+.diary-note-editor {
+    display: block;
+    width: 100%;
+    min-height: 6rem;
+    padding: .7rem .75rem;
+    border: 1px solid rgba(112, 157, 188, .48);
+    border-radius: 11px 9px 13px 10px;
+    background-color: rgba(255, 255, 250, .96);
+    background-image:
+        repeating-linear-gradient(
+            to bottom,
+            transparent 0,
+            transparent 25px,
+            rgba(107, 157, 188, .13) 25px,
+            rgba(107, 157, 188, .13) 26px
+        );
+    color: #254f69;
+    font: inherit;
+    font-size: 16px;
+    line-height: 1.6;
+    resize: vertical;
+    overflow-wrap: anywhere;
+}
+.diary-note-editor[readonly] {
+    cursor: default;
+    opacity: .92;
+}
+.diary-additional-notes-empty {
+    padding: .75rem;
+    border: 1px dashed rgba(194, 165, 91, .48);
+    border-radius: 13px;
+    background: rgba(255, 253, 243, .72);
+    color: #55758a;
+    font-size: .68rem;
+    line-height: 1.45;
+    text-align: center;
+}
+@media (max-width: 460px) {
+    .diary-additional-notes-header {
+        flex-wrap: wrap;
+    }
+    .diary-add-note-button {
+        width: 100%;
+    }
+}
