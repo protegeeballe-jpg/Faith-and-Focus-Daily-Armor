@@ -777,29 +777,22 @@
                     <h2 class="font-bold text-sky-900 text-xl heading-font">☁️ Emotional Check: Cloud Referencing</h2>
                     <span id="trophy-6" class="text-3xl opacity-30 transition-all">☁️</span>
                 </div>
-                <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl mb-3">
-                    <span class="text-xs text-sky-900 font-semibold">Interactive Cloud Fart Releasing</span>
-                    <button data-action="openModal" data-modal="clouds" data-target="cloud-checked" class="px-3 py-1.5 bg-sky-200 text-sky-900 rounded-xl text-xs font-bold hover:bg-sky-300">☁️ Cloud Animation</button>
-                </div>
-                <p class="text-xs text-sky-800/80 mb-3 italic">Choose one cloud that best matches how you feel today. You only need one cloud, then tick the completion box.</p>
-                <div id="cloud-guide-stage" class="watercolor-guide-stage watercolor-guide-stage--cloud" aria-label="Watercolor cloud check character"></div>
+                <p class="text-xs text-sky-800/80 mb-3 italic">Choose one word that best matches how you feel today. One choice is enough, then tick the completion box.</p>
+                <div id="cloud-guide-quote" aria-label="Cloud check reflection"></div>
                 
                 <div class="space-y-2.5 text-xs">
                     <div class="bg-white/80 p-3 rounded-2xl border border-sky-100">
                         <span class="font-bold text-sky-900">Low-Level (Raw Emotions):</span>
                         <div class="mt-2 space-y-2">
                             <button type="button" data-cloud="cumulus" aria-pressed="false" data-action="releaseCloud" class="cloud-item cloud-cumulus">
-                                <span class="cloud-art" aria-hidden="true"><svg class="watercolor-cloud-svg watercolor-cloud-cumulus" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg" focusable="false"><ellipse cx="51" cy="55" rx="38" ry="8" fill="#9bb9bc" opacity=".12"/><g class="wcc-cloud wcc-cumulus"><path d="M18 48 C10 44 12 31 23 29 C26 16 43 13 51 24 C62 14 79 21 79 34 C94 35 96 51 85 56 H27 C22 56 19 53 18 48Z" fill="#f7fcfc" stroke="#9cbec2" stroke-width="2.6" stroke-linejoin="round"/><path d="M24 38 Q43 29 57 38 Q72 44 85 36" fill="none" stroke="#d6e8e5" stroke-width="3" stroke-linecap="round"/><path d="M33 28 Q44 20 53 29" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"/></g></svg></span>
                                 <span class="cloud-copy"><strong>Cumulus:</strong> Okay, just vibing. A soft, fluffy passing feeling.</span>
                                 <span class="cloud-status">Tap to release</span>
                             </button>
                             <button type="button" data-cloud="stratus" aria-pressed="false" data-action="releaseCloud" class="cloud-item cloud-stratus">
-                                <span class="cloud-art" aria-hidden="true"><svg class="watercolor-cloud-svg watercolor-cloud-stratus" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg" focusable="false"><ellipse cx="51" cy="55" rx="38" ry="8" fill="#9bb9bc" opacity=".12"/><g class="wcc-cloud wcc-stratus"><path d="M12 33 Q30 22 49 29 Q69 22 89 34 Q94 43 86 48 Q55 54 18 47 Q8 43 12 33Z" fill="#e3e9ee" stroke="#a6b4c0" stroke-width="2.4" stroke-linejoin="round"/><path d="M18 38 Q43 32 65 38 Q79 41 88 38 M24 44 Q52 39 79 44" fill="none" stroke="#fbfbf8" stroke-width="2.2" stroke-linecap="round" opacity=".85"/><path d="M20 29 Q42 23 62 29" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" opacity=".8"/></g></svg></span>
                                 <span class="cloud-copy"><strong>Stratus:</strong> Feeling emotionally flat or grey. Just notice it gently.</span>
                                 <span class="cloud-status">Tap to release</span>
                             </button>
                             <button type="button" data-cloud="stratocumulus" aria-pressed="false" data-action="releaseCloud" class="cloud-item cloud-stratocumulus">
-                                <span class="cloud-art" aria-hidden="true"><svg class="watercolor-cloud-svg watercolor-cloud-stratocumulus" viewBox="0 0 100 76" xmlns="http://www.w3.org/2000/svg" focusable="false"><ellipse cx="51" cy="55" rx="38" ry="8" fill="#9bb9bc" opacity=".12"/><g class="wcc-cloud wcc-stratocumulus"><path d="M13 46 C7 39 12 29 23 28 C26 16 41 15 49 26 C60 18 75 22 77 34 C91 32 96 45 87 53 H23 C18 53 15 51 13 46Z" fill="#edf4f4" stroke="#9db7c0" stroke-width="2.5" stroke-linejoin="round"/><path d="M21 39 Q42 32 58 40 Q72 44 86 37" fill="none" stroke="#c9dfe0" stroke-width="3" stroke-linecap="round"/><path class="wcc-raindrop" d="M33 57 C28 64 29 68 34 70 C39 68 39 64 33 57Z" fill="#87bdca"/><path class="wcc-raindrop wcc-raindrop--two" d="M56 57 C51 64 52 68 57 70 C62 68 62 64 56 57Z" fill="#87bdca"/><path class="wcc-raindrop wcc-raindrop--three" d="M77 56 C72 63 73 67 78 69 C83 67 83 63 77 56Z" fill="#87bdca"/></g></svg></span>
                                 <span class="cloud-copy"><strong>Stratocumulus:</strong> Low-energy droplets. Acknowledge the heaviness without judgment.</span>
                                 <span class="cloud-status">Tap to release</span>
                             </button>
@@ -903,12 +896,12 @@
         </div>
     </dialog>
 
-    <!-- 🌟 ANIMATION MODAL POPUP -->
+    <!-- GUIDE QUOTE MODAL -->
     <div id="anim-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
         <div id="modal-content-box" class="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl relative border-4 border-amber-300">
             <button data-action="closeModal" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
             
-            <div id="modal-animation-target" class="my-6 flex flex-col items-center justify-center min-h-[180px]"></div>
+            <div id="modal-quote-target" class="my-6 flex flex-col items-center justify-center min-h-[180px]"></div>
             <div id="modal-instructions" class="text-sm font-semibold text-slate-700 mb-6"></div>
 
             <button id="modal-complete-btn" data-action="completeAnimation" class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-md transition transform active:scale-95">
@@ -964,7 +957,6 @@
             <h1 id="finale-heading" class="text-2xl sm:text-3xl font-bold handwriting">Your Daily Armor Is Complete!</h1>
             <div id="trophy-banner" class="finale-trophy-banner hidden" role="status" aria-live="polite">
             <div class="bg-gradient-to-r from-yellow-200 via-amber-100 to-yellow-200 border-4 border-amber-400 p-3 sm:p-4 rounded-3xl text-center shadow-lg">
-                <div id="finale-character-stage" class="finale-character-stage" aria-hidden="true"></div>
                 <div class="finale-trophy-art" role="img" aria-label="A watercolor golden trophy framed by small leaves and blossoms">
                     <svg class="finale-trophy-svg" viewBox="0 0 180 104" xmlns="http://www.w3.org/2000/svg" focusable="false">
                         <title>A little trophy for today's progress</title>
