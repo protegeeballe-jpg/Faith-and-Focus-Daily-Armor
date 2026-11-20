@@ -103,6 +103,43 @@ test('every non-timer action has its own validated, bounded articulation timelin
   assert.equal(Object.keys(GUIDE_STORYBOARDS).length, 23);
 });
 
+test('water glasses stay upright through the reach-to-mouth choreography and leave no spill artwork on the floor', () => {
+  const drinkIds = ['start-4', 'mid-3', 'end-3', 'sleep-5'];
+
+  for (const id of drinkIds) {
+    const storyboard = getGuideStoryboard(id);
+    assert.equal(storyboard.prop.kind, 'water-glass');
+    assert.equal(storyboard.prop.attachment, 'right-hand');
+    assert.ok(Array.isArray(storyboard.propCounterRotation));
+    assert.deepEqual(storyboard.propCounterRotation[0], [0, 0]);
+    assert.deepEqual(storyboard.propCounterRotation.at(-1), [100, 0]);
+
+    const stylesheet = buildGuideStoryboardStylesheet(id);
+    assert.ok(stylesheet.includes('@keyframes wgi-story-' + id + '-glass-upright'));
+    assert.ok(stylesheet.includes('wgi-hand-prop--water-glass{transform-box:view-box;transform-origin:184px 145px'));
+    assert.ok(storyboard.motion.rightArm.some(([, , , rotation]) => rotation > 0));
+    assert.ok(storyboard.motion.rightForearm.some(([, , , rotation]) => rotation > 0));
+
+    const svg = buildGuideIllustrationSvg(id);
+    assert.match(svg, /wgi-hand-prop--water-glass/);
+    assert.match(svg, /wgi-setting--drink/);
+    assert.doesNotMatch(svg, /wgi-water-drop/);
+  }
+});
+
+test('overhead stretching actions raise both articulated arms above the head', () => {
+  for (const id of ['start-3', 'mid-1']) {
+    const storyboard = getGuideStoryboard(id);
+    assert.ok(storyboard.motion.leftArm.some(([, , , rotation]) => rotation >= 140), id + ' left arm never reaches overhead');
+    assert.ok(storyboard.motion.rightArm.some(([, , , rotation]) => rotation <= -140), id + ' right arm never reaches overhead');
+    assert.ok(storyboard.motion.leftForearm.some(([, , , rotation]) => rotation < 0));
+    assert.ok(storyboard.motion.rightForearm.some(([, , , rotation]) => rotation > 0));
+    const css = buildGuideStoryboardStylesheet(id);
+    assert.ok(css.includes('wgi-story-' + id + '-leftArm'));
+    assert.ok(css.includes('wgi-story-' + id + '-rightArm'));
+  }
+});
+
 test('hydration, journaling, screen sunset, and cloud interaction attach their props to the intended rig or scene', () => {
   const hydration = buildGuideIllustrationSvg('start-4');
   assert.match(hydration, /data-prop-kind="water-glass"/);
