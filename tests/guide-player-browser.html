@@ -126,7 +126,7 @@
           'Storyboard metadata is incomplete for ' + id + '.');
         if (id === 'mid-2') {
           requireValue(svg.dataset.playbackRule === 'timer-driven', 'Breathing lost its timer-driven policy.');
-          return;
+          continue;
         }
         const primaryPart = id === 'cloud-checked'
           ? svg.querySelector('.wgi-cloud-drift')
