@@ -55,5 +55,9 @@ jobs:
           diff -u assets/tailwind.generated.css "$RUNNER_TEMP/tailwind.generated.css"
       - name: Validate Worker configuration and bundle
         run: npx --yes wrangler@4.134.0 deploy --dry-run --outdir=/tmp/faith-focus-worker
+      - name: Install Chromium browser test runtime
+        run: |
+          npm install --no-save --no-package-lock playwright@1.65.0
+          npx playwright install --with-deps chromium
       - name: Run regression and security tests
         run: node --test tests/*.test.mjs

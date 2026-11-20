@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { GUIDE_PLAYBACK_SPECS, resolveGuidePlaybackSpec, createWatercolorGuidePlayer } from '../assets/guide-player.js';
-import { GUIDE_ILLUSTRATION_IDS } from '../assets/watercolor-illustrations.js';
+import { GUIDE_ILLUSTRATION_IDS, buildGuideIllustrationSvg } from '../assets/watercolor-illustrations.js';
 
 const app = readFileSync(new URL('../assets/app.js', import.meta.url), 'utf8');
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
@@ -53,6 +53,16 @@ test('existing hydration and breathing owners feed the player without replacing 
   assert.match(app, /breathingTimer = setInterval\(\(\) => \{/);
   assert.match(app, /breathingSecondsLeft--/);
   assert.match(app, /breathingCycle > 5/);
+});
+
+test('cloud idle drift and selection transforms use separate SVG groups', () => {
+  const cloudSvg = buildGuideIllustrationSvg('cloud-checked');
+  assert.match(cloudSvg, /class="wgi-cloud-drift"><g class="wgi-cloud">/);
+  const driftRule = css.match(/\.wgi-cloud-drift\s*\{[^}]*\}/)?.[0] || '';
+  const selectableRule = css.match(/\.watercolor-guide-stage--cloud\s+\.wgi-cloud\s*\{[^}]*\}/)?.[0] || '';
+  assert.match(driftRule, /animation:\s*wgi-cloud-drift/);
+  assert.match(selectableRule, /transition:\s*transform/);
+  assert.doesNotMatch(selectableRule, /animation:/);
 });
 
 test('the cloud character follows the selected cloud without taking over persistence', () => {

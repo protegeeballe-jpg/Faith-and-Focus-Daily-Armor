@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Watercolor guide browser smoke test</title>
+  <link rel="stylesheet" href="../assets/app.css">
+  <style>
+    body { margin: 0; padding: 24px; background: #fbf8ef; }
+    .fixture-row { display: grid; grid-template-columns: 1fr; gap: 16px; max-width: 420px; margin: 0 auto 24px; }
+  </style>
+</head>
+<body>
+  <main class="fixture-row">
+    <div id="hydration-stage" class="watercolor-guide-stage"></div>
+    <div id="breathing-stage" class="watercolor-guide-stage watercolor-guide-stage--breathing"></div>
+    <div id="cloud-stage" class="watercolor-guide-stage watercolor-guide-stage--cloud"></div>
+  </main>
+  <script type="module">
+    import { buildGuideIllustrationSvg } from '../assets/watercolor-illustrations.js';
+    import { createWatercolorGuidePlayer } from '../assets/guide-player.js';
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const requireValue = (condition, message) => {
+      if (!condition) throw new Error(message);
+    };
+    const scaleFromMatrix = (value) => {
+      const match = value.match(/^matrix\(([^,]+)/);
+      return match ? Number(match[1]) : NaN;
+    };
+
+    try {
+      const hydrationStage = document.getElementById('hydration-stage');
+      hydrationStage.innerHTML = buildGuideIllustrationSvg('start-4');
+      const hydrationPlayer = createWatercolorGuidePlayer({
+        guideId: 'start-4',
+        stage: hydrationStage
+      });
+      const drinkingArm = hydrationStage.querySelector('.wgi-arm--right');
+      const hydrationStartTransform = getComputedStyle(drinkingArm).transform;
+      await wait(1200);
+      const hydrationEndTransform = getComputedStyle(drinkingArm).transform;
+      const hydrationStyle = getComputedStyle(drinkingArm);
+
+      requireValue(hydrationStage.dataset.playbackMode === 'finite', 'Hydration mode was not finite.');
+      requireValue(hydrationStyle.animationName === 'wgi-drink-reach', 'Hydration arm keyframes are not active.');
+      requireValue(hydrationStyle.animationIterationCount === '1', 'Hydration did not use one finite demonstration.');
+      requireValue(hydrationStyle.animationPlayState === 'running', 'Hydration animation was paused before completion.');
+      requireValue(hydrationStartTransform !== hydrationEndTransform, 'Hydration character did not visibly move in Chromium.');
+
+      const breathingStage = document.getElementById('breathing-stage');
+      breathingStage.innerHTML = buildGuideIllustrationSvg('mid-2');
+      const breathingPlayer = createWatercolorGuidePlayer({
+        guideId: 'mid-2',
+        stage: breathingStage
+      });
+      const breathRing = breathingStage.querySelector('.wgi-breath-ring');
+      const restingScale = scaleFromMatrix(getComputedStyle(breathRing).transform);
+      requireValue(breathingPlayer.setBreathingPhase('inhale'), 'Breathing inhale phase was rejected.');
+      await wait(300);
+      const inhaleScale = scaleFromMatrix(getComputedStyle(breathRing).transform);
+      const inhaleTransition = getComputedStyle(breathRing).transitionDuration;
+      requireValue(breathRing.ownerSVGElement.dataset.breathPhase === 'inhale', 'Breathing phase did not reach the SVG.');
+      requireValue(inhaleTransition.includes('4s'), 'Breathing inhale did not use the four-second transition.');
+      requireValue(Number.isFinite(inhaleScale) && inhaleScale > restingScale, 'Breathing ring did not expand on inhale.');
+      requireValue(breathingPlayer.setBreathingPhase('hold'), 'Breathing hold phase was rejected.');
+      requireValue(getComputedStyle(breathRing).transitionDuration.includes('2s'), 'Breathing hold did not use the two-second transition.');
+      requireValue(breathingPlayer.setBreathingPhase('exhale'), 'Breathing exhale phase was rejected.');
+      requireValue(getComputedStyle(breathRing).transitionDuration.includes('6s'), 'Breathing exhale did not use the six-second transition.');
+
+      const cloudStage = document.getElementById('cloud-stage');
+      cloudStage.innerHTML = buildGuideIllustrationSvg('cloud-checked');
+      const cloudPlayer = createWatercolorGuidePlayer({
+        guideId: 'cloud-checked',
+        stage: cloudStage
+      });
+      const cloudDrift = cloudStage.querySelector('.wgi-cloud-drift');
+      const selectableCloud = cloudStage.querySelector('.wgi-cloud');
+      requireValue(getComputedStyle(cloudDrift).animationName === 'wgi-cloud-drift', 'Cloud idle drift was not active on its outer group.');
+      requireValue(getComputedStyle(selectableCloud).animationName === 'none', 'Cloud selection transform is still masked by an animation.');
+      requireValue(cloudPlayer.setCloudSelection('cumulus'), 'Cumulus selection was rejected.');
+      await wait(950);
+      const cumulusTransform = getComputedStyle(selectableCloud).transform;
+      requireValue(cloudStage.dataset.cloudSelection === 'cumulus', 'Cumulus selection was not reflected on the stage.');
+      requireValue(cumulusTransform !== 'none', 'Cumulus selection did not transform the cloud.');
+      requireValue(cloudPlayer.setCloudSelection('stratus'), 'Stratus selection was rejected.');
+      await wait(950);
+      const stratusTransform = getComputedStyle(selectableCloud).transform;
+      requireValue(stratusTransform !== cumulusTransform, 'Stratus selection did not change the cloud shape.');
+      requireValue(cloudPlayer.setCloudSelection('stratocumulus'), 'Stratocumulus selection was rejected.');
+      await wait(950);
+      const stratocumulusOpacity = Number(getComputedStyle(selectableCloud).opacity);
+      requireValue(Number.isFinite(stratocumulusOpacity) && Math.abs(stratocumulusOpacity - 0.78) < 0.01,
+        'Stratocumulus selection opacity did not settle near 0.78; computed: ' + stratocumulusOpacity);
+
+      hydrationPlayer.destroy();
+      breathingPlayer.destroy();
+      cloudPlayer.destroy();
+      window.__guidePlayerBrowserResult = {
+        ready: true,
+        hydrationAnimation: hydrationStyle.animationName,
+        hydrationMoved: hydrationStartTransform !== hydrationEndTransform,
+        breathingScales: { resting: restingScale, inhale: inhaleScale },
+        breathingTransitions: { inhale: inhaleTransition },
+        cloudTransforms: { cumulus: cumulusTransform, stratus: stratusTransform },
+        stratocumulusOpacity,
+        cloudIdleAnimation: getComputedStyle(cloudDrift).animationName
+      };
+    } catch (error) {
+      window.__guidePlayerBrowserResult = { ready: true, error: error?.stack || String(error) };
+    }
+  </script>
+</body>
+</html>
