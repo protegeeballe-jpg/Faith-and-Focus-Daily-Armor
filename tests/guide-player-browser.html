@@ -88,7 +88,10 @@
       const stratusTransform = getComputedStyle(selectableCloud).transform;
       requireValue(stratusTransform !== cumulusTransform, 'Stratus selection did not change the cloud shape.');
       requireValue(cloudPlayer.setCloudSelection('stratocumulus'), 'Stratocumulus selection was rejected.');
-      requireValue(getComputedStyle(selectableCloud).opacity === '0.78', 'Stratocumulus selection opacity was not applied.');
+      await wait(950);
+      const stratocumulusOpacity = Number(getComputedStyle(selectableCloud).opacity);
+      requireValue(Number.isFinite(stratocumulusOpacity) && Math.abs(stratocumulusOpacity - 0.78) < 0.01,
+        'Stratocumulus selection opacity did not settle near 0.78; computed: ' + stratocumulusOpacity);
 
       hydrationPlayer.destroy();
       breathingPlayer.destroy();
@@ -100,6 +103,7 @@
         breathingScales: { resting: restingScale, inhale: inhaleScale },
         breathingTransitions: { inhale: inhaleTransition },
         cloudTransforms: { cumulus: cumulusTransform, stratus: stratusTransform },
+        stratocumulusOpacity,
         cloudIdleAnimation: getComputedStyle(cloudDrift).animationName
       };
     } catch (error) {
