@@ -1040,6 +1040,5 @@ export {
     MAX_PRIVATE_DIARY_NOTES_PER_DAY,MAX_PRIVATE_DIARY_NOTE_CHARS,
     writingCryptoKey,writingLoadedDate,hasWritingCrypto,getSecureWritingStorageKey,getCurrentWritingDate,
     setWritingSecurityStatus,renderDiarySecurityUI,updatePrivateWritingAccess,
-    handleDiaryKeyAction,lockPrivateWriting,savePrivateWritingForDate,loadPrivateWritingForDate,schedulePrivateWritingSave,
-    getPrivateDiaryNotesForDate,addPrivateDiaryNote
+    handleDiaryKeyAction,lockPrivateWriting,savePrivateWritingForDate,loadPrivateWritingForDate,schedulePrivateWritingSave
 };
