@@ -1,4 +1,4 @@
-import { buildCharacterRigMarkup, buildWatercolorDefs } from './character-appearance.js';
+import { LIGHTING_THEMES, buildCharacterRigMarkup, buildWatercolorDefs } from './character-appearance.js';
 import { getGuideStoryboard, buildGuideStoryboardStylesheet } from './storyboard-choreographer.js';
 import { GUIDE_PLAYBACK_SPECS } from './guide-player.js';
 
