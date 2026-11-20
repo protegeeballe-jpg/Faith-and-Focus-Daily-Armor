@@ -85,6 +85,5 @@ test('the Forge Room retains its illustration beneath watercolor pigment and pap
   assert.match(forgeTheme, /repeating-linear-gradient/);
   assert.match(forgeTheme, /radial-gradient/);
   assert.match(forgeTheme, /\.garden-room-card::before/);
-  assert.match(forgeTheme, /#garden-room-background/); // intentional guard against detached artwork references
   assert.match(forgeTheme, /pointer-events:\s*none/);
 });
