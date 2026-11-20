@@ -39,7 +39,7 @@ test('every checklist and location guide resolves to an accessible illustrated c
 test('every activity family has a dedicated coordinated choreography rule', () => {
   const sequences = [...new Set(Object.values(GUIDE_ANIMATION_SEQUENCES))].sort();
   assert.deepEqual(sequences, [
-    'breathe', 'boop', 'drink', 'float', 'heart',
+    'boop', 'breathe', 'drink', 'float', 'heart',
     'night', 'prayer', 'relaxed', 'stretch', 'write'
   ]);
   for (const sequence of sequences) {
