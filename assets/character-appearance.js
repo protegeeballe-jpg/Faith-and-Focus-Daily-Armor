@@ -103,7 +103,7 @@ export function buildWatercolorDefs(rawPrefix, lighting = 'ambient') {
         '<feTurbulence type="fractalNoise" baseFrequency=".72" numOctaves="2" seed="17" result="grain"/>',
         '<feColorMatrix in="grain" type="saturate" values="0" result="monochrome"/>',
         '<feComponentTransfer in="monochrome" result="soft-grain">',
-          '<feFuncA type="table" tableValues="0 .075"/>',
+          '<feFuncA type="linear" slope=".075" intercept="0"/>',
         '</feComponentTransfer>',
         '<feBlend in="SourceGraphic" in2="soft-grain" mode="multiply"/>',
       '</filter>',
