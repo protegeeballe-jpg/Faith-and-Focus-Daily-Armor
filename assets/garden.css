@@ -1190,7 +1190,6 @@ input[type="reset"] {
 
 .garden-overlay.garden-diary-active #view-diary > .card-lavender {
     position: relative;
-    isolation: isolate;
     border: 1px solid rgba(113, 159, 190, .48);
     border-radius: 26px 20px 29px 22px / 20px 27px 19px 25px !important;
     background-color: #fbfaf1;
@@ -1215,7 +1214,7 @@ input[type="reset"] {
     content: "";
     position: absolute;
     inset: 1px;
-    z-index: -1;
+    z-index: 0;
     border: 1px solid rgba(110, 153, 183, .18);
     border-radius: inherit;
     background:
@@ -1508,4 +1507,12 @@ input[type="reset"] {
     background:
         radial-gradient(ellipse at 92% 0%, rgba(242, 211, 134, .22), transparent 46%),
         rgba(255, 253, 243, .90);
+}
+
+
+/* Keep the decorative edge below the Diary contents without trapping its fixed archive dialog. */
+.garden-overlay.garden-diary-active #diary-lock-panel,
+.garden-overlay.garden-diary-active #diary-editor-panel {
+    position: relative;
+    z-index: 1;
 }
