@@ -628,7 +628,10 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
       cardEdgePointerEvents: getComputedStyle(card, '::before').pointerEvents,
       lockBackground: getComputedStyle(lockCard).backgroundImage,
       editorBackground: getComputedStyle(editor).backgroundImage,
-      editorBorder: getComputedStyle(editor).borderColor
+      editorBorder: getComputedStyle(editor).borderColor,
+      archiveBackground: getComputedStyle(element.querySelector('.diary-archive-dialog')).backgroundImage,
+      archiveBackdrop: getComputedStyle(element.querySelector('#diary-archive-panel')).backgroundColor,
+      archiveCloseHeight: getComputedStyle(element.querySelector('.diary-archive-close')).minHeight
     };
   });
   assert.equal(diarySurface.active, true, 'The Diary-specific theme must be scoped to the Diary scene');
@@ -641,6 +644,9 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
   assert.match(diarySurface.lockBackground, /rgba\(239, 204, 116/);
   assert.match(diarySurface.editorBackground, /repeating-linear-gradient/);
   assert.match(diarySurface.editorBorder, /112, 157, 188/);
+  assert.match(diarySurface.archiveBackground, /radial-gradient/);
+  assert.match(diarySurface.archiveBackdrop, /29, 54, 72/);
+  assert.equal(diarySurface.archiveCloseHeight, '44px');
 
   await page.evaluate(() => {
     document.getElementById('diary-editor-panel')?.classList.remove('hidden');
