@@ -1165,3 +1165,92 @@ body {position:fixed;inset:0;min-width:0;min-height:0 !important;padding-bottom:
         transition:none!important;
     }
 }
+
+
+/* Authentic watercolor paper: restrained grain beneath every interface layer. */
+body {
+    background-color: #f8f4e9;
+    background-image:
+        radial-gradient(ellipse at 10% 9%, rgba(238, 174, 151, .25), transparent 25%),
+        radial-gradient(ellipse at 88% 14%, rgba(145, 184, 161, .24), transparent 29%),
+        radial-gradient(ellipse at 78% 88%, rgba(174, 159, 207, .20), transparent 31%),
+        radial-gradient(ellipse at 14% 82%, rgba(225, 194, 132, .17), transparent 28%),
+        repeating-linear-gradient(93deg, rgba(112, 91, 69, .026) 0 .45px, transparent .45px 4.5px),
+        repeating-linear-gradient(2deg, rgba(255, 255, 255, .28) 0 .8px, transparent .8px 6px),
+        radial-gradient(circle at 1px 1px, rgba(112, 91, 69, .075) .32px, transparent .68px);
+    background-size:
+        100% 100%, 100% 100%, 100% 100%, 100% 100%,
+        7px 7px, 9px 9px, 13px 11px;
+    background-attachment: fixed;
+    background-blend-mode: normal, multiply, normal, multiply, multiply, screen, multiply;
+}
+
+/* Paper fibres and layered pigment remain decorative and never intercept clicks. */
+.card-peach,
+.card-sage,
+.card-sky,
+.card-yellow,
+.card-lavender {
+    background-blend-mode: screen, multiply, soft-light !important;
+}
+
+/* Richer wet-on-wet pigment, granulation-like texture and softly pooled edges. */
+.guide-quote-card {
+    border-color: rgba(143, 112, 88, .34);
+    border-radius: 25px 19px 28px 21px / 19px 27px 18px 24px;
+    background-color: #fbf6eb;
+    background-image:
+        radial-gradient(ellipse at 8% 12%, rgba(225, 151, 133, .48), transparent 34%),
+        radial-gradient(ellipse at 91% 9%, rgba(128, 174, 150, .44), transparent 35%),
+        radial-gradient(ellipse at 78% 91%, rgba(167, 151, 202, .38), transparent 38%),
+        radial-gradient(ellipse at 13% 88%, rgba(225, 191, 126, .30), transparent 35%),
+        radial-gradient(ellipse at 52% 48%, rgba(255, 255, 255, .72), transparent 62%),
+        repeating-linear-gradient(97deg, rgba(116, 92, 69, .034) 0 .45px, transparent .45px 4px),
+        repeating-linear-gradient(3deg, rgba(255, 255, 255, .32) 0 .8px, transparent .8px 6px);
+    background-size:
+        100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%,
+        7px 7px, 9px 9px;
+    box-shadow:
+        inset 0 0 23px rgba(139, 115, 85, .13),
+        inset 0 0 0 1px rgba(255, 255, 255, .42),
+        0 5px 14px rgba(89, 72, 53, .10);
+}
+.guide-quote-card::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    z-index: 0;
+    border: 1px solid rgba(151, 112, 89, .16);
+    border-radius: inherit;
+    background:
+        radial-gradient(ellipse at 0% 18%, rgba(181, 111, 94, .19), transparent 23%),
+        radial-gradient(ellipse at 100% 12%, rgba(104, 153, 126, .18), transparent 24%),
+        radial-gradient(ellipse at 100% 100%, rgba(137, 120, 177, .16), transparent 25%),
+        radial-gradient(ellipse at 0% 100%, rgba(205, 159, 91, .15), transparent 22%);
+    box-shadow:
+        inset 0 0 13px 2px rgba(137, 105, 78, .12),
+        inset 0 0 0 1px rgba(255, 255, 255, .36);
+    opacity: .88;
+    pointer-events: none;
+}
+.guide-quote-wash {
+    opacity: .88;
+    background:
+        radial-gradient(ellipse at 17% 34%, rgba(221, 143, 126, .46), transparent 34%),
+        radial-gradient(ellipse at 79% 25%, rgba(112, 169, 137, .40), transparent 36%),
+        radial-gradient(ellipse at 68% 79%, rgba(159, 143, 199, .38), transparent 35%),
+        radial-gradient(ellipse at 31% 84%, rgba(224, 185, 112, .28), transparent 31%),
+        radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, .24), transparent 60%);
+    filter: blur(8px) saturate(1.08);
+}
+.guide-quote-ornament {
+    z-index: 1;
+    pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+    .guide-quote-card::after,
+    .guide-quote-wash {
+        animation: none !important;
+        transition: none !important;
+    }
+}
