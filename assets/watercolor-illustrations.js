@@ -73,8 +73,13 @@ function escapeXml(value) {
 
 function sceneDetailFor(storyboard, scene) {
   let detail = DETAIL_ART[scene.kind] || DETAIL_ART.gratitude;
-  if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'water-glass') {
-    detail = detail.replace(/<path d="M213 68[\s\S]*?(?=<path class="wgi-water-drop")/, '');
+  if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'water-glass' && scene.kind === 'drink') {
+    detail = '<g class="wgi-setting wgi-setting--drink">' +
+      '<rect x="221" y="52" width="69" height="77" rx="5" fill="#F4E9D4" fill-opacity=".64" stroke="#D1B99A" stroke-width="1.8"/>' +
+      '<path d="M255.5 53 V128 M222 90.5 H289" fill="none" stroke="#FFF9EC" stroke-width="3" opacity=".9"/>' +
+      '<circle cx="271" cy="70" r="10" fill="#F4D58D" opacity=".68"/>' +
+      '<path d="M231 119 Q243 111 252 119 M263 119 Q275 111 283 119" fill="none" stroke="#B6CBAE" stroke-width="2.5" stroke-linecap="round"/>' +
+      '</g>';
   }
   if (storyboard.prop.attachment === 'right-hand' && storyboard.prop.kind === 'pencil') {
     detail = detail.replace(/<path class="wgi-pencil"[\s\S]*?<path d="M260 123[\s\S]*?<\/path>/, '');
