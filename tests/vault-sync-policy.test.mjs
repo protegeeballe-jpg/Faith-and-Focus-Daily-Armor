@@ -44,14 +44,14 @@ test('each account-opening path verifies the device before starting vault synchr
 });
 
 test('live cross-device sync uses an authenticated WebSocket and changed-date reconciliation', () => {
-  assert.match(syncSource, /new WebSocket\\(url,\\s*\\[/);
-  assert.match(syncSource, /faith-focus-sync-v1/);
-  assert.match(syncSource, /session\\.vaultMembershipTicket/);
-  assert.match(syncSource, /session\\.deviceSessionToken/);
-  assert.match(syncSource, /message\\.type !== 'vault:changed'/);
-  assert.match(syncSource, /queueVaultSync\\(\\{ dateString: message\\.dateString, immediate: true \\}\\)/);
-  assert.match(syncSource, /VAULT_EVENT_RECONNECT_MAX_MS/);
-  assert.match(syncSource, /document\\.visibilityState !== 'visible'/);
+  assert.ok(syncSource.includes('new WebSocket(url, ['));
+  assert.ok(syncSource.includes("'faith-focus-sync-v1'"));
+  assert.ok(syncSource.includes('session.vaultMembershipTicket'));
+  assert.ok(syncSource.includes('session.deviceSessionToken'));
+  assert.ok(syncSource.includes("message.type !== 'vault:changed'"));
+  assert.ok(syncSource.includes('queueVaultSync({ dateString: message.dateString, immediate: true })'));
+  assert.ok(syncSource.includes('VAULT_EVENT_RECONNECT_MAX_MS'));
+  assert.ok(syncSource.includes("document.visibilityState !== 'visible'"));
   assert.doesNotMatch(syncSource, /REMOTE_INDEX_POLL|pollRemoteVaultIndex|scheduleRemoteIndexPoll|setInterval\\(/);
 });
 
