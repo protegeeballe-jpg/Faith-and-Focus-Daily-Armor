@@ -43,17 +43,17 @@ let syncQueue = Promise.resolve();
 let localChangeSyncQueue = Promise.resolve();
 let pendingDailySyncDates = new Set();
 let dailySyncTimer = null;
-let remoteIndexPollTimer = null;
-let remoteIndexPollPromise = null;
-let remoteIndexPollFailures = 0;
+let vaultEventSocket = null;
+let vaultEventReconnectTimer = null;
+let vaultEventReconnectFailures = 0;
 let pendingFullVaultRefresh = false;
 let lastCloudSyncStartedAt = 0;
 let lastForegroundSyncAt = 0;
 const DAILY_SYNC_DEBOUNCE_MS = 1200;
 const DAILY_SYNC_MIN_INTERVAL_MS = 3500;
 const FOREGROUND_SYNC_MIN_INTERVAL_MS = 5000;
-const REMOTE_INDEX_POLL_INTERVAL_MS = 10_000;
-const REMOTE_INDEX_POLL_MAX_BACKOFF_MS = 120_000;
+const VAULT_EVENT_RECONNECT_BASE_MS = 1500;
+const VAULT_EVENT_RECONNECT_MAX_MS = 30_000;
 let localCaptureQueues = new Map();
 let localChangeVersions = new Map();
 let lastStatus = '';
@@ -82,8 +82,7 @@ function removeVaultSyncListeners() {
   window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
   window.removeEventListener('online', handleOnline);
   window.removeEventListener('pagehide', flushLocalVaultChanges);
-  if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
-  remoteIndexPollTimer = null;
+  closeVaultEventSocket();
   vaultLocalListenersInstalled = false;
   vaultOnlineListenerInstalled = false;
 }
@@ -921,98 +920,71 @@ export function selectVaultReconciliationDates(remoteIndex, requestedDateStrings
     .filter(isValidDateString))].sort();
 }
 
-/**
- * Return only dates whose remote packet version differs from this device's
- * acknowledged remote version. The index contains timestamps only; encrypted
- * packet contents are fetched and authenticated later by reconcileDay().
- */
-export function selectVaultChangedDates(remoteIndex, localPackets = []) {
-  const localVersions = new Map();
-  for (const record of Array.isArray(localPackets) ? localPackets : []) {
-    if (isValidDateString(record?.dateString)) {
-      localVersions.set(record.dateString, record.remoteUpdatedAt || null);
-    }
+function closeVaultEventSocket() {
+  if (vaultEventReconnectTimer !== null) window.clearTimeout(vaultEventReconnectTimer);
+  vaultEventReconnectTimer = null;
+  const socket = vaultEventSocket;
+  vaultEventSocket = null;
+  if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
+    try { socket.close(1000, "Vault sync paused"); } catch { /* Socket already closed. */ }
   }
-  return Object.entries(remoteIndex || {})
-    .filter(([dateString, remoteUpdatedAt]) =>
-      isValidDateString(dateString)
-      && typeof remoteUpdatedAt === 'string'
-      && remoteUpdatedAt.length > 0
-      && localVersions.get(dateString) !== remoteUpdatedAt
-    )
-    .map(([dateString]) => dateString)
-    .sort();
 }
 
-async function pollRemoteVaultIndex() {
-  if (!activeVault || activeVault.offlineOnly === true
-      || document.visibilityState !== 'visible') return;
-  if (remoteIndexPollPromise) return remoteIndexPollPromise;
+function scheduleVaultEventReconnect(session, generation) {
+  if (!activeVault || activeVault !== session || vaultSyncGeneration !== generation
+      || session.offlineOnly === true || document.visibilityState !== 'visible'
+      || navigator.onLine === false || vaultEventReconnectTimer !== null) return;
+  vaultEventReconnectFailures = Math.min(vaultEventReconnectFailures + 1, 6);
+  const delay = Math.min(VAULT_EVENT_RECONNECT_MAX_MS,
+    VAULT_EVENT_RECONNECT_BASE_MS * (2 ** (vaultEventReconnectFailures - 1)));
+  vaultEventReconnectTimer = window.setTimeout(() => {
+    vaultEventReconnectTimer = null;
+    connectVaultEventSocket(session, generation);
+  }, delay);
+}
 
-  const session = activeVault;
-  const generation = vaultSyncGeneration;
-  const operation = (async () => {
-    const remoteIndex = await fetchRemoteIndex();
-    if (activeVault !== session || vaultSyncGeneration !== generation
-        || session.offlineOnly === true || document.visibilityState !== 'visible') return;
-
-    const localPackets = await listLocalDailyPackets();
-    const changedDates = selectVaultChangedDates(remoteIndex, localPackets);
-    if (!changedDates.length) return;
-
-    console.info('[Vault Sync] Remote packet versions changed on another device:', {
-      vaultId: session.vaultId,
-      changedDateCount: changedDates.length,
-      changedDates
-    });
-    // Reconcile only changed dates. reconcileDay fetches and authenticates each
-    // ciphertext packet, merges same-day edits, and preserves local data on error.
-    queueVaultSync({ dateStrings: changedDates, immediate: true });
-  })();
-
-  remoteIndexPollPromise = operation;
+function connectVaultEventSocket(session = activeVault, generation = vaultSyncGeneration) {
+  if (!session || session !== activeVault || session.offlineOnly === true
+      || document.visibilityState !== 'visible' || navigator.onLine === false
+      || typeof WebSocket !== 'function') return;
+  if (vaultEventSocket && (vaultEventSocket.readyState === 0 || vaultEventSocket.readyState === 1)) return;
+  const url = WORKER_ORIGIN.replace(/^https:/, 'wss:')
+    + '/vault/' + session.vaultId + '/events';
+  let socket;
   try {
-    await operation;
-  } finally {
-    if (remoteIndexPollPromise === operation) remoteIndexPollPromise = null;
+    socket = new WebSocket(url, [
+      'faith-focus-sync-v1',
+      session.vaultMembershipTicket,
+      session.deviceSessionToken
+    ]);
+  } catch (error) {
+    console.warn('[Vault Sync] Live update connection could not be created.', error);
+    scheduleVaultEventReconnect(session, generation);
+    return;
   }
-}
-
-function scheduleRemoteIndexPoll(delay = REMOTE_INDEX_POLL_INTERVAL_MS) {
-  if (!activeVault || activeVault.offlineOnly === true
-      || document.visibilityState !== 'visible') return;
-  if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
-
-  const session = activeVault;
-  const generation = vaultSyncGeneration;
-  remoteIndexPollTimer = window.setTimeout(async () => {
-    remoteIndexPollTimer = null;
-    if (activeVault !== session || vaultSyncGeneration !== generation
-        || session.offlineOnly === true || document.visibilityState !== 'visible') return;
-
-    let nextDelay = REMOTE_INDEX_POLL_INTERVAL_MS;
-    try {
-      await pollRemoteVaultIndex();
-      remoteIndexPollFailures = 0;
-    } catch (error) {
-      if (activeVault !== session || vaultSyncGeneration !== generation) return;
-      if (error?.code === 'VAULT_SESSION_EXPIRED') {
-        status(error.message || 'Your device session expired. Sign in again to resume automatic sync.', 'error');
-        return;
-      }
-      remoteIndexPollFailures = Math.min(remoteIndexPollFailures + 1, 5);
-      nextDelay = Math.min(
-        REMOTE_INDEX_POLL_MAX_BACKOFF_MS,
-        REMOTE_INDEX_POLL_INTERVAL_MS * (2 ** remoteIndexPollFailures)
-      );
-      console.warn('[Vault Sync] Automatic cross-device update check failed; retrying with bounded backoff.', error);
+  vaultEventSocket = socket;
+  socket.addEventListener('open', () => {
+    if (vaultEventSocket !== socket || activeVault !== session || vaultSyncGeneration !== generation) {
+      try { socket.close(1000, 'Stale vault session'); } catch { /* Stale socket. */ }
+      return;
     }
-
-    if (activeVault === session && vaultSyncGeneration === generation
-        && session.offlineOnly !== true && document.visibilityState === 'visible') {
-      scheduleRemoteIndexPoll(nextDelay);
-    }
-  }, Math.max(0, delay));
+    vaultEventReconnectFailures = 0;
+    status('Live encrypted sync is connected. Changes from your other devices will arrive automatically.', 'success');
+  });
+  socket.addEventListener('message', event => {
+    if (vaultEventSocket !== socket || activeVault !== session || vaultSyncGeneration !== generation) return;
+    if (typeof event.data !== 'string' || event.data.length > 1024) return;
+    let message;
+    try { message = JSON.parse(event.data); } catch { return; }
+    if (!message || message.type !== 'vault:changed' || !isValidDateString(message.dateString)
+        || typeof message.updatedAt !== 'string' || message.updatedAt.length > 64) return;
+    queueVaultSync({ dateString: message.dateString, immediate: true });
+  });
+  socket.addEventListener('error', () => {});
+  socket.addEventListener('close', () => {
+    if (vaultEventSocket === socket) vaultEventSocket = null;
+    scheduleVaultEventReconnect(session, generation);
+  });
 }
 
 function synchronizeVault(options = { refreshAll: true }) {
@@ -1244,8 +1216,8 @@ export async function startVaultSync(credentials) {
     }
 
     vaultSyncInitializing = false;
-    remoteIndexPollFailures = 0;
-    scheduleRemoteIndexPoll();
+    vaultEventReconnectFailures = 0;
+    connectVaultEventSocket(credentials, generation);
     // Changes captured while startup was in progress are now flushed through
     // the same serialized attachment-upload and packet-reconciliation path.
     if (pendingDailySyncDates.size || pendingFullVaultRefresh) {
@@ -1274,18 +1246,17 @@ function handleLocalDataChanged(event) {
 function handleOnline() {
   if (!activeVault || activeVault.offlineOnly === true) return;
   queueVaultSync({ refreshAll: true, immediate: true });
-  scheduleRemoteIndexPoll();
+  connectVaultEventSocket();
 }
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {
-    if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
-    remoteIndexPollTimer = null;
+    closeVaultEventSocket();
     flushLocalVaultChanges();
     return;
   }
   if (document.visibilityState !== 'visible' || !activeVault || activeVault.offlineOnly === true) return;
-  scheduleRemoteIndexPoll();
+  connectVaultEventSocket();
   const now = Date.now();
   if (now - lastForegroundSyncAt < FOREGROUND_SYNC_MIN_INTERVAL_MS) return;
   lastForegroundSyncAt = now;
@@ -1316,9 +1287,8 @@ export async function stopVaultSync() {
   // Invalidate in-flight startup before aborting requests or awaiting local flushes.
   vaultSyncGeneration += 1;
   vaultSyncInitializing = false;
-  if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
-  remoteIndexPollTimer = null;
-  remoteIndexPollFailures = 0;
+  closeVaultEventSocket();
+  vaultEventReconnectFailures = 0;
   if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
   dailySyncTimer = null;
   pendingDailySyncDates.clear();
