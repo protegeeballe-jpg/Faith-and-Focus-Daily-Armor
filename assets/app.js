@@ -1493,6 +1493,9 @@ import {
         document.addEventListener('private-writing:locked', () => {
             clearDiaryVoiceNotePlayback();
             closeDiaryArchive();
+            const composer = document.getElementById('diary-note-composer');
+            if (composer) composer.value = '';
+            renderPrivateDiaryNotes(getCurrentWritingDate());
             updateDiaryDateAccess(getCurrentWritingDate());
         });
         registerVoiceNoteStopHandler(stopActiveVoiceRecording);
