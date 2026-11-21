@@ -870,19 +870,29 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
             return writingLoadedDiaryEntries.map(entry=>({...entry}));
         }
 
-        export async function addPrivateDiaryNote(dateStr=getCurrentWritingDate()){
+        export async function addPrivateDiaryNote(dateStr=getCurrentWritingDate(),noteText=''){
             if(!writingCryptoKey)throw new Error('Unlock your Diary before adding a private note.');
             if(!dateStr||writingLoadedDate!==dateStr||!isCurrentPrivateWritingDate(dateStr)){
                 throw new Error('New notes can only be added to today’s Diary page. Previous dates are read-only.');
+            }
+            if(typeof noteText!=='string')throw new TypeError('The private note must be text.');
+            const text=noteText.trim();
+            if(!text)throw new TypeError('Write a note before adding it to your Diary.');
+            if(text.length>MAX_PRIVATE_DIARY_NOTE_CHARS){
+                throw new RangeError('A private note cannot exceed '+MAX_PRIVATE_DIARY_NOTE_CHARS+' characters.');
             }
             const payload=getPrivateWritingPayload();
             if(payload.entries.length>=MAX_PRIVATE_DIARY_NOTES_PER_DAY){
                 throw new RangeError('This date has reached its additional-note limit. Your saved notes remain unchanged.');
             }
+            const existingCharacters=payload.entries.reduce((total,entry)=>total+entry.text.length,0);
+            if(existingCharacters+text.length>MAX_PRIVATE_DIARY_NOTE_TOTAL_CHARS){
+                throw new RangeError('This date has reached its supported private-note storage limit. Your saved notes remain unchanged.');
+            }
             const random=crypto.getRandomValues(new Uint8Array(16));
             const id=dateStr+'-'+Array.from(random,byte=>byte.toString(16).padStart(2,'0')).join('');
             const now=Date.now();
-            const entry={id,createdAt:now,updatedAt:now,text:''};
+            const entry={id,createdAt:now,updatedAt:now,text};
             const key=writingCryptoKey;
             await enqueuePrivateWritingSnapshot(dateStr,{
                 ...payload,
