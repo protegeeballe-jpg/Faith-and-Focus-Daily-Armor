@@ -538,9 +538,6 @@
                     <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Additional Notes</h3>
                     <p class="mt-1 text-xs">Write in one notepad. Select ADD to securely place each note on this day’s page.</p>
                 </div>
-                <ol id="diary-additional-notes-list" class="diary-additional-notes-list mt-3" aria-label="Saved private notes" aria-live="polite">
-                    <li class="diary-additional-notes-empty">No additional notes yet. Write one note below and select ADD.</li>
-                </ol>
                 <div class="diary-note-composer">
                     <label class="diary-note-composer-label" for="diary-note-composer">Write a note</label>
                     <textarea id="diary-note-composer" class="diary-note-composer-input" rows="4" maxlength="8000" spellcheck="true" aria-describedby="diary-note-composer-help" placeholder="Write one thought, then select ADD to place it on today’s page." disabled aria-disabled="true"></textarea>
@@ -549,6 +546,9 @@
                     </div>
                     <p id="diary-note-composer-help" class="diary-note-composer-help">Your note is encrypted and saved on this device when you press ADD. It can sync when your device reconnects.</p>
                 </div>
+                <ol id="diary-additional-notes-list" class="diary-additional-notes-list mt-3" aria-label="Saved private notes" aria-live="polite">
+                    <li class="diary-additional-notes-empty">No additional notes yet. Write one note below and select ADD.</li>
+                </ol>
             </section>
             <section id="diary-location-history" class="mt-5 rounded-2xl border border-purple-200 bg-purple-50/70 p-4" aria-labelledby="diary-location-history-heading">
                 <div class="flex flex-wrap items-center justify-between gap-2">
