@@ -510,7 +510,7 @@ export default {
     if (request.method === "OPTIONS") return withCorsPreflight();
 
     const url = new URL(request.url);
-    const syncEventsRoute = /^\\/vault\\/([a-f0-9]{64})\\/events$/.exec(url.pathname);
+    const syncEventsRoute = /^\/vault\/([a-f0-9]{64})\/events$/.exec(url.pathname);
     const isSyncEventsUpgrade = Boolean(syncEventsRoute
       && request.method === "GET"
       && request.headers.get("Upgrade")?.toLowerCase() === "websocket");
