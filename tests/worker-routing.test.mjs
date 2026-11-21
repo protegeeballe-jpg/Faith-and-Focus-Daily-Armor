@@ -666,13 +666,14 @@ test('account registry routes receive a shared per-location ceiling in addition 
 
 test('live sync WebSocket requests require the event protocol and forward verified device credentials', () => {
   const workerSource = readFileSync(new URL('../worker.js', import.meta.url), 'utf8');
-  assert.match(workerSource, /faith-focus-sync-v1/);
-  assert.match(workerSource, /syncProtocols\\[1\\]/);
-  assert.match(workerSource, /syncProtocols\\[2\\]/);
-  assert.match(workerSource, /path === "\\/events"/);
-  assert.match(workerSource, /this\\.state\\.acceptWebSocket\\(server\\)/);
-  assert.match(workerSource, /broadcastVaultChange\\(dateString, updatedAt, authenticatedSession\\.deviceId\\)/);
-  assert.match(workerSource, /type: "vault:changed"/);
-  assert.match(workerSource, /socket\\.deserializeAttachment\\(\\)/);
-  assert.match(workerSource, /if \\(socketResponse\\.status === 101\\) return socketResponse/);
+  assert.ok(workerSource.includes('faith-focus-sync-v1'));
+  assert.ok(workerSource.includes('syncProtocols[1]'));
+  assert.ok(workerSource.includes('syncProtocols[2]'));
+  assert.ok(workerSource.includes('path === "/events"'));
+  assert.ok(workerSource.includes('this.state.acceptWebSocket(server)'));
+  assert.ok(workerSource.includes('broadcastVaultChange(dateString, updatedAt, authenticatedSession.deviceId)'));
+  assert.ok(workerSource.includes('type: "vault:changed"'));
+  assert.ok(workerSource.includes('socket.deserializeAttachment()'));
+  assert.ok(workerSource.includes('if (socketResponse.status === 101) return socketResponse'));
 });
+
