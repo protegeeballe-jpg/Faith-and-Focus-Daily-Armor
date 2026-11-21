@@ -508,15 +508,28 @@ export default {
 
     if (origin !== APP_ORIGIN) return jsonResponse({ error: "Origin not allowed." }, 403);
     if (request.method === "OPTIONS") return withCorsPreflight();
-    if (request.headers.get("X-App-Client") !== APP_CLIENT) {
+
+    const url = new URL(request.url);
+    const syncEventsRoute = /^\\/vault\\/([a-f0-9]{64})\\/events$/.exec(url.pathname);
+    const isSyncEventsUpgrade = Boolean(syncEventsRoute
+      && request.method === "GET"
+      && request.headers.get("Upgrade")?.toLowerCase() === "websocket");
+    const syncProtocols = (request.headers.get("Sec-WebSocket-Protocol") || "")
+      .split(",").map(value => value.trim()).filter(Boolean);
+    if (isSyncEventsUpgrade) {
+      if (syncProtocols.length !== 3
+          || syncProtocols[0] !== "faith-focus-sync-v1"
+          || !TOKEN_PATTERN.test(syncProtocols[2])) {
+        return jsonResponse({ error: "A verified sync session is required." }, 403, origin);
+      }
+    } else if (request.headers.get("X-App-Client") !== APP_CLIENT) {
       return jsonResponse({ error: "The application client header is required." }, 403, origin);
     }
 
-    const url = new URL(request.url);
     const accountRoute = /^\/account\/(signup|migrate-legacy|signin|unlock|recover|complete-recovery)$/.exec(url.pathname);
     const legacyClaim = /^\/legacy-claim\/([a-f0-9]{64})$/.exec(url.pathname);
     const legacyUsernameHeader = request.headers.get("X-Legacy-Username");
-    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke|device\/list|device\/remove)$/.exec(url.pathname);
+    const match = /^\/vault\/([a-f0-9]{64})\/(claim|index|events|day\/(\d{4}-\d{2}-\d{2})|device\/challenge|device\/verify|device\/session\/revoke|device\/list|device\/remove)$/.exec(url.pathname);
     const voiceNoteMatch = /^\/vault\/([a-f0-9]{64})\/voice-note\/(\d{4}-\d{2}-\d{2})\/(\d{4}-\d{2}-\d{2}-[a-f0-9]{32})\/(\d{1,2})$/.exec(url.pathname);
     const knownRoute = Boolean(accountRoute || legacyClaim || match || voiceNoteMatch);
 
@@ -533,7 +546,7 @@ export default {
     }
     if (match) {
       const resource = match[2];
-      const expectedMethods = resource === "index" || resource === "device/list" ? ["GET"]
+      const expectedMethods = resource === "index" || resource === "events" || resource === "device/list" ? ["GET"]
         : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
       if (!expectedMethods.includes(request.method)) {
         return jsonResponse({ error: "Method not allowed." }, 405, origin);
@@ -699,7 +712,7 @@ export default {
     }
 
     // Validate membership before consuming the request body or account rate-limit bucket.
-    const membershipTicket = request.headers.get("X-Vault-Membership") || "";
+    const membershipTicket = isSyncEventsUpgrade ? syncProtocols[1] : (request.headers.get("X-Vault-Membership") || "");
     if (!(await verifyVaultMembershipTicket(membershipTicket, vaultId, env.MEMBERSHIP_PEPPER))) {
       return jsonResponse({ error: "A valid account membership ticket is required. Please sign in again." }, 403, origin);
     }
@@ -724,7 +737,7 @@ export default {
     }
 
     const token = request.headers.get("X-Write-Token") || "";
-    const sessionToken = request.headers.get("X-Device-Session") || "";
+    const sessionToken = isSyncEventsUpgrade ? syncProtocols[2] : (request.headers.get("X-Device-Session") || "");
     if (resource === "voice-note" && request.method === "PUT"
         && !validVoiceNoteChunkUpload(payload, dateString, voiceNoteId, voiceNoteChunkIndex)) {
       return jsonResponse({ error: "The encrypted voice-note attachment is invalid or exceeds its size limit." }, 400, origin);
@@ -775,6 +788,30 @@ export default {
     });
     if (resource === "device/challenge") headers.set("X-Write-Token", token);
     if (sessionToken) headers.set("X-Device-Session", sessionToken);
+    if (isSyncEventsUpgrade) {
+      headers.set("Upgrade", "websocket");
+      headers.set("Sec-WebSocket-Protocol", "faith-focus-sync-v1");
+      const socketRequest = new Request("https://vault-coordinator.internal/events", request);
+      const socketHeaders = new Headers(socketRequest.headers);
+      socketHeaders.set("X-Vault-Id", vaultId);
+      socketHeaders.set("X-Device-Session", sessionToken);
+      socketHeaders.set("Sec-WebSocket-Protocol", "faith-focus-sync-v1");
+      const forwardedSocketRequest = new Request(socketRequest, { headers: socketHeaders });
+      const socketResponse = await coordinator.fetch(forwardedSocketRequest);
+      if (socketResponse.status === 101) return socketResponse;
+      const socketError = await socketResponse.text();
+      return new Response(socketError, {
+        status: socketResponse.status,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": APP_ORIGIN,
+          "Vary": "Origin",
+          "X-Content-Type-Options": "nosniff"
+        }
+      });
+    }
+
     const coordinatorResponse = await coordinator.fetch(new Request(
       "https://vault-coordinator.internal" + internalPath,
       {
@@ -1738,11 +1775,48 @@ export class VaultCoordinator {
     return jsonResponse({ error: "Vault credentials were not accepted." }, 401);
   }
 
+  async openSyncSocket(request) {
+    if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket"
+        || request.headers.get("Sec-WebSocket-Protocol") !== "faith-focus-sync-v1") {
+      return jsonResponse({ error: "A valid live-sync WebSocket upgrade is required." }, 400);
+    }
+    const session = await this.authenticateDeviceSession(request, { touch: false });
+    if (!session) return this.unauthorized();
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    server.serializeAttachment({ deviceId: session.deviceId, connectedAt: Date.now() });
+    this.state.acceptWebSocket(server);
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+      headers: { "Sec-WebSocket-Protocol": "faith-focus-sync-v1" }
+    });
+  }
+
+  broadcastVaultChange(dateString, updatedAt, sourceDeviceId) {
+    const sockets = typeof this.state.getWebSockets === "function" ? this.state.getWebSockets() : [];
+    const message = JSON.stringify({ type: "vault:changed", dateString, updatedAt });
+    for (const socket of sockets) {
+      try {
+        const attachment = socket.deserializeAttachment();
+        if (attachment?.deviceId === sourceDeviceId) continue;
+        if (socket.readyState === 1) socket.send(message);
+      } catch {
+        try { socket.close(1011, "Sync notification failed"); } catch { /* Stale socket. */ }
+      }
+    }
+  }
+
+  webSocketMessage(socket) {
+    try { socket.close(1008, "This sync channel is receive-only"); } catch { /* Closed socket. */ }
+  }
+
   async fetch(request) {
     this.vaultId = request.headers.get("X-Vault-Id") || "";
     if (!VAULT_ID_PATTERN.test(this.vaultId)) return jsonResponse({ error: "Invalid vault identifier." }, 400);
 
     const path = new URL(request.url).pathname;
+    if (path === "/events") return this.openSyncSocket(request);
     const requiresPacketIndex = path === "/index" || path.startsWith("/day/");
     return this.serialized(async () => {
       // Check the session before processing this request.
@@ -1985,6 +2059,8 @@ export class VaultCoordinator {
         // Refresh packet metadata from the stored value.
       }
 
+      // Durable Object WebSockets notify other devices; this does not touch KV.
+      this.broadcastVaultChange(dateString, updatedAt, authenticatedSession.deviceId);
       return jsonResponse({ ok: true, updatedAt }, 200);
     });
   }
