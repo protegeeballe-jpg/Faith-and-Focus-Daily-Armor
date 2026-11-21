@@ -1624,6 +1624,20 @@ export class VaultCoordinator {
     return jsonResponse({ ok: true, currentDeviceId: session.deviceId, devices }, 200);
   }
 
+  closeSyncSockets(deviceId = null) {
+    const sockets = typeof this.state.getWebSockets === "function" ? this.state.getWebSockets() : [];
+    for (const socket of sockets) {
+      try {
+        const attachment = socket.deserializeAttachment();
+        if (deviceId === null || attachment?.deviceId === deviceId) {
+          socket.close(1008, "Trusted device session revoked");
+        }
+      } catch {
+        try { socket.close(1008, "Trusted device session revoked"); } catch { /* Stale socket. */ }
+      }
+    }
+  }
+
   async removeRegisteredDevice(request, session) {
     if (!session || session.vaultId !== this.vaultId) return this.unauthorized();
     let payload;
@@ -1642,6 +1656,7 @@ export class VaultCoordinator {
     if (!registered) return jsonResponse({ ok: true, removed: false, alreadyRemoved: true }, 200);
 
     await this.state.storage.delete(deviceKey);
+    this.closeSyncSockets(deviceId);
     const sessions = await this.state.storage.list({ prefix: "device-session:" });
     let revokedSessions = 0;
     for (const [key, record] of sessions) {
@@ -1659,6 +1674,7 @@ export class VaultCoordinator {
   }
 
   async revokeAllDeviceSessions() {
+    this.closeSyncSockets();
     const sessions = await this.state.storage.list({ prefix: "device-session:" });
     for (const key of sessions.keys()) {
       await this.state.storage.delete(key);
@@ -1687,6 +1703,7 @@ export class VaultCoordinator {
       return jsonResponse({ error: "The device session is already expired or no longer valid." }, 401);
     }
     await this.state.storage.delete(key);
+    this.closeSyncSockets(payload.deviceId);
     await this.scheduleSessionCleanup();
     return jsonResponse({ ok: true, revoked: true }, 200);
   }
