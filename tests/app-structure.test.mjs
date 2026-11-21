@@ -1127,7 +1127,7 @@ test('the Diary exposes one shared private notepad and read-only saved note card
  assert.ok(section.includes('>ADD</button>'));
  assert.ok(app.includes('async function addDiaryNote()'));
  assert.ok(app.includes('await addPrivateDiaryNote(dateString, noteText);'));
- assert.ok(app.includes('noteBody.textContent = note.text;'));
+ assert.ok(app.includes('noteBody.textContent = note.text ||'));
  assert.ok(app.includes('renderPrivateDiaryNotes(dateString)'));
  assert.ok(app.includes('addPrivateDiaryNote:()=>addDiaryNote()'));
  assert.ok(app.includes('schedulePrivateWritingSave'));
