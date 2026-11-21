@@ -23,7 +23,7 @@ async function startStaticServer() {
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
-      const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\\/+/, '');
+      const relative = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
       const file = resolve(root, relative);
       if (file !== root && !file.startsWith(root + sep)) {
         response.writeHead(403).end();
