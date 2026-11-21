@@ -132,7 +132,7 @@ function getEdgeRateLimitPolicy(request) {
     return { ipLimited: true, accountRegistry: true, sensitiveRoute: "legacy-claim" };
   }
 
-  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke|device\/list|device\/remove)$/.exec(pathname);
+  const vaultRoute = /^\/vault\/[a-f0-9]{64}\/(claim|index|events|day\/\d{4}-\d{2}-\d{2}|device\/challenge|device\/verify|device\/session\/revoke|device\/list|device\/remove)$/.exec(pathname);
   if (vaultRoute) {
     const resource = vaultRoute[1];
     const sensitiveRoute = resource === "device/challenge" ? "device:challenge"
@@ -699,7 +699,7 @@ export default {
     const voiceNoteId = voiceNoteMatch?.[3] || null;
     const voiceNoteChunkIndex = voiceNoteMatch ? Number(voiceNoteMatch[4]) : null;
     const expectedMethods = voiceNoteMatch ? ["GET", "PUT"]
-      : resource === "index" || resource === "device/list" ? ["GET"]
+      : resource === "index" || resource === "events" || resource === "device/list" ? ["GET"]
         : resource.startsWith("day/") ? ["GET", "PUT"] : ["POST"];
     if (!expectedMethods.includes(request.method)) {
       return jsonResponse({ error: "Method not allowed." }, 405, origin);
