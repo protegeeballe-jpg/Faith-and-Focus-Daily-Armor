@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { hasVerifiedDeviceSession, selectVaultChangedDates, selectVaultReconciliationDates } from '../assets/vault-sync.js';
+import { hasVerifiedDeviceSession, selectVaultReconciliationDates } from '../assets/vault-sync.js';
 
 const syncSource = readFileSync(new URL('../assets/vault-sync.js', import.meta.url), 'utf8');
 const sessionSource = readFileSync(new URL('../assets/vault-session.js', import.meta.url), 'utf8');
@@ -43,38 +43,16 @@ test('each account-opening path verifies the device before starting vault synchr
   assert.equal((sessionSource.match(/await startVaultSync\(credentials\)/g) || []).length, 3);
 });
 
-test('remote index polling selects only new or changed daily packet versions', () => {
-  const remoteIndex = {
-    '2026-11-18': 'remote-a',
-    '2026-11-19': 'remote-b-new',
-    '2026-11-20': 'remote-c',
-    'invalid-date': 'ignored',
-    '2026-11-21': 123
-  };
-  const localPackets = [
-    { dateString: '2026-11-18', remoteUpdatedAt: 'remote-a', dirty: false },
-    { dateString: '2026-11-19', remoteUpdatedAt: 'remote-b-old', dirty: true },
-    { dateString: '2026-11-21', remoteUpdatedAt: null, dirty: false }
-  ];
-  assert.deepEqual(
-    selectVaultChangedDates(remoteIndex, localPackets),
-    ['2026-11-19', '2026-11-20']
-  );
-  assert.deepEqual(selectVaultChangedDates({}, localPackets), []);
-});
-
-test('automatic cross-device sync polls metadata only while visible and stops with the vault session', () => {
-  assert.match(syncSource, /const REMOTE_INDEX_POLL_INTERVAL_MS = 10_000/);
-  assert.match(syncSource, /function pollRemoteVaultIndex\(\)/);
-  assert.match(syncSource, /function scheduleRemoteIndexPoll\(/);
-  assert.match(syncSource, /queueVaultSync\(\{ dateStrings: changedDates, immediate: true \}\)/);
-  assert.match(syncSource, /scheduleRemoteIndexPoll\(\)/);
-  assert.match(syncSource, /document\.visibilityState !== 'visible'/);
-  assert.match(syncSource, /remoteIndexPollMAX_BACKOFF_MS|REMOTE_INDEX_POLL_MAX_BACKOFF_MS/);
-  assert.match(syncSource, /removeVaultSyncListeners\(\)[\s\S]*?clearTimeout\(remoteIndexPollTimer\)/);
-  assert.match(syncSource, /async function stopVaultSync\(\)[\s\S]*?clearTimeout\(remoteIndexPollTimer\)/);
-  assert.doesNotMatch(syncSource, /setInterval\(/,
-    'Polling must not overlap on a fixed interval timer');
+test('live cross-device sync uses an authenticated WebSocket and changed-date reconciliation', () => {
+  assert.match(syncSource, /new WebSocket\\(url,\\s*\\[/);
+  assert.match(syncSource, /faith-focus-sync-v1/);
+  assert.match(syncSource, /session\\.vaultMembershipTicket/);
+  assert.match(syncSource, /session\\.deviceSessionToken/);
+  assert.match(syncSource, /message\\.type !== 'vault:changed'/);
+  assert.match(syncSource, /queueVaultSync\\(\\{ dateString: message\\.dateString, immediate: true \\}\\)/);
+  assert.match(syncSource, /VAULT_EVENT_RECONNECT_MAX_MS/);
+  assert.match(syncSource, /document\\.visibilityState !== 'visible'/);
+  assert.doesNotMatch(syncSource, /REMOTE_INDEX_POLL|pollRemoteVaultIndex|scheduleRemoteIndexPoll|setInterval\\(/);
 });
 
 test('local packets remain dirty until the cloud accepts their upload', () =>{
