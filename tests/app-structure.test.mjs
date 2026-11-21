@@ -66,6 +66,21 @@ test('private-writing encryption remains separate and preserved',()=>{
  assert.match(writing,/PRIVATE_NOTE_IDS/);
  assert.match(app,/handleDiaryKeyAction/);
 });
+test('Diary Additional Notes uses one shared notepad and a lower-right ADD action',()=>{
+ const start=html.indexOf('<section id="diary-additional-notes"');
+ const end=html.indexOf('<section id="diary-location-history"',start);
+ assert.ok(start>=0&&end>start,'The Additional Notes section must exist');
+ const section=html.slice(start,end);
+ assert.equal(section.split('<textarea').length-1,1,'Only one notes composer may be present');
+ assert.ok(section.includes('id="diary-note-composer"'));
+ assert.ok(section.includes('id="diary-add-note-button"'));
+ assert.ok(section.includes('class="diary-note-composer-actions"'));
+ assert.ok(section.includes('>ADD</button>'));
+ assert.ok(!section.includes('data-private-diary-note-id'),'Saved notes must not create more editing textareas');
+ assert.ok(app.includes('addPrivateDiaryNote(dateString,noteText)'));
+ assert.ok(app.includes('noteBody.textContent = note.text'));
+ assert.ok(appCss.includes('justify-content:flex-end'));
+});
 test('the main Diary paragraph uses versioned replacement semantics and remains backward compatible',()=>{
  assert.match(writing,/PRIVATE_DIARY_META_KEY/);
  assert.match(writing,/function unpackPrivateWritingDiary/);
