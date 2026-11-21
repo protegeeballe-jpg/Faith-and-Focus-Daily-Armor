@@ -1130,7 +1130,7 @@ test('the Diary exposes one shared private notepad and read-only saved note card
  assert.ok(app.includes('noteBody.textContent = note.text;'));
  assert.ok(app.includes('renderPrivateDiaryNotes(dateString)'));
  assert.ok(app.includes('addPrivateDiaryNote:()=>addDiaryNote()'));
- assert.ok(app.includes('schedulePrivateWritingSave()'));
+ assert.ok(app.includes('schedulePrivateWritingSave'));
  assert.ok(writing.includes("export async function addPrivateDiaryNote(dateStr=getCurrentWritingDate(),noteText='')"));
  assert.ok(writing.includes("encryptPrivatePayload('diary',dateStr,diaryPayload,key)"));
  assert.ok(writing.includes('MAX_PRIVATE_DIARY_NOTES_PER_DAY=40'));
