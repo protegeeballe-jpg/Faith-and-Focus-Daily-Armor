@@ -598,12 +598,13 @@ test('Google Drive APIs and Gist credentials are removed from the active app; JS
 });
 
 test('the exact restrictive CSP preserves watercolor image, CSS, and blob audio sources',()=>{
- const exact="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://faith-focus-proxy.nine-westhigh.workers.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';";
+ const exact="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://faith-focus-proxy.nine-westhigh.workers.dev wss://faith-focus-proxy.nine-westhigh.workers.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';";
+ const homeExact=exact.replace(" wss://faith-focus-proxy.nine-westhigh.workers.dev","");
  const home=readFileSync(new URL('../home.html',import.meta.url),'utf8');
  const match=html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
  const homeMatch=home.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
  assert.equal(match?.[1],exact);
- assert.equal(homeMatch?.[1],exact);
+ assert.equal(homeMatch?.[1],homeExact);
  assert.match(readFileSync(new URL('../assets/garden.css',import.meta.url),'utf8'),/url\("\.\/garden-room-background\.jpg"\)/);
  assert.match(html,/id="record-btn"/);
  assert.match(html,/voice notes/i);
