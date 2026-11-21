@@ -77,7 +77,7 @@ test('Diary Additional Notes uses one shared notepad and a lower-right ADD actio
  assert.ok(section.includes('class="diary-note-composer-actions"'));
  assert.ok(section.includes('>ADD</button>'));
  assert.ok(!section.includes('data-private-diary-note-id'),'Saved notes must not create more editing textareas');
- assert.ok(app.includes('addPrivateDiaryNote(dateString,noteText)'));
+ assert.ok(app.includes('addPrivateDiaryNote(dateString, noteText)'));
  assert.ok(app.includes('noteBody.textContent = note.text'));
  assert.ok(appCss.includes('justify-content:flex-end'));
 });
