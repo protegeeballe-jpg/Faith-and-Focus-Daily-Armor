@@ -677,3 +677,46 @@ test('live sync WebSocket requests require the event protocol and forward verifi
   assert.ok(workerSource.includes('if (socketResponse.status === 101) return socketResponse'));
 });
 
+
+test('Worker upgrades authenticated live-sync requests and forwards only the selected event protocol', async () => {
+  const vaultId = 'f'.repeat(64);
+  const ticket = await membershipTicket(vaultId);
+  const sessionToken = 's'.repeat(43);
+  let forwarded = null;
+  const socketResponse = { status: 101, upgraded: true };
+  const env = {
+    ...makeEdgeLimiters(),
+    MEMBERSHIP_PEPPER: PEPPER,
+    VAULT_PACKETS: {},
+    VAULT_COORDINATOR: {
+      idFromName: id => id,
+      get: () => ({
+        fetch: async request => {
+          forwarded = request;
+          return socketResponse;
+        }
+      })
+    }
+  };
+  const request = new Request(
+    'https://faith-focus-proxy.nine-westhigh.workers.dev/vault/' + vaultId + '/events',
+    {
+      method: 'GET',
+      headers: {
+        Origin: 'https://protegeeballe-jpg.github.io',
+        'CF-Connecting-IP': '203.0.113.45',
+        Upgrade: 'websocket',
+        'Sec-WebSocket-Protocol': ['faith-focus-sync-v1', ticket, sessionToken].join(', ')
+      }
+    }
+  );
+
+  const response = await worker.fetch(request, env);
+  assert.equal(response, socketResponse);
+  assert.equal(new URL(forwarded.url).pathname, '/events');
+  assert.equal(forwarded.headers.get('Upgrade'), 'websocket');
+  assert.equal(forwarded.headers.get('Sec-WebSocket-Protocol'), 'faith-focus-sync-v1');
+  assert.equal(forwarded.headers.get('X-Vault-Id'), vaultId);
+  assert.equal(forwarded.headers.get('X-Device-Session'), sessionToken);
+});
+
