@@ -663,3 +663,16 @@ test('account registry routes receive a shared per-location ceiling in addition 
   assert.deepEqual(limiters.calls.map(call => call.name), ['auth', 'auth']);
   assert.equal(limiters.calls[1].key, 'account-registry-global:v1');
 });
+
+test('live sync WebSocket requests require the event protocol and forward verified device credentials', () => {
+  const workerSource = readFileSync(new URL('../worker.js', import.meta.url), 'utf8');
+  assert.match(workerSource, /faith-focus-sync-v1/);
+  assert.match(workerSource, /syncProtocols\\[1\\]/);
+  assert.match(workerSource, /syncProtocols\\[2\\]/);
+  assert.match(workerSource, /path === "\\/events"/);
+  assert.match(workerSource, /this\\.state\\.acceptWebSocket\\(server\\)/);
+  assert.match(workerSource, /broadcastVaultChange\\(dateString, updatedAt, authenticatedSession\\.deviceId\\)/);
+  assert.match(workerSource, /type: "vault:changed"/);
+  assert.match(workerSource, /socket\\.deserializeAttachment\\(\\)/);
+  assert.match(workerSource, /if \\(socketResponse\\.status === 101\\) return socketResponse/);
+});
