@@ -43,12 +43,17 @@ let syncQueue = Promise.resolve();
 let localChangeSyncQueue = Promise.resolve();
 let pendingDailySyncDates = new Set();
 let dailySyncTimer = null;
+let remoteIndexPollTimer = null;
+let remoteIndexPollPromise = null;
+let remoteIndexPollFailures = 0;
 let pendingFullVaultRefresh = false;
 let lastCloudSyncStartedAt = 0;
 let lastForegroundSyncAt = 0;
 const DAILY_SYNC_DEBOUNCE_MS = 1200;
 const DAILY_SYNC_MIN_INTERVAL_MS = 3500;
 const FOREGROUND_SYNC_MIN_INTERVAL_MS = 5000;
+const REMOTE_INDEX_POLL_INTERVAL_MS = 10_000;
+const REMOTE_INDEX_POLL_MAX_BACKOFF_MS = 120_000;
 let localCaptureQueues = new Map();
 let localChangeVersions = new Map();
 let lastStatus = '';
@@ -77,6 +82,8 @@ function removeVaultSyncListeners() {
   window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
   window.removeEventListener('online', handleOnline);
   window.removeEventListener('pagehide', flushLocalVaultChanges);
+  if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
+  remoteIndexPollTimer = null;
   vaultLocalListenersInstalled = false;
   vaultOnlineListenerInstalled = false;
 }
@@ -294,7 +301,9 @@ async function getCredentialHeaders() {
       || !/^[A-Za-z0-9_-]{43}$/.test(activeVault.deviceSessionToken)
       || !Number.isFinite(activeVault.deviceSessionExpiresAt)
       || activeVault.deviceSessionExpiresAt <= Date.now()) {
-    throw new Error('Your device session has expired. Sign in again to securely reconnect this device.');
+    const error = new Error('Your device session has expired. Sign in again to securely reconnect this device.');
+    error.code = 'VAULT_SESSION_EXPIRED';
+    throw error;
   }
   return {
     Accept: 'application/json',
@@ -349,7 +358,11 @@ async function vaultRequest(path, { method = 'GET', body = null, baseUpdatedAt }
     remoteDateCount: result.index && typeof result.index === 'object' ? Object.keys(result.index).length : undefined
   });
   if (!response.ok) {
-    if (response.status === 401) throw new Error('This device session is no longer valid. Sign in again to securely reconnect this device.');
+    if (response.status === 401) {
+      const error = new Error('This device session is no longer valid. Sign in again to securely reconnect this device.');
+      error.code = 'VAULT_SESSION_EXPIRED';
+      throw error;
+    }
     if (response.status === 409) {
       const error = new Error(result.error || 'This date changed on another device. Your local packet was kept.');
       error.code = 'VAULT_CONFLICT';
@@ -908,6 +921,100 @@ export function selectVaultReconciliationDates(remoteIndex, requestedDateStrings
     .filter(isValidDateString))].sort();
 }
 
+/**
+ * Return only dates whose remote packet version differs from this device's
+ * acknowledged remote version. The index contains timestamps only; encrypted
+ * packet contents are fetched and authenticated later by reconcileDay().
+ */
+export function selectVaultChangedDates(remoteIndex, localPackets = []) {
+  const localVersions = new Map();
+  for (const record of Array.isArray(localPackets) ? localPackets : []) {
+    if (isValidDateString(record?.dateString)) {
+      localVersions.set(record.dateString, record.remoteUpdatedAt || null);
+    }
+  }
+  return Object.entries(remoteIndex || {})
+    .filter(([dateString, remoteUpdatedAt]) =>
+      isValidDateString(dateString)
+      && typeof remoteUpdatedAt === 'string'
+      && remoteUpdatedAt.length > 0
+      && localVersions.get(dateString) !== remoteUpdatedAt
+    )
+    .map(([dateString]) => dateString)
+    .sort();
+}
+
+async function pollRemoteVaultIndex() {
+  if (!activeVault || activeVault.offlineOnly === true
+      || document.visibilityState !== 'visible') return;
+  if (remoteIndexPollPromise) return remoteIndexPollPromise;
+
+  const session = activeVault;
+  const generation = vaultSyncGeneration;
+  const operation = (async () => {
+    const remoteIndex = await fetchRemoteIndex();
+    if (activeVault !== session || vaultSyncGeneration !== generation
+        || session.offlineOnly === true || document.visibilityState !== 'visible') return;
+
+    const localPackets = await listLocalDailyPackets();
+    const changedDates = selectVaultChangedDates(remoteIndex, localPackets);
+    if (!changedDates.length) return;
+
+    console.info('[Vault Sync] Remote packet versions changed on another device:', {
+      vaultId: session.vaultId,
+      changedDateCount: changedDates.length,
+      changedDates
+    });
+    // Reconcile only changed dates. reconcileDay fetches and authenticates each
+    // ciphertext packet, merges same-day edits, and preserves local data on error.
+    queueVaultSync({ dateStrings: changedDates, immediate: true });
+  })();
+
+  remoteIndexPollPromise = operation;
+  try {
+    await operation;
+  } finally {
+    if (remoteIndexPollPromise === operation) remoteIndexPollPromise = null;
+  }
+}
+
+function scheduleRemoteIndexPoll(delay = REMOTE_INDEX_POLL_INTERVAL_MS) {
+  if (!activeVault || activeVault.offlineOnly === true
+      || document.visibilityState !== 'visible') return;
+  if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
+
+  const session = activeVault;
+  const generation = vaultSyncGeneration;
+  remoteIndexPollTimer = window.setTimeout(async () => {
+    remoteIndexPollTimer = null;
+    if (activeVault !== session || vaultSyncGeneration !== generation
+        || session.offlineOnly === true || document.visibilityState !== 'visible') return;
+
+    let nextDelay = REMOTE_INDEX_POLL_INTERVAL_MS;
+    try {
+      await pollRemoteVaultIndex();
+      remoteIndexPollFailures = 0;
+    } catch (error) {
+      if (activeVault !== session || vaultSyncGeneration !== generation) return;
+      if (error?.code === 'VAULT_SESSION_EXPIRED') {
+        status(error.message || 'Your device session expired. Sign in again to resume automatic sync.', 'error');
+        return;
+      }
+      remoteIndexPollFailures = Math.min(remoteIndexPollFailures + 1, 5);
+      nextDelay = Math.min(
+        REMOTE_INDEX_POLL_MAX_BACKOFF_MS,
+        REMOTE_INDEX_POLL_INTERVAL_MS * (2 ** remoteIndexPollFailures)
+      );
+      console.warn('[Vault Sync] Automatic cross-device update check failed; retrying with bounded backoff.', error);
+    }
+
+    if (activeVault === session && vaultSyncGeneration === generation
+        && session.offlineOnly !== true && document.visibilityState === 'visible') {
+      scheduleRemoteIndexPoll(nextDelay);
+    }
+  }, Math.max(0, delay));
+}
+
 function synchronizeVault(options = { refreshAll: true }) {
   if (!activeVault || activeVault.offlineOnly === true) return Promise.resolve();
   const operation = syncQueue.catch(() => {}).then(() => performVaultSync(options));
@@ -915,9 +1022,12 @@ function synchronizeVault(options = { refreshAll: true }) {
   return operation;
 }
 
-function queueVaultSync({ dateString = null, refreshAll = false, immediate = false } = {}) {
+function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = false, immediate = false } = {}) {
   if (!activeVault || activeVault.offlineOnly === true) return;
   if (isValidDateString(dateString)) pendingDailySyncDates.add(dateString);
+  if (Array.isArray(dateStrings)) dateStrings.forEach(value => {
+    if (isValidDateString(value)) pendingDailySyncDates.add(value);
+  });
   if (refreshAll) pendingFullVaultRefresh = true;
   if (vaultSyncInitializing) return;
 
@@ -1134,6 +1244,8 @@ export async function startVaultSync(credentials) {
     }
 
     vaultSyncInitializing = false;
+    remoteIndexPollFailures = 0;
+    scheduleRemoteIndexPoll();
     // Changes captured while startup was in progress are now flushed through
     // the same serialized attachment-upload and packet-reconciliation path.
     if (pendingDailySyncDates.size || pendingFullVaultRefresh) {
@@ -1162,14 +1274,18 @@ function handleLocalDataChanged(event) {
 function handleOnline() {
   if (!activeVault || activeVault.offlineOnly === true) return;
   queueVaultSync({ refreshAll: true, immediate: true });
+  scheduleRemoteIndexPoll();
 }
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {
+    if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
+    remoteIndexPollTimer = null;
     flushLocalVaultChanges();
     return;
   }
   if (document.visibilityState !== 'visible' || !activeVault || activeVault.offlineOnly === true) return;
+  scheduleRemoteIndexPoll();
   const now = Date.now();
   if (now - lastForegroundSyncAt < FOREGROUND_SYNC_MIN_INTERVAL_MS) return;
   lastForegroundSyncAt = now;
@@ -1200,6 +1316,9 @@ export async function stopVaultSync() {
   // Invalidate in-flight startup before aborting requests or awaiting local flushes.
   vaultSyncGeneration += 1;
   vaultSyncInitializing = false;
+  if (remoteIndexPollTimer !== null) window.clearTimeout(remoteIndexPollTimer);
+  remoteIndexPollTimer = null;
+  remoteIndexPollFailures = 0;
   if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
   dailySyncTimer = null;
   pendingDailySyncDates.clear();
