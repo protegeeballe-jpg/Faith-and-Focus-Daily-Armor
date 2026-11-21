@@ -52,7 +52,8 @@ test('live cross-device sync uses an authenticated WebSocket and changed-date re
   assert.ok(syncSource.includes('queueVaultSync({ dateString: message.dateString, immediate: true })'));
   assert.ok(syncSource.includes('VAULT_EVENT_RECONNECT_MAX_MS'));
   assert.ok(syncSource.includes("document.visibilityState !== 'visible'"));
-  assert.doesNotMatch(syncSource, /REMOTE_INDEX_POLL|pollRemoteVaultIndex|scheduleRemoteIndexPoll|setInterval\\(/);
+  assert.doesNotMatch(syncSource, /REMOTE_INDEX_POLL|pollRemoteVaultIndex|scheduleRemoteIndexPoll/);
+  assert.equal(syncSource.includes('setInterval('), false);
 });
 
 test('local packets remain dirty until the cloud accepts their upload', () =>{
