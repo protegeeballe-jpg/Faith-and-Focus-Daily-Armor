@@ -96,7 +96,7 @@ test('Chromium: one shared Diary notepad adds encrypted notes while the device i
     };
   });
   assert.equal(setup.secureContext, true, 'The local test origin must provide Web Crypto');
-  assert.match(setup.dateString, /^\\d{4}-\\d{2}-\\d{2}$/);
+  assert.match(setup.dateString, /^\d{4}-\d{2}-\d{2}$/);
 
   const composer = page.locator('#diary-note-composer');
   const addButton = page.locator('#diary-add-note-button');
