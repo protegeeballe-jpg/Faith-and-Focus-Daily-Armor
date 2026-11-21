@@ -1114,25 +1114,30 @@ test('Claim Victory returns to the Forge Room after missed-card cleanup', () => 
 });
 
 
-test('the Diary exposes separate additional notes only through the unlocked encrypted editor', () => {
+test('the Diary exposes one shared private notepad and read-only saved note cards', () => {
  assert.match(html,/id="diary-additional-notes"/);
  assert.match(html,/id="diary-additional-notes-list"[^>]*aria-live="polite"/);
+ assert.match(html,/id="diary-note-composer"/);
  assert.match(html,/id="diary-add-note-button"[^>]*type="button"[^>]*data-action="addPrivateDiaryNote"/);
- assert.match(html,/id="diary-add-note-button"[^>]*aria-label="Add a separate private note"/);
- assert.match(app,/async function addDiaryNote\(\)/);
- assert.match(app,/addPrivateDiaryNote\(dateString\)/);
- assert.match(app,/addPrivateDiaryNote:\(\)=>addDiaryNote\(\)/);
- assert.match(app,/data-private-diary-note-id/);
- assert.match(app,/schedulePrivateWritingSave\(\)/);
- assert.match(app,/renderPrivateDiaryNotes\(dateString\)/);
- assert.match(app,/noteEditor\.readOnly = !canEditCurrentDiary/);
- assert.match(writing,/export async function addPrivateDiaryNote\(dateStr=getCurrentWritingDate\(\)\)/);
- assert.match(writing,/encryptPrivatePayload\('diary',dateStr,diaryPayload,key\)/);
+ assert.match(html,/class="diary-note-composer-actions"/);
+ const start=html.indexOf('<section id="diary-additional-notes"');
+ const end=html.indexOf('<section id="diary-location-history"',start);
+ const section=html.slice(start,end);
+ assert.equal(section.split('<textarea').length-1,1,'Only one editable notes notepad may exist');
+ assert.match(section,/>ADD<\\/button>/);
+ assert.match(app,/async function addDiaryNote\\(\\)/);
+ assert.match(app,/addPrivateDiaryNote\\(dateString, noteText\\)/);
+ assert.match(app,/noteBody\\.textContent = note\\.text/);
+ assert.match(app,/renderPrivateDiaryNotes\\(dateString\\)/);
+ assert.match(app,/addPrivateDiaryNote:\\(\\)=>addDiaryNote\\(\\)/);
+ assert.match(app,/schedulePrivateWritingSave\\(\\)/);
+ assert.match(writing,/export async function addPrivateDiaryNote\\(dateStr=getCurrentWritingDate\\(\\),noteText=''\\)/);
+ assert.match(writing,/encryptPrivatePayload\\('diary',dateStr,diaryPayload,key\\)/);
  assert.match(writing,/MAX_PRIVATE_DIARY_NOTES_PER_DAY=40/);
  assert.match(writing,/MAX_PRIVATE_DIARY_NOTE_CHARS=8000/);
  assert.match(writing,/PRIVATE_DIARY_NOTE_ID_PATTERN/);
- assert.match(writing,/mergePrivateWritingDiary\(localValue,remoteValue,dateString\)/);
- assert.match(writing,/const entries=normalizePrivateDiaryEntries\(\[\.\.\.byId\.values\(\)\],dateString\)/);
+ assert.match(writing,/mergePrivateWritingDiary\\(localValue,remoteValue,dateString\\)/);
+ assert.match(writing,/const entries=normalizePrivateDiaryEntries\\(\\[\\.\\.\\.byId\\.values\\(\\)\\],dateString\\)/);
 });
 
 test('encrypted Diary note writes are batched for one changed-date cloud capture', () => {
