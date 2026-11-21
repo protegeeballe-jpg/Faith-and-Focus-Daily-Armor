@@ -1124,20 +1124,20 @@ test('the Diary exposes one shared private notepad and read-only saved note card
  const end=html.indexOf('<section id="diary-location-history"',start);
  const section=html.slice(start,end);
  assert.equal(section.split('<textarea').length-1,1,'Only one editable notes notepad may exist');
- assert.match(section,/>ADD<\\/button>/);
- assert.match(app,/async function addDiaryNote\\(\\)/);
- assert.match(app,/addPrivateDiaryNote\\(dateString, noteText\\)/);
- assert.match(app,/noteBody\\.textContent = note\\.text/);
- assert.match(app,/renderPrivateDiaryNotes\\(dateString\\)/);
- assert.match(app,/addPrivateDiaryNote:\\(\\)=>addDiaryNote\\(\\)/);
- assert.match(app,/schedulePrivateWritingSave\\(\\)/);
- assert.match(writing,/export async function addPrivateDiaryNote\\(dateStr=getCurrentWritingDate\\(\\),noteText=''\\)/);
- assert.match(writing,/encryptPrivatePayload\\('diary',dateStr,diaryPayload,key\\)/);
- assert.match(writing,/MAX_PRIVATE_DIARY_NOTES_PER_DAY=40/);
- assert.match(writing,/MAX_PRIVATE_DIARY_NOTE_CHARS=8000/);
- assert.match(writing,/PRIVATE_DIARY_NOTE_ID_PATTERN/);
- assert.match(writing,/mergePrivateWritingDiary\\(localValue,remoteValue,dateString\\)/);
- assert.match(writing,/const entries=normalizePrivateDiaryEntries\\(\\[\\.\\.\\.byId\\.values\\(\\)\\],dateString\\)/);
+ assert.ok(section.includes('>ADD</button>'));
+ assert.ok(app.includes('async function addDiaryNote()'));
+ assert.ok(app.includes('await addPrivateDiaryNote(dateString, noteText);'));
+ assert.ok(app.includes('noteBody.textContent = note.text;'));
+ assert.ok(app.includes('renderPrivateDiaryNotes(dateString)'));
+ assert.ok(app.includes('addPrivateDiaryNote:()=>addDiaryNote()'));
+ assert.ok(app.includes('schedulePrivateWritingSave()'));
+ assert.ok(writing.includes("export async function addPrivateDiaryNote(dateStr=getCurrentWritingDate(),noteText='')"));
+ assert.ok(writing.includes("encryptPrivatePayload('diary',dateStr,diaryPayload,key)"));
+ assert.ok(writing.includes('MAX_PRIVATE_DIARY_NOTES_PER_DAY=40'));
+ assert.ok(writing.includes('MAX_PRIVATE_DIARY_NOTE_CHARS=8000'));
+ assert.ok(writing.includes('PRIVATE_DIARY_NOTE_ID_PATTERN'));
+ assert.ok(writing.includes('mergePrivateWritingDiary(localValue,remoteValue,dateString)'));
+ assert.ok(writing.includes('const entries=normalizePrivateDiaryEntries([...byId.values()],dateString)'));
 });
 
 test('encrypted Diary note writes are batched for one changed-date cloud capture', () => {
