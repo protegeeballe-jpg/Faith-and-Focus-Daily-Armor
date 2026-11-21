@@ -883,6 +883,28 @@ test('Vault Coordinator does not initialize an empty index when KV is unavailabl
   assert.deepEqual(storageMap.get('vault-index'), {});
 });
 
+test('repeated live-sync index checks use the Durable Object cache and do not consume repeated KV reads', async () => {
+  const { coordinator, failures } = makeCoordinator();
+  await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
+  const device = await createCoordinatorSession(coordinator);
+
+  const first = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: device.sessionToken
+  }));
+  assert.equal(first.status, 200);
+
+  // Once the index has been loaded into Durable Object storage, subsequent
+  // authenticated metadata checks must not touch KV.
+  failures.get = true;
+  const repeated = await coordinator.fetch(coordinatorRequest('/index', {
+    token: null,
+    sessionToken: device.sessionToken
+  }));
+  assert.equal(repeated.status, 200);
+  assert.deepEqual((await responseJson(repeated)).index, {});
+});
+
 test('Vault Coordinator reports a temporary read failure instead of treating a missing KV packet as empty', async () => {
   const { coordinator, storageMap, failures } = makeCoordinator();
   await coordinator.fetch(coordinatorRequest('/admin/initialize', { method: 'POST', body: {} }));
