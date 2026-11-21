@@ -43,7 +43,20 @@ test('each account-opening path verifies the device before starting vault synchr
   assert.equal((sessionSource.match(/await startVaultSync\(credentials\)/g) || []).length, 3);
 });
 
-test('local packets remain dirty until the cloud accepts their upload', () => {
+test('live cross-device sync uses an authenticated WebSocket and changed-date reconciliation', () => {
+  assert.ok(syncSource.includes('new WebSocket(url, ['));
+  assert.ok(syncSource.includes("'faith-focus-sync-v1'"));
+  assert.ok(syncSource.includes('session.vaultMembershipTicket'));
+  assert.ok(syncSource.includes('session.deviceSessionToken'));
+  assert.ok(syncSource.includes("message.type !== 'vault:changed'"));
+  assert.ok(syncSource.includes('queueVaultSync({ dateString: message.dateString, immediate: true })'));
+  assert.ok(syncSource.includes('VAULT_EVENT_RECONNECT_MAX_MS'));
+  assert.ok(syncSource.includes("document.visibilityState !== 'visible'"));
+  assert.doesNotMatch(syncSource, /REMOTE_INDEX_POLL|pollRemoteVaultIndex|scheduleRemoteIndexPoll/);
+  assert.equal(syncSource.includes('setInterval('), false);
+});
+
+test('local packets remain dirty until the cloud accepts their upload', () =>{
   const captureStart = syncSource.indexOf('async function captureDailyPacket(');
   const uploadStart = syncSource.indexOf('async function uploadDailyPacket(');
   const localWrite = syncSource.indexOf('await putLocalDailyPacket({', captureStart);

@@ -139,11 +139,12 @@ test('Settings module fails closed when an element or native dialog method is un
   assert.equal(unsupportedDialog['settings-modal'].listeners.size, 0);
 });
 
-test('Settings copy accurately documents sign-in-triggered sync without background polling', () => {
-  assert.match(htmlSource, /Sign-in-triggered encrypted sync across devices/);
-  assert.match(htmlSource, /sync starts after a verified sign-in/);
-  assert.match(htmlSource, /does not continuously poll other devices/);
-  assert.doesNotMatch(htmlSource, /Automatic daily sync across your devices|checks for updates while the app is open/);
+test('Settings copy accurately documents authenticated live sync without periodic polling', () => {
+  assert.match(htmlSource, /Live encrypted sync across trusted devices/);
+  assert.match(htmlSource, /secure live connection notifies your other trusted devices/);
+  assert.match(htmlSource, /fetches and authenticates only that encrypted packet/);
+  assert.match(htmlSource, /live connection pauses while this page is hidden/);
+  assert.doesNotMatch(htmlSource, /continuously poll|checks for updates while the app is open|every 10 seconds/);
   assert.match(htmlSource, /id="settings-open-button"[^>]*aria-controls="settings-modal"/);
   assert.match(htmlSource, /<dialog id="settings-modal"/);
   assert.match(htmlSource, /src="\.\/assets\/settings-modal\.js"/);

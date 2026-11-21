@@ -66,6 +66,21 @@ test('private-writing encryption remains separate and preserved',()=>{
  assert.match(writing,/PRIVATE_NOTE_IDS/);
  assert.match(app,/handleDiaryKeyAction/);
 });
+test('Diary Additional Notes uses one shared notepad and a lower-right ADD action',()=>{
+ const start=html.indexOf('<section id="diary-additional-notes"');
+ const end=html.indexOf('<section id="diary-location-history"',start);
+ assert.ok(start>=0&&end>start,'The Additional Notes section must exist');
+ const section=html.slice(start,end);
+ assert.equal(section.split('<textarea').length-1,1,'Only one notes composer may be present');
+ assert.ok(section.includes('id="diary-note-composer"'));
+ assert.ok(section.includes('id="diary-add-note-button"'));
+ assert.ok(section.includes('class="diary-note-composer-actions"'));
+ assert.ok(section.includes('>ADD</button>'));
+ assert.ok(!section.includes('data-private-diary-note-id'),'Saved notes must not create more editing textareas');
+ assert.ok(app.includes('addPrivateDiaryNote(dateString, noteText)'));
+ assert.ok(app.includes('noteBody.textContent = note.text ||'));
+ assert.ok(appCss.includes('justify-content:flex-end'));
+});
 test('the main Diary paragraph uses versioned replacement semantics and remains backward compatible',()=>{
  assert.match(writing,/PRIVATE_DIARY_META_KEY/);
  assert.match(writing,/function unpackPrivateWritingDiary/);
@@ -583,12 +598,13 @@ test('Google Drive APIs and Gist credentials are removed from the active app; JS
 });
 
 test('the exact restrictive CSP preserves watercolor image, CSS, and blob audio sources',()=>{
- const exact="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://faith-focus-proxy.nine-westhigh.workers.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';";
+ const exact="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://faith-focus-proxy.nine-westhigh.workers.dev wss://faith-focus-proxy.nine-westhigh.workers.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';";
+ const homeExact=exact.replace(" wss://faith-focus-proxy.nine-westhigh.workers.dev","");
  const home=readFileSync(new URL('../home.html',import.meta.url),'utf8');
  const match=html.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
  const homeMatch=home.match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/);
  assert.equal(match?.[1],exact);
- assert.equal(homeMatch?.[1],exact);
+ assert.equal(homeMatch?.[1],homeExact);
  assert.match(readFileSync(new URL('../assets/garden.css',import.meta.url),'utf8'),/url\("\.\/garden-room-background\.jpg"\)/);
  assert.match(html,/id="record-btn"/);
  assert.match(html,/voice notes/i);
@@ -1099,25 +1115,30 @@ test('Claim Victory returns to the Forge Room after missed-card cleanup', () => 
 });
 
 
-test('the Diary exposes separate additional notes only through the unlocked encrypted editor', () => {
+test('the Diary exposes one shared private notepad and read-only saved note cards', () => {
  assert.match(html,/id="diary-additional-notes"/);
  assert.match(html,/id="diary-additional-notes-list"[^>]*aria-live="polite"/);
+ assert.match(html,/id="diary-note-composer"/);
  assert.match(html,/id="diary-add-note-button"[^>]*type="button"[^>]*data-action="addPrivateDiaryNote"/);
- assert.match(html,/id="diary-add-note-button"[^>]*aria-label="Add a separate private note"/);
- assert.match(app,/async function addDiaryNote\(\)/);
- assert.match(app,/addPrivateDiaryNote\(dateString\)/);
- assert.match(app,/addPrivateDiaryNote:\(\)=>addDiaryNote\(\)/);
- assert.match(app,/data-private-diary-note-id/);
- assert.match(app,/schedulePrivateWritingSave\(\)/);
- assert.match(app,/renderPrivateDiaryNotes\(dateString\)/);
- assert.match(app,/noteEditor\.readOnly = !canEditCurrentDiary/);
- assert.match(writing,/export async function addPrivateDiaryNote\(dateStr=getCurrentWritingDate\(\)\)/);
- assert.match(writing,/encryptPrivatePayload\('diary',dateStr,diaryPayload,key\)/);
- assert.match(writing,/MAX_PRIVATE_DIARY_NOTES_PER_DAY=40/);
- assert.match(writing,/MAX_PRIVATE_DIARY_NOTE_CHARS=8000/);
- assert.match(writing,/PRIVATE_DIARY_NOTE_ID_PATTERN/);
- assert.match(writing,/mergePrivateWritingDiary\(localValue,remoteValue,dateString\)/);
- assert.match(writing,/const entries=normalizePrivateDiaryEntries\(\[\.\.\.byId\.values\(\)\],dateString\)/);
+ assert.match(html,/class="diary-note-composer-actions"/);
+ const start=html.indexOf('<section id="diary-additional-notes"');
+ const end=html.indexOf('<section id="diary-location-history"',start);
+ const section=html.slice(start,end);
+ assert.equal(section.split('<textarea').length-1,1,'Only one editable notes notepad may exist');
+ assert.ok(section.includes('>ADD</button>'));
+ assert.ok(app.includes('async function addDiaryNote()'));
+ assert.ok(app.includes('await addPrivateDiaryNote(dateString, noteText);'));
+ assert.ok(app.includes('noteBody.textContent = note.text ||'));
+ assert.ok(app.includes('renderPrivateDiaryNotes(dateString)'));
+ assert.ok(app.includes('addPrivateDiaryNote:()=>addDiaryNote()'));
+ assert.ok(app.includes('schedulePrivateWritingSave'));
+ assert.ok(writing.includes("export async function addPrivateDiaryNote(dateStr=getCurrentWritingDate(),noteText='')"));
+ assert.ok(writing.includes("encryptPrivatePayload('diary',dateStr,diaryPayload,key)"));
+ assert.ok(writing.includes('MAX_PRIVATE_DIARY_NOTES_PER_DAY=40'));
+ assert.ok(writing.includes('MAX_PRIVATE_DIARY_NOTE_CHARS=8000'));
+ assert.ok(writing.includes('PRIVATE_DIARY_NOTE_ID_PATTERN'));
+ assert.ok(writing.includes('mergePrivateWritingDiary(localValue,remoteValue,dateString)'));
+ assert.ok(writing.includes('const entries=normalizePrivateDiaryEntries([...byId.values()],dateString)'));
 });
 
 test('encrypted Diary note writes are batched for one changed-date cloud capture', () => {

@@ -43,12 +43,17 @@ let syncQueue = Promise.resolve();
 let localChangeSyncQueue = Promise.resolve();
 let pendingDailySyncDates = new Set();
 let dailySyncTimer = null;
+let vaultEventSocket = null;
+let vaultEventReconnectTimer = null;
+let vaultEventReconnectFailures = 0;
 let pendingFullVaultRefresh = false;
 let lastCloudSyncStartedAt = 0;
 let lastForegroundSyncAt = 0;
 const DAILY_SYNC_DEBOUNCE_MS = 1200;
 const DAILY_SYNC_MIN_INTERVAL_MS = 3500;
 const FOREGROUND_SYNC_MIN_INTERVAL_MS = 5000;
+const VAULT_EVENT_RECONNECT_BASE_MS = 1500;
+const VAULT_EVENT_RECONNECT_MAX_MS = 30_000;
 let localCaptureQueues = new Map();
 let localChangeVersions = new Map();
 let lastStatus = '';
@@ -77,6 +82,7 @@ function removeVaultSyncListeners() {
   window.removeEventListener('faith-focus:local-data-changed', handleLocalDataChanged);
   window.removeEventListener('online', handleOnline);
   window.removeEventListener('pagehide', flushLocalVaultChanges);
+  closeVaultEventSocket();
   vaultLocalListenersInstalled = false;
   vaultOnlineListenerInstalled = false;
 }
@@ -294,7 +300,9 @@ async function getCredentialHeaders() {
       || !/^[A-Za-z0-9_-]{43}$/.test(activeVault.deviceSessionToken)
       || !Number.isFinite(activeVault.deviceSessionExpiresAt)
       || activeVault.deviceSessionExpiresAt <= Date.now()) {
-    throw new Error('Your device session has expired. Sign in again to securely reconnect this device.');
+    const error = new Error('Your device session has expired. Sign in again to securely reconnect this device.');
+    error.code = 'VAULT_SESSION_EXPIRED';
+    throw error;
   }
   return {
     Accept: 'application/json',
@@ -349,7 +357,11 @@ async function vaultRequest(path, { method = 'GET', body = null, baseUpdatedAt }
     remoteDateCount: result.index && typeof result.index === 'object' ? Object.keys(result.index).length : undefined
   });
   if (!response.ok) {
-    if (response.status === 401) throw new Error('This device session is no longer valid. Sign in again to securely reconnect this device.');
+    if (response.status === 401) {
+      const error = new Error('This device session is no longer valid. Sign in again to securely reconnect this device.');
+      error.code = 'VAULT_SESSION_EXPIRED';
+      throw error;
+    }
     if (response.status === 409) {
       const error = new Error(result.error || 'This date changed on another device. Your local packet was kept.');
       error.code = 'VAULT_CONFLICT';
@@ -908,6 +920,73 @@ export function selectVaultReconciliationDates(remoteIndex, requestedDateStrings
     .filter(isValidDateString))].sort();
 }
 
+function closeVaultEventSocket() {
+  if (vaultEventReconnectTimer !== null) window.clearTimeout(vaultEventReconnectTimer);
+  vaultEventReconnectTimer = null;
+  const socket = vaultEventSocket;
+  vaultEventSocket = null;
+  if (socket && (socket.readyState === 0 || socket.readyState === 1)) {
+    try { socket.close(1000, "Vault sync paused"); } catch { /* Socket already closed. */ }
+  }
+}
+
+function scheduleVaultEventReconnect(session, generation) {
+  if (!activeVault || activeVault !== session || vaultSyncGeneration !== generation
+      || session.offlineOnly === true || document.visibilityState !== 'visible'
+      || navigator.onLine === false || vaultEventReconnectTimer !== null) return;
+  vaultEventReconnectFailures = Math.min(vaultEventReconnectFailures + 1, 6);
+  const delay = Math.min(VAULT_EVENT_RECONNECT_MAX_MS,
+    VAULT_EVENT_RECONNECT_BASE_MS * (2 ** (vaultEventReconnectFailures - 1)));
+  vaultEventReconnectTimer = window.setTimeout(() => {
+    vaultEventReconnectTimer = null;
+    connectVaultEventSocket(session, generation);
+  }, delay);
+}
+
+function connectVaultEventSocket(session = activeVault, generation = vaultSyncGeneration) {
+  if (!session || session !== activeVault || session.offlineOnly === true
+      || document.visibilityState !== 'visible' || navigator.onLine === false
+      || typeof WebSocket !== 'function') return;
+  if (vaultEventSocket && (vaultEventSocket.readyState === 0 || vaultEventSocket.readyState === 1)) return;
+  const url = WORKER_ORIGIN.replace(/^https:/, 'wss:')
+    + '/vault/' + session.vaultId + '/events';
+  let socket;
+  try {
+    socket = new WebSocket(url, [
+      'faith-focus-sync-v1',
+      session.vaultMembershipTicket,
+      session.deviceSessionToken
+    ]);
+  } catch (error) {
+    console.warn('[Vault Sync] Live update connection could not be created.', error);
+    scheduleVaultEventReconnect(session, generation);
+    return;
+  }
+  vaultEventSocket = socket;
+  socket.addEventListener('open', () => {
+    if (vaultEventSocket !== socket || activeVault !== session || vaultSyncGeneration !== generation) {
+      try { socket.close(1000, 'Stale vault session'); } catch { /* Stale socket. */ }
+      return;
+    }
+    vaultEventReconnectFailures = 0;
+    status('Live encrypted sync is connected. Changes from your other devices will arrive automatically.', 'success');
+  });
+  socket.addEventListener('message', event => {
+    if (vaultEventSocket !== socket || activeVault !== session || vaultSyncGeneration !== generation) return;
+    if (typeof event.data !== 'string' || event.data.length > 1024) return;
+    let message;
+    try { message = JSON.parse(event.data); } catch { return; }
+    if (!message || message.type !== 'vault:changed' || !isValidDateString(message.dateString)
+        || typeof message.updatedAt !== 'string' || message.updatedAt.length > 64) return;
+    queueVaultSync({ dateString: message.dateString, immediate: true });
+  });
+  socket.addEventListener('error', () => {});
+  socket.addEventListener('close', () => {
+    if (vaultEventSocket === socket) vaultEventSocket = null;
+    scheduleVaultEventReconnect(session, generation);
+  });
+}
+
 function synchronizeVault(options = { refreshAll: true }) {
   if (!activeVault || activeVault.offlineOnly === true) return Promise.resolve();
   const operation = syncQueue.catch(() => {}).then(() => performVaultSync(options));
@@ -915,9 +994,12 @@ function synchronizeVault(options = { refreshAll: true }) {
   return operation;
 }
 
-function queueVaultSync({ dateString = null, refreshAll = false, immediate = false } = {}) {
+function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = false, immediate = false } = {}) {
   if (!activeVault || activeVault.offlineOnly === true) return;
   if (isValidDateString(dateString)) pendingDailySyncDates.add(dateString);
+  if (Array.isArray(dateStrings)) dateStrings.forEach(value => {
+    if (isValidDateString(value)) pendingDailySyncDates.add(value);
+  });
   if (refreshAll) pendingFullVaultRefresh = true;
   if (vaultSyncInitializing) return;
 
@@ -1134,6 +1216,8 @@ export async function startVaultSync(credentials) {
     }
 
     vaultSyncInitializing = false;
+    vaultEventReconnectFailures = 0;
+    connectVaultEventSocket(credentials, generation);
     // Changes captured while startup was in progress are now flushed through
     // the same serialized attachment-upload and packet-reconciliation path.
     if (pendingDailySyncDates.size || pendingFullVaultRefresh) {
@@ -1162,14 +1246,17 @@ function handleLocalDataChanged(event) {
 function handleOnline() {
   if (!activeVault || activeVault.offlineOnly === true) return;
   queueVaultSync({ refreshAll: true, immediate: true });
+  connectVaultEventSocket();
 }
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {
+    closeVaultEventSocket();
     flushLocalVaultChanges();
     return;
   }
   if (document.visibilityState !== 'visible' || !activeVault || activeVault.offlineOnly === true) return;
+  connectVaultEventSocket();
   const now = Date.now();
   if (now - lastForegroundSyncAt < FOREGROUND_SYNC_MIN_INTERVAL_MS) return;
   lastForegroundSyncAt = now;
@@ -1200,6 +1287,8 @@ export async function stopVaultSync() {
   // Invalidate in-flight startup before aborting requests or awaiting local flushes.
   vaultSyncGeneration += 1;
   vaultSyncInitializing = false;
+  closeVaultEventSocket();
+  vaultEventReconnectFailures = 0;
   if (dailySyncTimer !== null) window.clearTimeout(dailySyncTimer);
   dailySyncTimer = null;
   pendingDailySyncDates.clear();

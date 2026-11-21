@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://faith-focus-proxy.nine-westhigh.workers.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://faith-focus-proxy.nine-westhigh.workers.dev wss://faith-focus-proxy.nine-westhigh.workers.dev; font-src 'self' data:; object-src 'none'; base-uri 'self';">
     <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#FBF9F5">
     <title>Faith & Focus | Your Daily Armor</title>
@@ -535,16 +535,19 @@
             <textarea id="private-diary-entry" class="w-full h-64 bg-white/80 border-2 border-purple-200 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Your private thoughts are encrypted before they are saved on this device."></textarea>
             <section id="diary-additional-notes" class="diary-additional-notes mt-5 rounded-2xl border p-4" aria-labelledby="diary-additional-notes-heading">
                 <div class="diary-additional-notes-header">
-                    <div>
-                        <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Additional Notes</h3>
-                        <p class="mt-1 text-xs">Keep separate thoughts for this date. Each note is encrypted and saved on this device before cloud sync.</p>
-                    </div>
-                    <button id="diary-add-note-button" type="button" class="diary-add-note-button" data-action="addPrivateDiaryNote" aria-label="Add a separate private note" title="Add a separate private note" disabled aria-disabled="true">
-                        <span aria-hidden="true">＋</span> Add Note
-                    </button>
+                    <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Additional Notes</h3>
+                    <p class="mt-1 text-xs">Write in one notepad. Select ADD to securely place each note on this day’s page.</p>
                 </div>
-                <ol id="diary-additional-notes-list" class="diary-additional-notes-list mt-3" aria-label="Additional private notes" aria-live="polite">
-                    <li class="diary-additional-notes-empty">No additional notes yet. Select Add Note to create one for this date.</li>
+                <div class="diary-note-composer">
+                    <label class="diary-note-composer-label" for="diary-note-composer">Write a note</label>
+                    <textarea id="diary-note-composer" class="diary-note-composer-input" rows="4" maxlength="8000" spellcheck="true" aria-describedby="diary-note-composer-help" placeholder="Write one thought, then select ADD to place it on today’s page." disabled aria-disabled="true"></textarea>
+                    <div class="diary-note-composer-actions">
+                        <button id="diary-add-note-button" type="button" class="diary-add-note-button" data-action="addPrivateDiaryNote" aria-label="Add note to Diary page" title="Add note to Diary page" disabled aria-disabled="true">ADD</button>
+                    </div>
+                    <p id="diary-note-composer-help" class="diary-note-composer-help">Your note is encrypted and saved on this device when you press ADD. It can sync when your device reconnects.</p>
+                </div>
+                <ol id="diary-additional-notes-list" class="diary-additional-notes-list mt-3" aria-label="Saved private notes" aria-live="polite">
+                    <li class="diary-additional-notes-empty">No additional notes yet. Write one note below and select ADD.</li>
                 </ol>
             </section>
             <section id="diary-location-history" class="mt-5 rounded-2xl border border-purple-200 bg-purple-50/70 p-4" aria-labelledby="diary-location-history-heading">
@@ -851,13 +854,13 @@
                         <span class="settings-disclosure-icon" aria-hidden="true">☁</span>
                         <span class="settings-disclosure-copy">
                             <strong>Encrypted Vault Sync</strong>
-                            <small>Sign-in-triggered encrypted sync across devices</small>
+                            <small>Live encrypted sync across trusted devices</small>
                         </span>
                     </summary>
-                    <section class="drive-sync-panel" aria-label="Sign-in-triggered encrypted vault synchronization">
+                    <section class="drive-sync-panel" aria-label="Live encrypted vault synchronization">
                         <div class="drive-sync-copy">
                             <h3>Your daily vault</h3>
-                            <p>Your checklist, Diary, voice notes, location tags, and Garden data are compressed and encrypted on this device. When a device completes a verified sign-in, the app reconciles encrypted changes with the cloud vault. The app does not continuously poll other devices; sign in again on a device to retrieve changes made elsewhere.</p>
+                            <p>Your checklist, Diary, voice notes, location tags, and Garden data are encrypted on this device before cloud sync. While this page is open and signed in, a secure live connection notifies your other trusted devices when a daily packet changes. Each device then fetches and authenticates only that encrypted packet. Offline changes stay queued locally and sync after reconnection. The live connection pauses while this page is hidden and reconnects when you return.</p>
                         </div>
                         <p id="vault-sync-status" class="drive-sync-status" role="status" aria-live="polite">Sign in to connect your encrypted vault.</p>
                         <p class="vault-sync-indicator" aria-live="polite"><span id="vault-sync-indicator" data-state="info">● Waiting for account</span></p>

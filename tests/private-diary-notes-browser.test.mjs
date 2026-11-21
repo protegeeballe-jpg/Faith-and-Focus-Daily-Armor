@@ -51,7 +51,7 @@ async function startStaticServer() {
   };
 }
 
-test('Chromium: separate Diary Add notes save as ciphertext while the device is offline', {
+test('Chromium: one shared Diary notepad adds encrypted notes while the device is offline', {
   timeout: 30000
 }, async t => {
   const host = await startStaticServer();
@@ -98,21 +98,34 @@ test('Chromium: separate Diary Add notes save as ciphertext while the device is 
   assert.equal(setup.secureContext, true, 'The local test origin must provide Web Crypto');
   assert.match(setup.dateString, /^\d{4}-\d{2}-\d{2}$/);
 
-  await page.locator('#diary-add-note-button').waitFor({state: 'visible'});
+  const composer = page.locator('#diary-note-composer');
+  const addButton = page.locator('#diary-add-note-button');
+  await composer.waitFor({state: 'visible'});
   await page.waitForFunction(
     () => document.getElementById('diary-add-note-button')?.disabled === false
   );
 
+  assert.equal(await page.locator('#diary-additional-notes textarea').count(), 1,
+    'The Additional Notes section must expose exactly one writing notepad');
+  assert.equal(await page.locator('#diary-additional-notes-list textarea').count(), 0,
+    'Saved notes must be displayed as entries, not as additional editing boxes');
+  assert.equal(await page.locator('.diary-note-composer-actions').count(), 1,
+    'The ADD action must have one stable placement');
+
   await context.setOffline(true);
   assert.equal(await page.evaluate(() => navigator.onLine), false,
-    'The test must be genuinely offline before creating notes');
+    'The test must be genuinely offline before adding notes');
 
-  const addButton = page.locator('#diary-add-note-button');
   await addButton.click();
-  await page.locator('[data-private-diary-note-id]').first().waitFor({state: 'visible'});
-  const firstNote = page.locator('[data-private-diary-note-id]').nth(0);
-  await firstNote.fill('Private laptop thought — first separate note.');
-  await page.waitForTimeout(700);
+  assert.equal(await page.locator('.diary-note-card').count(), 0,
+    'An empty submission must not create a blank entry');
+
+  await composer.fill('Private laptop thought — first separate note.');
+  await addButton.click();
+  await page.locator('.diary-note-card-text').first().waitFor({state: 'visible'});
+  await page.waitForFunction(
+    () => document.getElementById('diary-note-composer')?.value === ''
+  );
 
   let saved = await page.evaluate(dateString => {
     const record = localStorage.getItem('dmp_diary_cipher_v1_' + dateString);
@@ -129,12 +142,12 @@ test('Chromium: separate Diary Add notes save as ciphertext while the device is 
   assert.equal(saved.containsPlaintext, false,
     'Private note text must not appear in localStorage ciphertext');
 
+  await composer.fill('A second thought for the exact same day.');
   await addButton.click();
-  await page.locator('[data-private-diary-note-id]').nth(1).waitFor({state: 'visible'});
-  await page.locator('[data-private-diary-note-id]').nth(1).fill(
-    'A second thought for the exact same day.'
+  await page.waitForFunction(
+    () => document.querySelectorAll('#diary-additional-notes-list .diary-note-card').length === 2
+      && document.getElementById('diary-note-composer')?.value === ''
   );
-  await page.waitForTimeout(700);
 
   saved = await page.evaluate(dateString => {
     const record = localStorage.getItem('dmp_diary_cipher_v1_' + dateString);
@@ -157,6 +170,9 @@ test('Chromium: separate Diary Add notes save as ciphertext while the device is 
     'Each separate note must receive a unique identifier');
   assert.equal(saved.containsPlaintext, false,
     'Neither note may be written to localStorage in plaintext');
+  assert.equal(await page.locator('#diary-additional-notes textarea').count(), 1,
+    'Adding a note must reuse the original notepad');
+  assert.equal(await page.locator('#diary-additional-notes-list textarea').count(), 0);
   assert.match(await page.locator('#writing-save-status').textContent(),
     /saved on this device|Saved securely/i);
   await context.close();
