@@ -632,7 +632,7 @@ test('the exact restrictive CSP preserves watercolor image, CSS, and blob audio 
 test('Diary voice notes are saved persistently, encrypted, and preserved by checklist reset',()=>{
   assert.match(html,/id="diary-voice-notes"/);
   assert.match(html,/id="diary-voice-note-list"/);
-  assert.match(html,/Voice notes are encrypted with your account key/);
+  assert.match(html,/Saved Voice Notes/);
   assert.doesNotMatch(html,/audio-container|diary-audio|temporary playback in this session/);
   assert.match(app,/savePrivateVoiceNoteSegment/);
   assert.match(app,/finalizePrivateVoiceNoteDraft\(draft.id\)/);
@@ -992,7 +992,7 @@ test('Garden snapshots are embedded in daily packets and merged without discardi
  assert.match(vaultSync,/await mergeDailyBundles\(localBundle, remoteBundle/);
  assert.match(vaultSync,/mergeEncryptedPrivateWritingRecords\(dateString, localWriting, remoteWriting, activeVault\.encryptionKey\)/);
  assert.match(vaultSync,/markLocalDailyPacketSynced\([\s\S]*?mergedPacket[\s\S]*?requirePacketMatch: true/);
- assert.match(vaultSync,/await restoreDailyBundle\(mergedBundle\)/);
+ assert.match(vaultSync,/await restoreDailyBundle\(mergedBundle, \{ expectedLocalChangeVersion: localChangeVersion \}\)/);
  assert.doesNotMatch(vaultSync,/publishSharedStateMerge/);
  assert.doesNotMatch(vaultSync,/dates\.add\(getCurrentDateString\(\)\)/);
  assert.match(vaultSync,/Only create local packets for dates that actually contain daily records or/);
