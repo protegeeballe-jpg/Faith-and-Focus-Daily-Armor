@@ -1084,7 +1084,7 @@ function connectVaultEventSocket(session = activeVault, generation = vaultSyncGe
 }
 
 function synchronizeVault(options = { refreshAll: true }) {
-  if (!activeVault || activeVault.offlineOnly === true) return Promise.resolve(null);
+  if (!activeVault || activeVault.offlineOnly === true) return Promise.resolve();
   const operation = syncQueue.catch(() => {}).then(() => performVaultSync(options));
   syncQueue = operation.catch(() => {});
   return operation;
