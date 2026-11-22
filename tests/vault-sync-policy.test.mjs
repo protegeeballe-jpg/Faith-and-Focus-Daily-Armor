@@ -181,6 +181,7 @@ test('regular sign-in waits for full vault reconciliation before revealing the a
   assert.match(sessionSource, /function showVaultSyncStartupWarning\(startup\)/);
   assert.match(sessionSource, /Some saved entries or voice notes are still queued/);
   assert.match(sessionSource, /No saved dates were returned by this account/);
+  assert.match(syncSource, /localDateCount: finalLocalRecords\.length/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.add\(bundle\.dateString\)/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.delete\(bundle\.dateString\)/);
   assert.match(syncSource, /complete: pendingDates\.length === 0/);
