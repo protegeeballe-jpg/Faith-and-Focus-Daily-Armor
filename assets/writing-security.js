@@ -830,8 +830,6 @@ import { isValidDiaryArchiveDate } from './diary-archive.js';
                 writingLoadedNoteValues={...payload.notes};
                 writingLoadedNoteMeta={...notesPayload[PRIVATE_NOTE_META_KEY]};
                 window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed',{detail:{dateString:dateStr}}));
-                const status=document.getElementById('writing-save-status');
-                if(status&&writingCryptoKey===key)status.textContent='Saved securely on this device.';
             };
             writingSavePromise=writingSavePromise.then(task,task);
             return writingSavePromise;
