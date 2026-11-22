@@ -1241,6 +1241,7 @@ async function performVaultSync({ dateStrings = [], refreshAll = false, allowUpl
       complete: pendingDates.length === 0,
       restored,
       remoteDateCount: remoteDates.length,
+      localDateCount: finalLocalRecords.length,
       pendingDates,
       failedDates: [...failedDates]
     };
