@@ -924,7 +924,6 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = tr
         scheduleCapture(dateString);
         return false;
       }
-      scheduleCapture(dateString);
       return true;
     }
 
@@ -944,7 +943,6 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = tr
         scheduleCapture(dateString);
         return false;
       }
-      scheduleCapture(dateString);
       return true;
     }
 
