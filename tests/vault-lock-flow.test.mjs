@@ -90,7 +90,7 @@ test('online sign-in waits for vault reconciliation after local key setup', () =
   assert.doesNotMatch(onlineLogin, /startVaultSyncInBackground\(credentials\)/);
   assert.match(session, /function startVaultSyncBeforeOpening\(credentials\)/);
   assert.match(session, /await startVaultSync\(credentials\)/);
-  assert.match(session, /showVaultSyncStartupWarning\(syncStartup\)/);
+  assert.doesNotMatch(session, /showVaultSyncStartupWarning|Restoring your saved entries/);
 });
 
 test('background synchronization cannot reattach after its account session is locked', () => {
