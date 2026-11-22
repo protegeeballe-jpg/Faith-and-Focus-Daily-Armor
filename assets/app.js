@@ -1333,6 +1333,8 @@ import {
                 composer.value = '';
                 renderPrivateDiaryNotes(dateString);
                 await syncDailyDateNow(dateString);
+                const saveStatus = document.getElementById('writing-save-status');
+                if (saveStatus) saveStatus.textContent = '';
                 composer.focus({ preventScroll: true });
             } catch (error) {
                 setWritingSecurityStatus('The note could not be added. Your text remains in the notepad and existing Diary notes remain unchanged. '
@@ -1512,7 +1514,6 @@ import {
                 position => {
                     try {
                         saveLocationCheckin(localStorage, dateString, locationId, position);
-                        void syncDailyDateNow(dateString);
                     } catch (error) {
                         setLocationCheckinMessage('The location was received but could not be saved on this device.', 'error');
                     }
@@ -2326,7 +2327,6 @@ import {
                         const saveStatus = document.getElementById('writing-save-status');
                         if (saveStatus) saveStatus.textContent = 'Assembling your encrypted voice note…';
                         await finalizePrivateVoiceNoteDraft(draft.id);
-                        await syncDailyDateNow(dateString);
                         if (writingCryptoKey && writingLoadedDate === dateString) {
                             await renderDiaryVoiceNotes(dateString);
                         }
