@@ -147,6 +147,10 @@ test('Forge Room setup is top-aligned and the subtitle remains readable on mobil
  assert.match(roomLayout,/\.garden-overlay\.garden-room-home \.garden-intro\s*\{[^}]*background:rgba\(255,255,255,/s);
  assert.match(roomLayout,/backdrop-filter:blur\(6px\)/);
  assert.match(roomLayout,/@media \(max-height:620px\)/);
+ const finalRoomActions=gardenCss.slice(gardenCss.lastIndexOf('.garden-overlay.garden-room-home .garden-room-actions {'));
+ assert.match(finalRoomActions,/display:grid/);
+ assert.match(finalRoomActions,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+ assert.match(finalRoomActions,/\.garden-action-button\s*\{[^}]*width:100%/s);
  assert.match(gardenCss,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
  assert.match(gardenCss,/\.garden-status:empty\s*\{[^}]*display:none !important/s);
  assert.doesNotMatch(garden,/A gentle drink for both plants/);
@@ -232,7 +236,8 @@ test('the health checklist and encrypted diary are scenes inside the Forge Room 
 test('seed selection is a one-time setup and becomes visibly completed after saving',()=>{
  assert.match(html,/id="garden-first-planting"[^>]*data-setup-state="pending"/);
  assert.match(html,/id="garden-planting-fields" class="garden-choice-grid"/);
- assert.match(html,/id="garden-planting-complete" class="garden-setup-complete hidden" role="status"/);
+ assert.doesNotMatch(html,/id="garden-planting-complete"/);
+ assert.match(garden,/description\.hidden = isComplete/);
  assert.doesNotMatch(html,/id="garden-planted-summary"/);
  assert.match(garden,/fields\.disabled = isComplete/);
  assert.match(garden,/plantButton\.disabled = isComplete/);
