@@ -61,6 +61,8 @@ test('the offline shell includes every page and runtime dependency needed by the
         './assets/private-writing-migration.js',
         './assets/voice-note-store.js',
         './assets/compressor.js',
+        './assets/mobile.css',
+        './assets/mobile-diary-tabs.js',
         './assets/garden-room-background.jpg',
         './assets/icon.png'
     ];
