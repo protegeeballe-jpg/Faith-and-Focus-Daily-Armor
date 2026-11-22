@@ -1319,7 +1319,14 @@ async function captureExistingLocalDates() {
   const dates = new Set(listLocalStorageDates());
   const voiceNotes = await exportEncryptedVoiceNotes();
   voiceNotes.forEach(record => dates.add(record.dateString));
-  for (const dateString of [...dates].sort()) await captureDailyPacket(dateString);
+  for (const dateString of [...dates].sort()) {
+    // A clean packet is already a complete encrypted snapshot. Do not rebuild
+    // it from a possibly partial browser view before a sign-in/foreground restore;
+    // doing so could dirty an intact packet and cause an unnecessary cloud PUT.
+    const existing = await getLocalDailyPacket(dateString);
+    if (existing && existing.dirty !== true) continue;
+    await captureDailyPacket(dateString);
+  }
 }
 
 
