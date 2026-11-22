@@ -865,6 +865,17 @@ test('the four Card 1 radio choices capture one-time local coordinates without c
  assert.match(terms,/one-time current location/);
 });
 
+test('Diary ADD awaits its date sync without displaying a sync statement',()=>{
+ const start=app.indexOf('async function addDiaryNote()');
+ const end=app.indexOf('function revokeDiaryVoiceNoteUrls()',start);
+ assert.ok(start>=0 && end>start);
+ const addHandler=app.slice(start,end);
+ assert.match(addHandler,/await addPrivateDiaryNote\(dateString, noteText\)/);
+ assert.match(addHandler,/await syncDailyDateNow\(dateString\)/);
+ assert.doesNotMatch(addHandler,/Note encrypted and saved on this device|Cloud sync is queued|Cloud sync will resume/);
+ assert.match(app,/import \{ syncDailyDateNow \} from '\.\/vault-sync\.js'/);
+});
+
 test('encrypted vault sync and JSON backup live in collapsible Settings sections',()=>{
  const settingsStart=html.indexOf('<dialog id="settings-modal"');
  const settingsEnd=html.indexOf('</dialog>',settingsStart);
