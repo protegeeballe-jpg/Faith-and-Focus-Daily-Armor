@@ -1,0 +1,305 @@
+/*
+ * Faith & Focus: Daily Armor — phone layout.
+ *
+ * Loaded AFTER app.css and garden.css, and every rule below sits inside a
+ * phone-width media query, so the desktop layout is untouched.
+ * To undo everything: delete the <link> to this file in index.html.
+ *
+ * What it changes on phones:
+ *   1. Checklist toolbar: one readable row (Room · date and time · Reset).
+ *   2. Checklist rows: checkbox first, task text in the middle, quote button
+ *      at the end (icon only once the task is unlocked).
+ *   3. Tighter card spacing so each card fits one screen more often.
+ *   4. Bigger, clearer Previous / Next buttons.
+ *   5. "Daily Armor Is Complete" page fits closer to one screen.
+ *   6. Diary: Notes / Location / Voice tabs, one section per screen.
+ */
+
+/* The diary tab bar only exists visually on phones. */
+.ff-diary-tabs { display: none; }
+
+@media (max-width: 620px) {
+
+  /* ---------- 1. Checklist toolbar ---------- */
+  #view-checklist > header {
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 48px !important;
+    margin: .15rem 0 .35rem !important;
+    padding: .3rem .5rem !important;
+    gap: .45rem !important;
+    border-radius: .9rem;
+    box-sizing: border-box;
+  }
+  /* Let the two header groups dissolve so the buttons can be re-ordered. */
+  #view-checklist > header .checklist-header-left,
+  #view-checklist > header .checklist-header-right {
+    display: contents !important;
+  }
+  /* The screen title stays for screen readers; the card strip below already
+     tells you where you are. This frees the width for readable controls. */
+  #view-checklist > header .checklist-header-title {
+    position: absolute !important;
+    width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+    max-width: none !important;
+  }
+  #view-checklist > header .checklist-room-button {
+    order: 1;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    padding: .25rem .75rem !important;
+    font-size: .9rem !important;
+    border-radius: .8rem;
+  }
+  #view-checklist > header .checklist-header-date-time {
+    order: 2;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    justify-content: center;
+    align-items: center;
+    min-height: 38px;
+    gap: .45rem !important;
+    padding: .2rem .65rem !important;
+    background: rgba(255, 255, 255, .85);
+    border: 1px solid #e6dfc8;
+    border-radius: 999px;
+  }
+  #view-checklist > header .checklist-date-input {
+    width: 7.4rem !important;
+    max-width: none !important;
+    min-height: 30px !important;
+    font-size: .95rem !important;
+    color: #1f4d3a;
+  }
+  #view-checklist > header .checklist-device-clock {
+    min-width: 2.8rem !important;
+    font-size: .9rem !important;
+    color: #1f4d3a;
+  }
+  #view-checklist > header .checklist-reset-button {
+    order: 3;
+    min-width: 48px !important;
+    min-height: 38px !important;
+    padding: .25rem .65rem !important;
+    font-size: .82rem !important;
+    border-radius: .8rem;
+  }
+
+  /* ---------- 3. Card spacing ---------- */
+  #view-checklist > main {
+    padding: 0 .6rem calc(5rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  #checklist-fit-content > div:first-child {
+    padding: .3rem .65rem !important;
+    margin-bottom: .35rem !important;
+  }
+  #view-checklist .watercolor-progress {
+    margin-bottom: .4rem !important;
+  }
+  #view-checklist .step-card {
+    padding: .7rem .75rem !important;
+    border-radius: 1.1rem;
+  }
+  #view-checklist .step-card > div:first-child {
+    margin-bottom: .5rem !important;
+  }
+  #view-checklist .step-card h2 {
+    font-size: 1.05rem !important;
+    line-height: 1.25;
+  }
+  #view-checklist .step-card [id^="trophy-"] {
+    font-size: 1.4rem !important;
+  }
+  #view-checklist .step-card .space-y-4 > :not([hidden]) ~ :not([hidden]),
+  #view-checklist .step-card .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: .4rem !important;
+  }
+
+  /* ---------- 2. Checklist rows ---------- */
+  #view-checklist .guided-task-row {
+    gap: .5rem;
+    padding: .35rem .5rem;
+    min-height: 48px;
+  }
+  /* Checkbox + text first, quote button last. */
+  #view-checklist .guided-task-row .guide-checkbox-label {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: .65rem;
+    font-size: .95rem;
+    line-height: 1.3;
+  }
+  #view-checklist .guided-task-row .guide-quote-launch {
+    order: 2;
+  }
+  #view-checklist .guided-task-row .guide-checkbox-label input.app-chk {
+    flex: 0 0 auto;
+    width: 1.45rem;
+    height: 1.45rem;
+    margin: 0;
+    accent-color: #3e7c5a;
+  }
+  /* Unlocked task: the quote button shrinks to a small icon. */
+  #view-checklist .guided-task-row:has(.guide-checkbox-label.is-unlocked) > .guide-quote-launch {
+    width: 2.6rem;
+    min-width: 2.6rem;
+    height: 2.6rem;
+    min-height: 2.6rem !important;
+    padding: 0 !important;
+    gap: 0;
+    justify-content: center;
+    border-radius: .8rem;
+  }
+  #view-checklist .guided-task-row:has(.guide-checkbox-label.is-unlocked) > .guide-quote-launch > span:not(.guide-quote-mark) {
+    display: none;
+  }
+  /* Locked task: the "Read quote" button is the whole row, easy to tap. */
+  #view-checklist .guided-task-row:not(:has(.guide-checkbox-label.is-unlocked)) > .guide-quote-launch {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-height: 48px !important;
+    font-size: .9rem;
+  }
+
+  /* Prayer / Drinking guide rows: slimmer. */
+  #view-checklist .ff-guide-row {
+    padding: .35rem .6rem !important;
+    border-radius: .9rem !important;
+    gap: .5rem;
+    font-size: .85rem;
+  }
+  #view-checklist .ff-guide-row button {
+    flex: 0 0 auto;
+    min-height: 38px !important;
+    padding: .25rem .8rem !important;
+    font-size: .8rem !important;
+    border-radius: 999px;
+  }
+
+  /* ---------- 4. Previous / Next ---------- */
+  #view-checklist .checklist-step-navigation {
+    left: .6rem;
+    right: .6rem;
+    gap: .6rem;
+    padding: .35rem;
+    border-radius: 1rem;
+  }
+  #view-checklist .checklist-step-navigation #btn-prev,
+  #view-checklist .checklist-step-navigation #btn-next {
+    flex: 1 1 0;
+    min-height: 46px !important;
+    padding: .4rem .8rem !important;
+    font-size: .95rem !important;
+    font-weight: 700;
+    border-radius: .9rem;
+  }
+  #view-checklist .checklist-step-navigation #btn-prev {
+    background: #fff !important;
+    color: #6b5a3a !important;
+    border: 1px solid #e6dfc8 !important;
+  }
+  #view-checklist .checklist-step-navigation #btn-next {
+    background: #f2b632 !important;
+    color: #4a3000 !important;
+  }
+
+  /* ---------- 5. "Daily Armor Is Complete" page ---------- */
+  #grand-finale-overlay .finale-content {
+    gap: .4rem !important;
+  }
+  #grand-finale-overlay .finale-watercolor-stage {
+    max-height: 5.2rem;
+    overflow: hidden;
+    margin: 0 auto;
+  }
+  #grand-finale-overlay .finale-watercolor-svg {
+    display: block;
+    height: 5.2rem;
+    width: auto;
+    max-width: 100%;
+    margin: 0 auto;
+  }
+  #grand-finale-overlay .finale-content > h1 {
+    font-size: 1.3rem !important;
+    line-height: 1.15;
+  }
+  #grand-finale-overlay .finale-trophy-banner > div {
+    padding: .45rem .6rem !important;
+  }
+  #grand-finale-overlay .finale-trophy-svg {
+    display: block;
+    height: 3.4rem;
+    width: auto;
+    margin: 0 auto;
+  }
+  #grand-finale-overlay #ecosystem-intro-copy {
+    display: none;
+  }
+  #grand-finale-overlay .finale-ecosystem-card .ecosystem-canvas,
+  #grand-finale-overlay .finale-ecosystem-card .ecosystem-svg-fallback {
+    max-width: min(190px, 50vw) !important;
+  }
+  #grand-finale-overlay #ecosystem-panel .grid {
+    gap: .3rem !important;
+    margin-top: .3rem !important;
+  }
+  #grand-finale-overlay .finale-ecosystem-card .ecosystem-status {
+    padding: .3rem .5rem;
+  }
+
+  /* ---------- 6. Diary tabs ---------- */
+  #view-diary:not(.hidden) > .card-lavender {
+    padding: .5rem !important;
+  }
+  .ff-diary-tabs {
+    display: flex;
+    flex: 0 0 auto;
+    gap: .3rem;
+    margin: .45rem 0 .2rem;
+    padding: .2rem;
+    background: rgba(255, 255, 255, .55);
+    border: 1px solid rgba(120, 140, 160, .25);
+    border-radius: 999px;
+  }
+  .ff-diary-tab {
+    flex: 1 1 0;
+    min-height: 40px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: #315d78;
+    font: inherit;
+    font-size: .9rem;
+    font-weight: 700;
+  }
+  .ff-diary-tab[aria-selected="true"] {
+    background: #fff;
+    color: #1f4d3a;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+  }
+  .ff-diary-tab:focus-visible {
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
+  }
+  /* Show one section at a time. If the script fails, data-ff-tabs is never
+     set and everything stays visible exactly as before. */
+  #diary-editor-panel[data-ff-tabs="on"][data-ff-tab="notes"] #diary-location-history,
+  #diary-editor-panel[data-ff-tabs="on"][data-ff-tab="notes"] #diary-voice-notes,
+  #diary-editor-panel[data-ff-tabs="on"][data-ff-tab="location"] #diary-additional-notes,
+  #diary-editor-panel[data-ff-tabs="on"][data-ff-tab="location"] #diary-voice-notes,
+  #diary-editor-panel[data-ff-tabs="on"][data-ff-tab="voice"] #diary-additional-notes,
+  #diary-editor-panel[data-ff-tabs="on"][data-ff-tab="voice"] #diary-location-history,
+  #diary-editor-panel[data-ff-tabs="on"]:not([data-ff-tab="voice"]) #record-btn {
+    display: none !important;
+  }
+  #diary-editor-panel[data-ff-tabs="on"] > section {
+    margin-top: .5rem !important;
+    padding: .6rem !important;
+  }
+}
