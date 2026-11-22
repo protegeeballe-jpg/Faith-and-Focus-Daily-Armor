@@ -206,7 +206,7 @@ function showVaultSyncStartupWarning(startup) {
     message = 'Cloud sync could not finish. Your saved entries remain on this device; check Settings → Encrypted Vault Sync.';
   } else if (outcome?.complete === false || outcome?.voiceAttachmentsReady === false) {
     message = 'Some saved entries or voice notes are still queued. Check Settings → Encrypted Vault Sync.';
-  } else if (outcome?.remoteDateCount === 0) {
+  } else if (outcome?.remoteDateCount === 0 && outcome?.localDateCount === 0) {
     message = 'No saved dates were returned by this account. Check that this is the same account used on your other device.';
   }
   if (!message) return;
