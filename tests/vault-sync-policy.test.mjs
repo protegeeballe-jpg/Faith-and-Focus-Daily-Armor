@@ -49,11 +49,11 @@ test('voice attachment upload failure never suppresses sign-in vault reconciliat
     syncSource.indexOf('function handleLocalDataChanged(event)')
   );
   assert.match(startup, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(startup, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
+  assert.match(startup, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
   assert.doesNotMatch(startup, /if \(voiceAttachmentsReady\)\s*\{\s*await synchronizeVault/);
   assert.match(syncSource, /async function restoreDailyBundle[\s\S]*?let voiceNotesReady = true/);
   assert.match(syncSource, /return \{ voiceNotesReady, applied: true \}/);
-  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true \}/);
+  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true, forceRemoteRead = false \}/);
 });
 
 test('one failed date does not stop other dates from reconciling', () => {
