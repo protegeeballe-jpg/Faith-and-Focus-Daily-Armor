@@ -20,7 +20,7 @@ function initializeGarden(root) {
         ].join('-');
     }
 
-    function showStatus(message, state = 'info') {
+    function showStatus(message, state = 'error') {
         const status = byId('garden-status');
         if (!status) return;
         status.textContent = message;
@@ -282,7 +282,6 @@ function initializeGarden(root) {
         garden = null;
         renderRoom();
         setScene('room');
-        showStatus('Your Garden setup is ready again. Plant your two seeds to begin a new checklist journey.', 'success');
     });
 
     // The Garden module keeps an in-memory model. Refresh it when a newer
@@ -331,5 +330,4 @@ function initializeGarden(root) {
 
     // Loading and rendering never touch checklist progress or private diary storage.
     renderRoom();
-    if (!garden) showStatus('The Forge Room is ready. Your growing journey can begin whenever you are ready.', 'info');
 }
