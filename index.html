@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="./assets/tailwind.generated.css">
     <link rel="stylesheet" href="./assets/app.css">
     <link rel="stylesheet" href="./assets/garden.css">
+    <link rel="stylesheet" href="./assets/mobile.css">
     <link rel="manifest" href="./manifest.json">
 </head>
 <body class="text-slate-800 min-h-screen pb-20 select-none">
@@ -675,7 +676,7 @@
                 <div class="space-y-4 text-sm">
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" class="app-chk sec-2" data-id="start-1"> <span>Think of 3 Grateful Things (5 sec | Mental Notes)</span></label>
                     
-                    <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl">
+                    <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl ff-guide-row">
                         <span>Prayer / Positive Intention</span>
                         <button data-action="openModal" data-modal="prayer" data-target="start-2" class="px-3 py-1.5 bg-emerald-200 text-emerald-900 rounded-xl text-xs font-bold hover:bg-emerald-300">🙏 Pray Animation</button>
                     </div>
@@ -683,7 +684,7 @@
                     
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" class="app-chk sec-2" data-id="start-3"> <span>Gentle Stretch or Movement</span></label>
                     
-                    <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl">
+                    <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl ff-guide-row">
                         <span class="font-bold text-cyan-800">DRINK YOUR WATER</span>
                         <button data-action="openModal" data-modal="water" data-target="start-4" class="px-3 py-1.5 bg-cyan-200 text-cyan-900 rounded-xl text-xs font-bold hover:bg-cyan-300">💧 Drinking Guide</button>
                     </div>
@@ -700,7 +701,7 @@
                 <div class="space-y-3 text-sm">
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" class="app-chk sec-3" data-id="mid-1"> <span>Posture Check & 3 Minutes Stretching</span></label>
                     
-                    <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl">
+                    <div class="flex items-center justify-between bg-white/70 p-3 rounded-2xl ff-guide-row">
                         <span class="text-xs font-semibold text-sky-900">Breathing Exercise (4-2-6 Ratio)</span>
                         <button data-action="openModal" data-modal="breathing" data-target="mid-2" class="px-3 py-1.5 bg-sky-200 text-sky-900 rounded-xl text-xs font-bold hover:bg-sky-300">🌬️ Breathing Guide</button>
                     </div>
@@ -1106,6 +1107,7 @@
     <script type="module" src="./assets/vault-session.js"></script>
     <script type="module" src="./assets/local-backup.js"></script>
     <script type="module" src="./assets/service-worker-registration.js"></script>
+    <script type="module" src="./assets/mobile-diary-tabs.js"></script>
 <canvas id="celebration-canvas" aria-hidden="true"></canvas>
 </body>
 </html>
