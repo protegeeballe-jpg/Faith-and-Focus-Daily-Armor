@@ -20,7 +20,7 @@ test('the main app page connects its manifest and service-worker registration mo
 });
 
 test('the offline shell version advances when sync runtime assets change', () => {
-    assert.match(worker, /const CACHE_NAME = 'faith-focus-shell-v39-force-vault-rehydrate'/);
+    assert.match(worker, /const CACHE_NAME = 'faith-focus-shell-v40-mobile-layout'/);
 });
 
 test('the registration module resolves the worker and scope from the app path', () => {
