@@ -52,6 +52,7 @@ import {
     loadLocationCheckinEntries, saveLocationCheckin
 } from './location-checkin.js';
 import { GARDEN_STORAGE_KEY } from './garden-model.js';
+import { syncDailyDateNow } from './vault-sync.js';
 import { getGuideQuote } from './guide-quotes.js';
 import { DAILY_RESET_MARKER_PREFIX, createDailyResetMarker } from './daily-reset.js';
 import {
@@ -1331,12 +1332,7 @@ import {
                 await addPrivateDiaryNote(dateString, noteText);
                 composer.value = '';
                 renderPrivateDiaryNotes(dateString);
-                const saveStatus = document.getElementById('writing-save-status');
-                if (saveStatus) {
-                    saveStatus.textContent = navigator.onLine === false
-                        ? 'Note encrypted and saved on this device. Cloud sync will resume when you reconnect.'
-                        : 'Note encrypted and saved on this device. Cloud sync is queued.';
-                }
+                await syncDailyDateNow(dateString);
                 composer.focus({ preventScroll: true });
             } catch (error) {
                 setWritingSecurityStatus('The note could not be added. Your text remains in the notepad and existing Diary notes remain unchanged. '
@@ -1516,7 +1512,7 @@ import {
                 position => {
                     try {
                         saveLocationCheckin(localStorage, dateString, locationId, position);
-                        setLocationCheckinMessage('Location saved.', 'success');
+                        void syncDailyDateNow(dateString);
                     } catch (error) {
                         setLocationCheckinMessage('The location was received but could not be saved on this device.', 'error');
                     }
@@ -2330,6 +2326,7 @@ import {
                         const saveStatus = document.getElementById('writing-save-status');
                         if (saveStatus) saveStatus.textContent = 'Assembling your encrypted voice note…';
                         await finalizePrivateVoiceNoteDraft(draft.id);
+                        await syncDailyDateNow(dateString);
                         if (writingCryptoKey && writingLoadedDate === dateString) {
                             await renderDiaryVoiceNotes(dateString);
                         }
