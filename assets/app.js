@@ -1287,13 +1287,30 @@ import {
                 return;
             }
 
-            if (!notes.length) {
+            const diaryEntry = document.getElementById('private-diary-entry')?.value || '';
+            if (!notes.length && !diaryEntry.trim()) {
                 const empty = document.createElement('li');
                 empty.className = 'diary-additional-notes-empty';
-                empty.textContent = 'No additional notes yet. Write one note below and select ADD.';
+                empty.textContent = 'No saved notes yet. Write one note below and select ADD.';
                 list.append(empty);
                 updateDiaryDateAccess(dateString);
                 return;
+            }
+
+            if (diaryEntry.trim()) {
+                const item = document.createElement('li');
+                item.className = 'diary-note-card diary-legacy-entry-card';
+
+                const label = document.createElement('strong');
+                label.className = 'diary-note-card-label';
+                label.textContent = 'Saved Diary Entry';
+
+                const noteBody = document.createElement('p');
+                noteBody.className = 'diary-note-card-text';
+                noteBody.textContent = diaryEntry;
+
+                item.append(label, noteBody);
+                list.append(item);
             }
 
             notes.forEach((note, index) => {

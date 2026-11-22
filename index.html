@@ -525,18 +525,18 @@
             </section>
             <div id="diary-editor-panel" class="hidden">
             <div class="diary-current-toolbar">
-                <span class="diary-current-date-label"><span class="diary-current-date-caption">Daily entry</span><strong id="diary-current-date-label"></strong></span>
+                <span class="diary-current-date-label"><span class="diary-current-date-caption">Diary page</span><strong id="diary-current-date-label"></strong></span>
                 <button id="diary-return-today" type="button" class="diary-return-today hidden" data-action="returnToCurrentDiary">Today’s page</button>
                 <button id="diary-archive-button" type="button" class="diary-notebook-button" data-action="openDiaryArchive" aria-label="Open your Diary notebook" aria-haspopup="dialog" aria-controls="diary-archive-panel" title="Open Diary notebook">
                     <span aria-hidden="true">📓</span>
                     <span class="diary-notebook-button-label">Notebook</span>
                 </button>
             </div>
-            <textarea id="private-diary-entry" class="w-full h-64 bg-white/80 border-2 border-purple-200 rounded-2xl p-4 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400" placeholder="Your private thoughts are encrypted before they are saved on this device."></textarea>
+            <input id="private-diary-entry" type="hidden" aria-hidden="true" tabindex="-1">
             <section id="diary-additional-notes" class="diary-additional-notes mt-5 rounded-2xl border p-4" aria-labelledby="diary-additional-notes-heading">
                 <div class="diary-additional-notes-header">
-                    <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Additional Notes</h3>
-                    <p class="mt-1 text-xs">Write in one notepad. Select ADD to securely place each note on this day’s page.</p>
+                    <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Saved Notes</h3>
+                    <p class="mt-1 text-xs">Use the single notepad below. Select ADD to securely place each thought on this day’s page. Earlier Diary entries remain available below.</p>
                 </div>
                 <div class="diary-note-composer">
                     <label class="diary-note-composer-label" for="diary-note-composer">Write a note</label>

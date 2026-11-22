@@ -105,8 +105,12 @@ test('Chromium: one shared Diary notepad adds encrypted notes while the device i
     () => document.getElementById('diary-add-note-button')?.disabled === false
   );
 
-  assert.equal(await page.locator('#diary-additional-notes textarea').count(), 1,
-    'The Additional Notes section must expose exactly one writing notepad');
+  assert.equal(await page.locator('#diary-editor-panel textarea:visible').count(), 1,
+    'The complete Diary editor must expose exactly one visible notepad');
+  assert.equal(await page.locator('#private-diary-entry').evaluate(element => element.type), 'hidden',
+    'The legacy encrypted Diary entry must remain stored without rendering a second notepad');
+  assert.equal(await page.locator('#diary-additional-notes textarea:visible').count(), 1,
+    'The single visible notepad must be the ADD composer');
   assert.equal(await page.locator('#diary-additional-notes-list textarea').count(), 0,
     'Saved notes must be displayed as entries, not as additional editing boxes');
   assert.equal(await page.locator('.diary-note-composer-actions').count(), 1,
@@ -175,5 +179,19 @@ test('Chromium: one shared Diary notepad adds encrypted notes while the device i
   assert.equal(await page.locator('#diary-additional-notes-list textarea').count(), 0);
   assert.match(await page.locator('#writing-save-status').textContent(),
     /saved on this device|Saved securely/i);
+
+  await page.evaluate(async () => {
+    const legacyEntry = document.getElementById('private-diary-entry');
+    legacyEntry.value = 'A previously saved Diary entry remains readable.';
+    await window.__diaryNoteTestModule.savePrivateWritingForDate();
+    document.getElementById('currentDate')?.dispatchEvent(
+      new Event('change', {bubbles: true})
+    );
+  });
+  await page.waitForFunction(() =>
+    document.querySelector('.diary-legacy-entry-card .diary-note-card-text')?.textContent
+      === 'A previously saved Diary entry remains readable.'
+  );
+
   await context.close();
 });
