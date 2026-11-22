@@ -1449,10 +1449,26 @@ input[type="reset"] {
         inset 0 0 0 1px rgba(255, 255, 255, .45);
 }
 .garden-overlay.garden-room-home .garden-room-actions {
+    display:grid;
+    grid-template-columns:repeat(3,minmax(0,1fr));
+    align-items:stretch;
+    gap:.35rem;
+    padding:.45rem .35rem .55rem;
     border-top-color: rgba(255, 255, 255, .52);
     background:
         radial-gradient(ellipse at 12% 0%, rgba(238, 202, 135, .15), transparent 38%),
         rgba(247, 246, 230, .30);
+}
+.garden-overlay.garden-room-home .garden-room-actions .garden-action-button {
+    width:100%;
+    min-width:0;
+    min-height:44px;
+    flex:none;
+    padding:.38rem .18rem;
+    font-size:clamp(.56rem,2.5vw,.68rem);
+    line-height:1.15;
+    white-space:normal;
+    overflow-wrap:anywhere;
 }
 .garden-overlay.garden-room-home .garden-care-copy {
     border: 1px solid rgba(255, 255, 255, .46);
