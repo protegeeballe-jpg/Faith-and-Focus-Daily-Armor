@@ -1167,7 +1167,7 @@ function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = fals
 }
 
 async function performVaultSync({ dateStrings = [], refreshAll = false, allowUploads = true } = {}) {
-  if (!activeVault || activeVault.offlineOnly === true) return null;
+  if (!activeVault || activeVault.offlineOnly === true) return;
   try {
     status('Checking your encrypted vault…');
     const index = await fetchRemoteIndex();
