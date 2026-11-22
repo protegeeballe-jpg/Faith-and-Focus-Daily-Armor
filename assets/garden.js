@@ -90,7 +90,6 @@ function initializeGarden(root) {
         const heading = byId('garden-planting-heading');
         const description = byId('garden-planting-description');
         const plantButton = byId('garden-planting-button');
-        const completion = byId('garden-planting-complete');
         const isComplete = Boolean(garden);
 
         // Plant selection is a one-time setup milestone, restored from the saved garden.
@@ -101,15 +100,13 @@ function initializeGarden(root) {
         if (fields) fields.disabled = isComplete;
         if (heading) heading.textContent = isComplete ? 'Initial planting setup completed' : 'Day 1: Let’s plant two little seeds!';
         if (description) {
-            description.textContent = isComplete
-                ? 'Your original seed choices are saved. This setup is complete and cannot be changed here.'
-                : 'Choose one fruit tree and one pretty flower. They will grow with the passing days, even when you are away.';
+            description.hidden = isComplete;
+            description.textContent = 'Choose a fruit tree and a flower.';
         }
         if (plantButton) {
             plantButton.disabled = isComplete;
             plantButton.textContent = isComplete ? 'Setup Completed ✓' : 'Plant my two seeds 🌱';
         }
-        if (completion) completion.classList.toggle('hidden', !isComplete);
 
         if (garden) {
             const tree = TREE_TYPES[garden.treeType];
@@ -153,7 +150,6 @@ function initializeGarden(root) {
     function renderGarden() {
         if (!garden) {
             setScene('room');
-            showStatus('The Forge Room is ready. Choose a fruit tree seed and a flower seed to begin growing.', 'info');
             return;
         }
 
@@ -214,7 +210,6 @@ function initializeGarden(root) {
                 break;
             case 'begin-planting': {
                 if (garden) {
-                    showStatus('Your first two seeds are already planted. They are growing at their own gentle pace.', 'info');
                     setScene('outdoors');
                     renderGarden();
                     return;
@@ -232,7 +227,6 @@ function initializeGarden(root) {
                     renderRoom();
                     setScene('outdoors');
                     renderGarden();
-                    showStatus('Two little seeds are in the soil. Your initial setup is complete, and their growth will follow the calendar.', 'success');
                 } catch (error) {
                     showStatus(error?.message || 'Please choose one tree and one flower.', 'error');
                 }
@@ -250,14 +244,12 @@ function initializeGarden(root) {
                 if (!garden) return;
                 const today = todayISO();
                 if (garden.wateringDates.includes(today)) {
-                    showStatus('You have already watered today. Your plants can rest now; missing a day will never make them disappear.', 'info');
                     return;
                 }
                 garden.wateringDates.push(today);
                 garden.wateringDates = garden.wateringDates.slice(-3660);
                 saveGarden();
                 renderGarden();
-                showStatus('A gentle drink for both plants. Watering is a caring moment, not a growth shortcut.', 'success');
                 break;
             }
             default:
