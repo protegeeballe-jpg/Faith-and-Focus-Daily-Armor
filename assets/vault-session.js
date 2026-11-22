@@ -175,24 +175,19 @@ function setBusy(buttonId, busy, idleText, busyText) {
   button.textContent = busy ? busyText : idleText;
 }
 
-function startVaultSyncInBackground(credentials) {
+function startVaultSyncBeforeOpening(credentials) {
   const startup = (async () => {
     try {
-      await startVaultSync(credentials);
+      const outcome = await startVaultSync(credentials);
+      return { ok: true, outcome };
     } catch (error) {
       try {
         await stopVaultSync();
       } catch (cleanupError) {
-        console.warn('[Vault Session] Background sync cleanup did not finish.', cleanupError);
+        console.warn('[Vault Session] Vault sync cleanup did not finish.', cleanupError);
       }
-      if (activeCredentials === credentials && !locking) {
-        setStatus(
-          'vault-login-message',
-          'Your account is open on this device. Cloud sync is temporarily unavailable. Your encrypted changes remain saved locally and can be reconciled after reconnecting and signing in again.',
-          'info'
-        );
-      }
-      console.warn('[Vault Session] Background synchronization did not complete.', error);
+      console.warn('[Vault Session] Initial vault reconciliation did not complete.', error);
+      return { ok: false, error };
     }
   })();
 
@@ -201,6 +196,27 @@ function startVaultSyncInBackground(credentials) {
     if (vaultSyncStartupPromise === startup) vaultSyncStartupPromise = null;
   });
   return startup;
+}
+
+function showVaultSyncStartupWarning(startup) {
+  if (!startup || locking) return;
+  const outcome = startup.outcome;
+  let message = '';
+  if (!startup.ok) {
+    message = 'Cloud sync could not finish. Your saved entries remain on this device; check Settings → Encrypted Vault Sync.';
+  } else if (outcome?.complete === false || outcome?.voiceAttachmentsReady === false) {
+    message = 'Some saved entries or voice notes are still queued. Check Settings → Encrypted Vault Sync.';
+  } else if (outcome?.remoteDateCount === 0 && outcome?.localDateCount === 0) {
+    message = 'No saved dates were returned by this account. Check that this is the same account used on your other device.';
+  }
+  if (!message) return;
+  const target = byId('garden-status');
+  if (target) {
+    target.textContent = message;
+    target.dataset.state = 'error';
+  } else {
+    setStatus('vault-login-message', message, 'error');
+  }
 }
 
 function showAccountPanel(panelId, focusId) {
@@ -502,12 +518,14 @@ async function submitVaultLogin(event) {
     const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
     passphrase = '';
     activeCredentials = credentials;
-    // Start cloud reconciliation before opening the UI so local change hooks
-    // are installed, but do not block the unlocked app on historical sync.
-    startVaultSyncInBackground(credentials);
+    // Do not show an empty Diary while the shared vault is still being restored.
+    // A cloud failure leaves local access available, but is shown clearly in the app.
+    setStatus('vault-login-message', 'Restoring your saved entries…', 'info');
+    const syncStartup = await startVaultSyncBeforeOpening(credentials);
     if (usernameField) usernameField.value = credentials.username;
     showApplication();
     resetInactivityTimer();
+    showVaultSyncStartupWarning(syncStartup);
 
     const offlineNotice = offlineProfileSaved
       ? ''

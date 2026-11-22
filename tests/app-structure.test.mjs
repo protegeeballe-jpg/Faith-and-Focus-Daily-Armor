@@ -147,6 +147,14 @@ test('Forge Room setup is top-aligned and the subtitle remains readable on mobil
  assert.match(roomLayout,/\.garden-overlay\.garden-room-home \.garden-intro\s*\{[^}]*background:rgba\(255,255,255,/s);
  assert.match(roomLayout,/backdrop-filter:blur\(6px\)/);
  assert.match(roomLayout,/@media \(max-height:620px\)/);
+ const finalRoomActions=gardenCss.slice(gardenCss.lastIndexOf('.garden-overlay.garden-room-home .garden-room-actions {'));
+ assert.match(finalRoomActions,/display:grid/);
+ assert.match(finalRoomActions,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+ assert.match(finalRoomActions,/\.garden-action-button\s*\{[^}]*width:100%/s);
+ assert.match(gardenCss,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+ assert.match(gardenCss,/\.garden-status:empty\s*\{[^}]*display:none !important/s);
+ assert.doesNotMatch(garden,/A gentle drink for both plants/);
+ assert.doesNotMatch(html,/id="garden-planting-complete"/);
  assert.match(gardenCss,/@media \(max-width:620px\)/);
  assert.match(html,/http-equiv="Content-Security-Policy"/);
  assert.match(html,/type="module" src="\.\/assets\/garden\.js"/);
@@ -228,7 +236,8 @@ test('the health checklist and encrypted diary are scenes inside the Forge Room 
 test('seed selection is a one-time setup and becomes visibly completed after saving',()=>{
  assert.match(html,/id="garden-first-planting"[^>]*data-setup-state="pending"/);
  assert.match(html,/id="garden-planting-fields" class="garden-choice-grid"/);
- assert.match(html,/id="garden-planting-complete" class="garden-setup-complete hidden" role="status"/);
+ assert.doesNotMatch(html,/id="garden-planting-complete"/);
+ assert.match(garden,/description\.hidden = isComplete/);
  assert.doesNotMatch(html,/id="garden-planted-summary"/);
  assert.match(garden,/fields\.disabled = isComplete/);
  assert.match(garden,/plantButton\.disabled = isComplete/);
@@ -897,7 +906,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v37-cross-device-sync/);
+ assert.match(serviceWorker,/faith-focus-shell-v38-verified-login-layout/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -958,7 +967,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v37-cross-device-sync/);
+ assert.match(serviceWorker,/faith-focus-shell-v38-verified-login-layout/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{

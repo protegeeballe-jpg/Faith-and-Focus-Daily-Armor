@@ -140,7 +140,7 @@ test('Claim Victory keeps its shield, trophy, one-time completion flow, and retu
 });
 
 test('the quote module is an offline shell dependency and obsolete character modules are retired', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v37-cross-device-sync/);
+  assert.match(serviceWorker, /faith-focus-shell-v38-verified-login-layout/);
   assert.match(serviceWorker, /\.\/assets\/guide-quotes\.js/);
   for (const obsolete of [
     'watercolor-illustrations.js',

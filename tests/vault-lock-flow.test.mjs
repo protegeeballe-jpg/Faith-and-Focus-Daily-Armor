@@ -73,7 +73,7 @@ test('stopping vault synchronization clears its in-memory context even when flus
 });
 
 
-test('sign-in opens after local key setup while cloud reconciliation continues separately', () => {
+test('online sign-in waits for vault reconciliation after local key setup', () => {
   const login = extract(
     session,
     'async function submitVaultLogin(event) {',
@@ -82,13 +82,15 @@ test('sign-in opens after local key setup while cloud reconciliation continues s
   const onlineLogin = login.slice(
     login.indexOf('await establishDeviceSession(credentials, unlocked.membershipTicket);')
   );
-  assert.ok(onlineLogin.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)')
-    < onlineLogin.indexOf('startVaultSyncInBackground(credentials)'));
-  assert.ok(onlineLogin.indexOf('startVaultSyncInBackground(credentials)')
-    < onlineLogin.indexOf('showApplication()'));
-  assert.doesNotMatch(onlineLogin, /await\s+startVaultSync\(credentials\)/);
-  assert.match(session, /function startVaultSyncInBackground\(credentials\)/);
+  const keySetup = onlineLogin.indexOf('adoptVaultEncryptionKey(credentials.encryptionKey, passphrase)');
+  const reconciliation = onlineLogin.indexOf('await startVaultSyncBeforeOpening(credentials)');
+  const appReveal = onlineLogin.indexOf('showApplication();', reconciliation);
+  assert.ok(keySetup >= 0 && reconciliation > keySetup);
+  assert.ok(appReveal > reconciliation);
+  assert.doesNotMatch(onlineLogin, /startVaultSyncInBackground\(credentials\)/);
+  assert.match(session, /function startVaultSyncBeforeOpening\(credentials\)/);
   assert.match(session, /await startVaultSync\(credentials\)/);
+  assert.match(session, /showVaultSyncStartupWarning\(syncStartup\)/);
 });
 
 test('background synchronization cannot reattach after its account session is locked', () => {

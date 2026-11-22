@@ -34,6 +34,7 @@ const DAILY_RECORD_PREFIXES = [
 const LEGACY_WRITING_CONFIG_KEY = 'dmp_private_writing_crypto_v1';
 
 let activeVault = null;
+let pendingVoiceNoteHydrationDates = new Set();
 let vaultSyncInitializing = false;
 let vaultLocalListenersInstalled = false;
 let vaultOnlineListenerInstalled = false;
@@ -695,6 +696,8 @@ async function restoreDailyBundle(bundle, { dispatch = true, expectedLocalChange
       error: error?.message || String(error)
     });
   }
+  if (voiceNotesReady) pendingVoiceNoteHydrationDates.delete(bundle.dateString);
+  else pendingVoiceNoteHydrationDates.add(bundle.dateString);
   if (expectedLocalChangeVersion !== null
       && (localChangeVersions.get(bundle.dateString) || 0) !== expectedLocalChangeVersion) {
     return { voiceNotesReady, applied: false };
@@ -744,6 +747,8 @@ async function restoreDailyBundle(bundle, { dispatch = true, expectedLocalChange
   } finally {
     applyingRemotePacket -= 1;
   }
+  if (voiceNotesReady) pendingVoiceNoteHydrationDates.delete(bundle.dateString);
+  else pendingVoiceNoteHydrationDates.add(bundle.dateString);
   if (dispatch) window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', { detail: { dateString: bundle.dateString } }));
   return { voiceNotesReady, applied: true };
 }
@@ -1216,21 +1221,30 @@ async function performVaultSync({ dateStrings = [], refreshAll = false, allowUpl
       : (await Promise.all(reconciliationDates.map(dateString => getLocalDailyPacket(dateString))))
         .filter(Boolean);
     const pendingRecords = finalLocalRecords.filter(record => record.dirty);
-    if (pendingRecords.length || failedDates.length) {
-      const pendingDates = [...new Set([
-        ...pendingRecords.map(record => record.dateString),
-        ...failedDates
-      ])].sort();
+    const pendingDates = [...new Set([
+      ...pendingRecords.map(record => record.dateString),
+      ...failedDates,
+      ...pendingVoiceNoteHydrationDates
+    ])].sort();
+    if (pendingDates.length) {
       status(
-        'Some encrypted dates remain queued: ' + pendingDates.join(', ') +
-        '. Other dates have still been synchronized; queued dates will retry on the next connection or sign-in.',
+        'Some encrypted dates or voice notes remain queued: ' + pendingDates.join(', ') +
+        '. Other entries have still been restored; queued items will retry after reconnection or sign-in.',
         'error'
       );
     } else if (restored) {
-      status('Restored ' + restored + ' newer daily packet' + (restored === 1 ? '' : 's') + ' from your vault.', 'success');
+      status('Restored ' + restored + ' saved date' + (restored === 1 ? '' : 's') + ' from your vault.', 'success');
     } else {
       status('Your encrypted vault is up to date on this device.', 'success');
     }
+    return {
+      complete: pendingDates.length === 0,
+      restored,
+      remoteDateCount: remoteDates.length,
+      localDateCount: finalLocalRecords.length,
+      pendingDates,
+      failedDates: [...failedDates]
+    };
   } catch (error) {
     status(error.message || 'Vault reconciliation could not finish.', 'error');
     throw error;
@@ -1290,6 +1304,7 @@ export async function startVaultSync(credentials) {
   const generation = ++vaultSyncGeneration;
   const isCurrent = () => activeVault === credentials && vaultSyncGeneration === generation;
   vaultSyncInitializing = true;
+  pendingVoiceNoteHydrationDates.clear();
   installLocalStorageHooks();
 
   // Attach before the first await. Diary and IndexedDB voice-note changes made
@@ -1322,7 +1337,7 @@ export async function startVaultSync(credentials) {
     // Always pull the shared vault after sign-in. If audio uploads are delayed,
     // merge remote data locally and leave cloud writes queued until attachments
     // are safely accepted.
-    await synchronizeVault({ refreshAll: true, allowUploads: voiceAttachmentsReady });
+    let syncOutcome = await synchronizeVault({ refreshAll: true, allowUploads: voiceAttachmentsReady });
     if (!isCurrent()) return false;
 
     // Reconcile remote dates before attaching account-wide state to today's packet.
@@ -1335,7 +1350,7 @@ export async function startVaultSync(credentials) {
     )) {
       await captureDailyPacket(getCurrentDateString());
       if (!isCurrent()) return false;
-      await synchronizeVault();
+      syncOutcome = await synchronizeVault();
       if (!isCurrent()) return false;
     }
 
@@ -1347,7 +1362,10 @@ export async function startVaultSync(credentials) {
     if (pendingDailySyncDates.size || pendingFullVaultRefresh) {
       queueVaultSync({ refreshAll: true, immediate: true });
     }
-    return true;
+    if (!voiceAttachmentsReady && syncOutcome?.complete) {
+      status('Encrypted voice-note uploads remain queued on this device.', 'error');
+    }
+    return { ...(syncOutcome || { complete: false, restored: 0, remoteDateCount: 0, pendingDates: [], failedDates: [] }), voiceAttachmentsReady };
   } catch (error) {
     if (isCurrent()) {
       vaultSyncInitializing = false;
