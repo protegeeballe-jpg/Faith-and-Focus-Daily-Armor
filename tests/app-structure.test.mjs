@@ -924,10 +924,10 @@ test('vault sync retries date-level conditional-write conflicts and Settings has
  const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
  const settings=readFileSync(new URL('../assets/settings-modal.js',import.meta.url),'utf8');
  assert.match(sync,/const MAX_DATE_RECONCILE_ATTEMPTS = 4/);
- assert.match(sync,/async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true \} = \{\}\)/);
+ assert.match(sync,/async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true, forceRemoteRead = false \} = \{\}\)/);
  assert.match(sync,/attempt <= MAX_DATE_RECONCILE_ATTEMPTS/);
  assert.match(sync,/error\.code !== 'VAULT_CONFLICT'/);
- assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads \}\)/);
+ assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads, forceRemoteRead \}\)/);
  assert.match(sync,/when the connection returns/);
  assert.match(sync,/await reconcileDay\(record\.dateString, null, \{ allowUploads \}\)/);
  assert.match(sync,/const pendingRecords = finalLocalRecords\.filter\(record => record\.dirty\)/);
@@ -964,7 +964,7 @@ test('completed voice notes upload encrypted attachments and publish their manif
  assert.match(vaultSync,/index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
  assert.match(vaultSync,/function queueVaultSync\(/);
  assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
- assert.match(vaultSync,/await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
+ assert.match(vaultSync,/await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
  assert.match(vaultSync,/function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
  assert.match(voiceNoteStore,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100/);
 });
@@ -1016,7 +1016,7 @@ test('Garden snapshots are embedded in daily packets and merged without discardi
  assert.doesNotMatch(vaultSync,/publishSharedStateMerge/);
  assert.doesNotMatch(vaultSync,/dates\.add\(getCurrentDateString\(\)\)/);
  assert.match(vaultSync,/Only create local packets for dates that actually contain daily records or/);
- assert.match(vaultSync,/await captureExistingLocalDates\(\);[\s\S]*?await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\);[\s\S]*?await captureDailyPacket\(getCurrentDateString\(\)\);[\s\S]*?await synchronizeVault\(\);/);
+ assert.match(vaultSync,/await captureExistingLocalDates\(\);[\s\S]*?await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\);[\s\S]*?await captureDailyPacket\(getCurrentDateString\(\)\);[\s\S]*?await synchronizeVault\(\);/);
  assert.match(vaultSync,/isUsableLegacyWritingConfig\(remoteLegacyConfig\)/);
 });
 
