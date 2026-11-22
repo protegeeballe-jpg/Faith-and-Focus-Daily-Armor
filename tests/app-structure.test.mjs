@@ -66,18 +66,23 @@ test('private-writing encryption remains separate and preserved',()=>{
  assert.match(writing,/PRIVATE_NOTE_IDS/);
  assert.match(app,/handleDiaryKeyAction/);
 });
-test('Diary Additional Notes uses one shared notepad and a lower-right ADD action',()=>{
- const start=html.indexOf('<section id="diary-additional-notes"');
- const end=html.indexOf('<section id="diary-location-history"',start);
- assert.ok(start>=0&&end>start,'The Additional Notes section must exist');
- const section=html.slice(start,end);
- assert.equal(section.split('<textarea').length-1,1,'Only one notes composer may be present');
+test('Diary uses one visible notepad and a lower-right ADD action',()=>{
+ const editorStart=html.indexOf('<div id="diary-editor-panel"');
+ const editorEnd=html.indexOf('<section id="diary-location-history"',editorStart);
+ assert.ok(editorStart>=0&&editorEnd>editorStart,'The Diary editor must exist');
+ const diary=html.slice(editorStart,editorEnd);
+ const start=diary.indexOf('<section id="diary-additional-notes"');
+ assert.ok(start>=0,'The saved-notes section must exist');
+ const section=diary.slice(start);
+ assert.equal(diary.split('<textarea').length-1,1,'The entire Diary editor must contain exactly one writing textarea');
+ assert.ok(diary.includes('<input id="private-diary-entry" type="hidden"'),'The legacy encrypted entry must remain available without a second editor');
  assert.ok(section.includes('id="diary-note-composer"'));
  assert.ok(section.includes('id="diary-add-note-button"'));
  assert.ok(section.includes('class="diary-note-composer-actions"'));
  assert.ok(section.includes('>ADD</button>'));
- assert.ok(!section.includes('data-private-diary-note-id'),'Saved notes must not create more editing textareas');
+ assert.ok(!section.includes('data-private-diary-note-id'),'Saved notes must remain read-only cards');
  assert.ok(app.includes('addPrivateDiaryNote(dateString, noteText)'));
+ assert.ok(app.includes('diary-legacy-entry-card'));
  assert.ok(app.includes('noteBody.textContent = note.text ||'));
  assert.ok(appCss.includes('justify-content:flex-end'));
 });
@@ -1115,19 +1120,23 @@ test('Claim Victory returns to the Forge Room after missed-card cleanup', () => 
 });
 
 
-test('the Diary exposes one shared private notepad and read-only saved note cards', () => {
+test('the Diary keeps one visible notepad, read-only saved cards, and legacy entry compatibility', () => {
  assert.match(html,/id="diary-additional-notes"/);
  assert.match(html,/id="diary-additional-notes-list"[^>]*aria-live="polite"/);
  assert.match(html,/id="diary-note-composer"/);
  assert.match(html,/id="diary-add-note-button"[^>]*type="button"[^>]*data-action="addPrivateDiaryNote"/);
  assert.match(html,/class="diary-note-composer-actions"/);
- const start=html.indexOf('<section id="diary-additional-notes"');
- const end=html.indexOf('<section id="diary-location-history"',start);
- const section=html.slice(start,end);
- assert.equal(section.split('<textarea').length-1,1,'Only one editable notes notepad may exist');
+ const editorStart=html.indexOf('<div id="diary-editor-panel"');
+ const editorEnd=html.indexOf('<section id="diary-location-history"',editorStart);
+ const diary=html.slice(editorStart,editorEnd);
+ assert.equal(diary.split('<textarea').length-1,1,'Exactly one textarea may exist in the complete Diary editor');
+ assert.ok(diary.includes('<input id="private-diary-entry" type="hidden"'));
+ const start=diary.indexOf('<section id="diary-additional-notes"');
+ const section=diary.slice(start);
  assert.ok(section.includes('>ADD</button>'));
  assert.ok(app.includes('async function addDiaryNote()'));
  assert.ok(app.includes('await addPrivateDiaryNote(dateString, noteText);'));
+ assert.ok(app.includes('diary-legacy-entry-card'));
  assert.ok(app.includes('noteBody.textContent = note.text ||'));
  assert.ok(app.includes('renderPrivateDiaryNotes(dateString)'));
  assert.ok(app.includes('addPrivateDiaryNote:()=>addDiaryNote()'));
