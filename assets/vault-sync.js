@@ -683,8 +683,22 @@ function canonicalBundle(bundle) {
   });
 }
 
-async function restoreDailyBundle(bundle, { dispatch = true } = {}) {
-  const hydratedVoiceNotes = await hydrateVoiceNoteAttachments(bundle.dateString, bundle.voiceNotes);
+async function restoreDailyBundle(bundle, { dispatch = true, expectedLocalChangeVersion = null } = {}) {
+  let hydratedVoiceNotes = null;
+  let voiceNotesReady = true;
+  try {
+    hydratedVoiceNotes = await hydrateVoiceNoteAttachments(bundle.dateString, bundle.voiceNotes);
+  } catch (error) {
+    voiceNotesReady = false;
+    console.warn('[Vault Sync] Voice-note attachments remain queued; restoring the rest of this date.', {
+      dateString: bundle.dateString,
+      error: error?.message || String(error)
+    });
+  }
+  if (expectedLocalChangeVersion !== null
+      && (localChangeVersions.get(bundle.dateString) || 0) !== expectedLocalChangeVersion) {
+    return { voiceNotesReady, applied: false };
+  }
   const checklistKey = 'mindful_pokes_data_' + bundle.dateString;
   const notesKey = 'dmp_notes_cipher_v1_' + bundle.dateString;
   const gardenRecordKey = GARDEN_DAILY_SYNC_PREFIX + bundle.dateString;
@@ -716,11 +730,22 @@ async function restoreDailyBundle(bundle, { dispatch = true } = {}) {
       replaceGarden: incomingResetIsCurrentOrNewer,
       preserveGarden: localResetIsNewer
     });
-    await restoreEncryptedVoiceNotesForDate(bundle.dateString, hydratedVoiceNotes);
+    if (voiceNotesReady) {
+      try {
+        await restoreEncryptedVoiceNotesForDate(bundle.dateString, hydratedVoiceNotes);
+      } catch (error) {
+        voiceNotesReady = false;
+        console.warn('[Vault Sync] Voice-note records remain queued; other date data was restored.', {
+          dateString: bundle.dateString,
+          error: error?.message || String(error)
+        });
+      }
+    }
   } finally {
     applyingRemotePacket -= 1;
   }
   if (dispatch) window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', { detail: { dateString: bundle.dateString } }));
+  return { voiceNotesReady, applied: true };
 }
 
 async function fetchRemoteIndex() {
@@ -772,12 +797,12 @@ async function uploadDailyPacket(dateString, { baseUpdatedAt } = {}) {
   return true;
 }
 
-async function reconcileDay(dateString, remoteUpdatedAt) {
+async function reconcileDay(dateString, remoteUpdatedAt, { allowUploads = true } = {}) {
   for (let attempt = 1; attempt <= MAX_DATE_RECONCILE_ATTEMPTS; attempt += 1) {
     try {
       // reconcileDayOnce fetches the latest remote packet on every attempt, then
       // merges it with the latest local encrypted packet before a guarded write.
-      return await reconcileDayOnce(dateString, remoteUpdatedAt);
+      return await reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads });
     } catch (error) {
       if (error.code !== 'VAULT_CONFLICT') throw error;
       console.warn('[Vault Sync] Date changed during reconciliation; retrying against the latest cloud version:', {
@@ -800,7 +825,7 @@ async function reconcileDay(dateString, remoteUpdatedAt) {
   return false;
 }
 
-async function reconcileDayOnce(dateString, remoteUpdatedAt) {
+async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = true } = {}) {
   const local = await getLocalDailyPacket(dateString);
   const localChangeVersion = localChangeVersions.get(dateString) || 0;
   if (!local) {
@@ -811,25 +836,37 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
     const remote = await fetchRemoteDay(dateString);
     if (!remote.packet) return false;
     const bundle = await decryptDailyBundle(remote.packet, activeVault.encryptionKey, decompressData);
-    await restoreDailyBundle(bundle);
+    const restored = await restoreDailyBundle(bundle, { expectedLocalChangeVersion: localChangeVersion });
+    if (!restored.applied) {
+      scheduleCapture(dateString);
+      return false;
+    }
     await putLocalDailyPacket({
       dateString, packet: remote.packet, localUpdatedAt: Date.now(),
-      remoteUpdatedAt: remote.updatedAt || remoteUpdatedAt, dirty: false
+      remoteUpdatedAt: restored.voiceNotesReady ? (remote.updatedAt || remoteUpdatedAt) : null,
+      dirty: false
     });
+    if ((localChangeVersions.get(dateString) || 0) !== localChangeVersion) scheduleCapture(dateString);
     return true;
   }
 
   if (local.dirty) {
     const remote = await fetchRemoteDay(dateString);
-    if (!remote.packet) return uploadDailyPacket(dateString, { baseUpdatedAt: remote.updatedAt || null });
+    if (!remote.packet) {
+      return allowUploads ? uploadDailyPacket(dateString, { baseUpdatedAt: remote.updatedAt || null }) : false;
+    }
     const remoteBundle = await decryptDailyBundle(remote.packet, activeVault.encryptionKey, decompressData);
     const localBundle = await decryptDailyBundle(local.packet, activeVault.encryptionKey, decompressData);
     if (canonicalBundle(remoteBundle) === canonicalBundle(localBundle)) {
-      restoreSharedAppState(remoteBundle);
+      const restored = await restoreDailyBundle(remoteBundle, { expectedLocalChangeVersion: localChangeVersion });
+      if (!restored.applied) {
+        scheduleCapture(dateString);
+        return false;
+      }
       const unchangedSinceSnapshot = (localChangeVersions.get(dateString) || 0) === localChangeVersion;
       const syncResult = await markLocalDailyPacketSynced(
         dateString,
-        remote.updatedAt || remoteUpdatedAt,
+        restored.voiceNotesReady ? (remote.updatedAt || remoteUpdatedAt) : null,
         remote.packet,
         { requirePacketMatch: true, expectedPacket: unchangedSinceSnapshot ? local.packet : null }
       );
@@ -862,7 +899,55 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
       );
       return false;
     }
+    // Adopt the remote packet without a KV write when the local merge adds nothing.
+    if (canonicalBundle(mergedBundle) === canonicalBundle(remoteBundle)) {
+      const restored = await restoreDailyBundle(remoteBundle, { expectedLocalChangeVersion: localChangeVersion });
+      if (!restored.applied) {
+        scheduleCapture(dateString);
+        return false;
+      }
+      const unchangedSinceSnapshot = (localChangeVersions.get(dateString) || 0) === localChangeVersion;
+      const syncResult = await markLocalDailyPacketSynced(
+        dateString,
+        restored.voiceNotesReady ? (remote.updatedAt || remoteUpdatedAt) : null,
+        remote.packet,
+        { requirePacketMatch: true, expectedPacket: unchangedSinceSnapshot ? local.packet : null }
+      );
+      if (!syncResult.stillMatchesUploadedSnapshot) scheduleCapture(dateString);
+      return false;
+    }
+
     const mergedPacket = await encryptDailyBundle(mergedBundle, activeVault.encryptionKey, compressData);
+    if (!allowUploads) {
+      const restored = await restoreDailyBundle(mergedBundle, { expectedLocalChangeVersion: localChangeVersion });
+      if (!restored.applied) {
+        scheduleCapture(dateString);
+        return false;
+      }
+      scheduleCapture(dateString);
+      return true;
+    }
+
+    // Verify remote audio before publishing merged manifests.
+    let voiceAttachmentsReady = true;
+    try {
+      await hydrateVoiceNoteAttachments(dateString, mergedBundle.voiceNotes);
+    } catch (error) {
+      voiceAttachmentsReady = false;
+      console.warn('[Vault Sync] A voice attachment is unavailable; keeping the merged date queued.', {
+        dateString, error: error?.message || String(error)
+      });
+    }
+    if (!voiceAttachmentsReady) {
+      const restored = await restoreDailyBundle(mergedBundle, { expectedLocalChangeVersion: localChangeVersion });
+      if (!restored.applied) {
+        scheduleCapture(dateString);
+        return false;
+      }
+      scheduleCapture(dateString);
+      return true;
+    }
+
     const result = await vaultRequest('/vault/' + activeVault.vaultId + '/day/' + dateString, {
       method: 'PUT',
       body: { packet: mergedPacket, baseUpdatedAt: remote.updatedAt || remoteUpdatedAt || null },
@@ -876,7 +961,11 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
       { requirePacketMatch: true, expectedPacket: unchangedSinceSnapshot ? local.packet : null }
     );
     if (syncResult.stillMatchesUploadedSnapshot) {
-      await restoreDailyBundle(mergedBundle);
+      const restored = await restoreDailyBundle(mergedBundle, { expectedLocalChangeVersion: localChangeVersion });
+      if (!restored.applied) {
+        scheduleCapture(dateString);
+        return false;
+      }
       status('Entries for ' + dateString + ' from both devices have been combined and synced.', 'success');
       return true;
     }
@@ -894,10 +983,15 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
     const remote = await fetchRemoteDay(dateString);
     if (remote.packet && remote.updatedAt && (!localRemote || remote.updatedAt > localRemote)) {
       const bundle = await decryptDailyBundle(remote.packet, activeVault.encryptionKey, decompressData);
+      const restored = await restoreDailyBundle(bundle, { expectedLocalChangeVersion: localChangeVersion });
+      if (!restored.applied) {
+        scheduleCapture(dateString);
+        return false;
+      }
       const unchangedSinceSnapshot = (localChangeVersions.get(dateString) || 0) === localChangeVersion;
       const syncResult = await markLocalDailyPacketSynced(
         dateString,
-        remote.updatedAt,
+        restored.voiceNotesReady ? remote.updatedAt : null,
         remote.packet,
         { requirePacketMatch: true, expectedPacket: unchangedSinceSnapshot ? local.packet : null }
       );
@@ -905,7 +999,6 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt) {
         scheduleCapture(dateString);
         return false;
       }
-      await restoreDailyBundle(bundle);
       return true;
     }
   }
@@ -1028,17 +1121,31 @@ function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = fals
       if (shouldRefreshAll) {
         await captureExistingLocalDates();
         if (!isCurrent()) return;
-        await uploadAllPendingVoiceNoteAttachments();
-      } else {
-        for (const pendingDate of dates) {
-          if (!isCurrent()) return;
-          await uploadPendingVoiceNoteAttachments(pendingDate);
+      }
+
+      let voiceAttachmentsReady = true;
+      try {
+        if (shouldRefreshAll) {
+          await uploadAllPendingVoiceNoteAttachments();
+        } else {
+          for (const pendingDate of dates) {
+            if (!isCurrent()) return;
+            await uploadPendingVoiceNoteAttachments(pendingDate);
+          }
         }
+      } catch (error) {
+        voiceAttachmentsReady = false;
+        console.warn('[Vault Sync] Voice-note uploads remain queued; continuing daily-data reconciliation.', error);
+        status('Checklist and written Diary sync is continuing. Voice-note uploads remain queued.', 'info');
       }
 
       if (!isCurrent()) return;
-      status('Synchronizing the latest encrypted notes and voice recordings…', 'info');
-      await synchronizeVault({ dateStrings: dates, refreshAll: shouldRefreshAll });
+      status('Synchronizing your encrypted Checklist and Diary…', 'info');
+      await synchronizeVault({
+        dateStrings: dates,
+        refreshAll: shouldRefreshAll,
+        allowUploads: voiceAttachmentsReady
+      });
     });
 
     localChangeSyncQueue = operation.catch(error => {
@@ -1056,7 +1163,7 @@ function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = fals
   }, delay);
 }
 
-async function performVaultSync({ dateStrings = [], refreshAll = false } = {}) {
+async function performVaultSync({ dateStrings = [], refreshAll = false, allowUploads = true } = {}) {
   if (!activeVault || activeVault.offlineOnly === true) return;
   try {
     status('Checking your encrypted vault…');
@@ -1072,12 +1179,21 @@ async function performVaultSync({ dateStrings = [], refreshAll = false } = {}) {
       reconciliationDates
     });
     let restored = 0;
+    const failedDates = [];
 
     // A normal Diary edit reconciles only its own date. Full-index reconciliation
     // remains reserved for sign-in, reconnect, and guarded foreground refreshes.
     for (const dateString of reconciliationDates) {
       const remoteUpdatedAt = typeof index[dateString] === 'string' ? index[dateString] : null;
-      if (await reconcileDay(dateString, remoteUpdatedAt)) restored += 1;
+      try {
+        if (await reconcileDay(dateString, remoteUpdatedAt, { allowUploads })) restored += 1;
+      } catch (error) {
+        if (error?.code === 'VAULT_SESSION_EXPIRED') throw error;
+        failedDates.push(dateString);
+        console.warn('[Vault Sync] One date could not be reconciled; continuing with the remaining dates.', {
+          dateString, error: error?.message || String(error)
+        });
+      }
     }
 
     if (refreshAll) {
@@ -1087,7 +1203,13 @@ async function performVaultSync({ dateStrings = [], refreshAll = false } = {}) {
         // Re-read the remote date before uploading. The index can change while
         // this pass is running, so even dates absent from the initial index must
         // go through the same guarded reconciliation path.
-        await reconcileDay(record.dateString, null);
+        try {
+          await reconcileDay(record.dateString, null, { allowUploads });
+        } catch (error) {
+          if (error?.code === 'VAULT_SESSION_EXPIRED') throw error;
+          failedDates.push(record.dateString);
+          console.warn('[Vault Sync] A local-only date remains queued.', { dateString: record.dateString, error });
+        }
       }
     }
 
@@ -1096,11 +1218,14 @@ async function performVaultSync({ dateStrings = [], refreshAll = false } = {}) {
       : (await Promise.all(reconciliationDates.map(dateString => getLocalDailyPacket(dateString))))
         .filter(Boolean);
     const pendingRecords = finalLocalRecords.filter(record => record.dirty);
-    if (pendingRecords.length) {
-      const pendingDates = pendingRecords.map(record => record.dateString).sort();
+    if (pendingRecords.length || failedDates.length) {
+      const pendingDates = [...new Set([
+        ...pendingRecords.map(record => record.dateString),
+        ...failedDates
+      ])].sort();
       status(
-        'Some encrypted local packets remain queued: ' + pendingDates.join(', ') +
-        '. They remain saved securely on this device and will retry when the connection returns, the app returns to the foreground, or you sign in again.',
+        'Some encrypted dates remain queued: ' + pendingDates.join(', ') +
+        '. Other dates have still been synchronized; queued dates will retry on the next connection or sign-in.',
         'error'
       );
     } else if (restored) {
@@ -1196,10 +1321,11 @@ export async function startVaultSync(credentials) {
       status('Your account is open. Encrypted voice notes remain safely saved on this device and will sync after the storage service is ready.', 'info');
     }
     if (!isCurrent()) return false;
-    if (voiceAttachmentsReady) {
-      await synchronizeVault();
-      if (!isCurrent()) return false;
-    }
+    // Always pull the shared vault after sign-in. If audio uploads are delayed,
+    // merge remote data locally and leave cloud writes queued until attachments
+    // are safely accepted.
+    await synchronizeVault({ refreshAll: true, allowUploads: voiceAttachmentsReady });
+    if (!isCurrent()) return false;
 
     // Reconcile remote dates before attaching account-wide state to today's packet.
     // This lets a newly signed-in device receive today's Diary/location/voice data

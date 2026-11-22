@@ -86,6 +86,20 @@ test('Diary uses one visible notepad and a lower-right ADD action',()=>{
  assert.ok(app.includes('noteBody.textContent = note.text ||'));
  assert.ok(appCss.includes('justify-content:flex-end'));
 });
+test('location is a single Health Checklist choice and GPS history appears only in the Diary', () => {
+ assert.equal((html.match(/name="daily-location"/g) || []).length, 4);
+ assert.equal((html.match(/type="radio" name="daily-location"/g) || []).length, 4);
+ assert.doesNotMatch(html, /id="location-checkin-details"|location-checkin-privacy-note/);
+ assert.match(app, /saveLocationCheckin\(localStorage, dateString, locationId, position\)/);
+ assert.match(app, /renderDiaryLocationLogs\(dateString\)/);
+ assert.doesNotMatch(app, /renderLocationCheckinDetails/);
+});
+
+test('Diary controls stay compact without explanatory paragraphs', () => {
+ assert.doesNotMatch(html, /Use the single notepad below|Your note is encrypted and saved on this device|Your Health Checklist location check-ins for|Voice notes are encrypted with your account key and saved locally|Saved voice notes are encrypted before local storage/);
+ assert.doesNotMatch(html, /diary-note-composer-help|diary-archive-intro/);
+});
+
 test('the main Diary paragraph uses versioned replacement semantics and remains backward compatible',()=>{
  assert.match(writing,/PRIVATE_DIARY_META_KEY/);
  assert.match(writing,/function unpackPrivateWritingDiary/);

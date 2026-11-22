@@ -925,29 +925,6 @@ import {
             }
         }
 
-        function renderLocationCheckinDetails(dateString) {
-            const container = document.getElementById('location-checkin-details');
-            if (!container) return;
-            container.replaceChildren();
-
-            const entries = loadLocationCheckinEntries(localStorage, dateString);
-            for (const record of entries) {
-                const line = document.createElement('p');
-                line.className = 'location-checkin-entry flex flex-wrap items-center gap-x-2 gap-y-1';
-                const label = document.createElement('strong');
-                label.textContent = LOCATION_CHECKIN_OPTIONS[record.locationId] + ':';
-                const metadata = document.createTextNode(
-                    ' · accuracy ±' + Math.round(record.accuracyMeters) + ' m · '
-                    + new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-                        .format(new Date(record.capturedAt))
-                );
-                line.append(label, createLocationCoordinateControls(record), metadata);
-                container.append(line);
-            }
-
-            container.classList.toggle('hidden', entries.length === 0);
-        }
-
         function renderDiaryLocationLogs(dateString = getCurrentWritingDate()) {
             const container = document.getElementById('diary-location-log');
             if (!container) return;
@@ -1539,8 +1516,7 @@ import {
                 position => {
                     try {
                         saveLocationCheckin(localStorage, dateString, locationId, position);
-                        renderLocationCheckinDetails(document.getElementById('currentDate')?.value || dateString);
-                        setLocationCheckinMessage('Location recorded for ' + LOCATION_CHECKIN_OPTIONS[locationId] + '.', 'success');
+                        setLocationCheckinMessage('Location saved.', 'success');
                     } catch (error) {
                         setLocationCheckinMessage('The location was received but could not be saved on this device.', 'error');
                     }
@@ -2099,7 +2075,6 @@ import {
 
             checkSectionCompletion();
             updateScoreDisplay();
-            renderLocationCheckinDetails(dateStr);
             renderMissedCardNotifications();
         }
 
