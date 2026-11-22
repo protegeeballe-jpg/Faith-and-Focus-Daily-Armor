@@ -8,7 +8,7 @@
  * When the cache list or its behavior changes, increment CACHE_NAME so the
  * old shell is retired cleanly after the new worker activates.
  */
-const CACHE_NAME = 'faith-focus-shell-v39-force-vault-rehydrate';
+const CACHE_NAME = 'faith-focus-shell-v40-mobile-layout';
 const CACHE_PREFIX = 'faith-focus-';
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -25,6 +25,7 @@ const PRECACHE_URLS = [
     './assets/app.css',
     './assets/garden.css',
     './assets/legal.css',
+    './assets/mobile.css',
 
     './assets/app.js',
     './assets/guide-quotes.js',
@@ -50,6 +51,7 @@ const PRECACHE_URLS = [
     './assets/private-writing-migration.js',
     './assets/voice-note-store.js',
     './assets/compressor.js',
+    './assets/mobile-diary-tabs.js',
 
     './assets/garden-room-background.jpg',
     './assets/icon.png'
