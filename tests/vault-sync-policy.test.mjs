@@ -174,8 +174,9 @@ test('regular sign-in waits for full vault reconciliation before revealing the a
   const signupStart = sessionSource.indexOf('async function submitVaultSignup(event)', loginStart);
   assert.ok(loginStart >= 0 && signupStart > loginStart);
   const login = sessionSource.slice(loginStart, signupStart);
-  const restore = login.indexOf('await startVaultSyncBeforeOpening(credentials)');
-  const reveal = login.indexOf('showApplication();');
+  const onlineLogin = login.slice(login.indexOf('await establishDeviceSession(credentials, unlocked.membershipTicket);'));
+  const restore = onlineLogin.indexOf('await startVaultSyncBeforeOpening(credentials)');
+  const reveal = onlineLogin.indexOf('showApplication();', restore);
   assert.ok(restore >= 0 && reveal > restore);
   assert.match(sessionSource, /function showVaultSyncStartupWarning\(startup\)/);
   assert.match(sessionSource, /Some saved entries or voice notes are still queued/);
