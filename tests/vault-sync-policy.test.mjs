@@ -59,7 +59,7 @@ test('voice attachment upload failure never suppresses sign-in vault reconciliat
 test('one failed date does not stop other dates from reconciling', () => {
   assert.match(syncSource, /const failedDates = \[\]/);
   assert.match(syncSource, /One date could not be reconciled; continuing with the remaining dates/);
-  assert.match(syncSource, /Some encrypted dates remain queued/);
+  assert.match(syncSource, /Some encrypted dates or voice notes remain queued/);
 });
 
 test('cross-device reconciliation avoids Cloudflare writes when the merged packet already matches remote', () => {
@@ -179,6 +179,7 @@ test('regular sign-in waits for full vault reconciliation before revealing the a
   assert.ok(restore >= 0 && reveal > restore);
   assert.match(sessionSource, /function showVaultSyncStartupWarning\(startup\)/);
   assert.match(sessionSource, /Some saved entries or voice notes are still queued/);
+  assert.match(sessionSource, /No saved dates were returned by this account/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.add\(bundle\.dateString\)/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.delete\(bundle\.dateString\)/);
   assert.match(syncSource, /complete: pendingDates\.length === 0/);
