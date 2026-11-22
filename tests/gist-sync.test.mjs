@@ -29,7 +29,7 @@ test('Diary packet edits and voice notes share authenticated cloud synchronizati
   assert.match(sync, /function synchronizeVault\(/);
   assert.match(sync, /function performVaultSync\(/);
   assert.equal((sync.match(/await synchronizeVault\(\)/g) || []).length, 1);
-  assert.match(sync, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
+  assert.match(sync, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
   assert.match(sync, /await synchronizeVault\(\{[\s\S]*?dateStrings: dates,[\s\S]*?refreshAll: shouldRefreshAll,[\s\S]*?allowUploads: voiceAttachmentsReady/);
   assert.match(session, /SESSION_INACTIVITY_MS = 2 \* 60 \* 1000/);
 });

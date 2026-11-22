@@ -127,7 +127,7 @@ test('offline-only mode cannot create or use cloud sessions', () => {
   assert.match(session, /if \(window\.navigator\?\.onLine === false\)\s*\{\s*await openOfflineSession\(\);\s*return;/);
   assert.match(sync, /if \(activeVault\?\.offlineOnly === true\)\s*\{\s*throw new Error/);
   assert.match(sync, /if \(!activeVault \|\| activeVault\.offlineOnly === true\) return Promise\.resolve\(\)/);
-  assert.match(sync, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true \} = \{\}\)\s*\{\s*if \(!activeVault \|\| activeVault\.offlineOnly === true\) return;/);
+  assert.match(sync, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true, forceRemoteRead = false \} = \{\}\)\s*\{\s*if \(!activeVault \|\| activeVault\.offlineOnly === true\) return;/);
   const localStart = sync.slice(
     sync.indexOf('export async function startLocalVaultStorage('),
     sync.indexOf('export async function startVaultSync(')
@@ -173,7 +173,7 @@ test('the local profile store keeps a narrow allow-list and expires stale aliase
 });
 
 test('the service worker installs the updated offline-capable app shell', () => {
-  assert.match(worker, /faith-focus-shell-v38-verified-login-layout/);
+  assert.match(worker, /faith-focus-shell-v39-force-vault-rehydrate/);
   for (const resource of ['./assets/vault-storage.js', './assets/vault-sync.js', './assets/vault-session.js']) {
     assert.ok(worker.includes("'" + resource + "'"), 'Missing offline resource: ' + resource);
   }

@@ -49,17 +49,55 @@ test('voice attachment upload failure never suppresses sign-in vault reconciliat
     syncSource.indexOf('function handleLocalDataChanged(event)')
   );
   assert.match(startup, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(startup, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
+  assert.match(startup, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
   assert.doesNotMatch(startup, /if \(voiceAttachmentsReady\)\s*\{\s*await synchronizeVault/);
   assert.match(syncSource, /async function restoreDailyBundle[\s\S]*?let voiceNotesReady = true/);
   assert.match(syncSource, /return \{ voiceNotesReady, applied: true \}/);
-  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true \}/);
+  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true, forceRemoteRead = false \}/);
 });
 
 test('one failed date does not stop other dates from reconciling', () => {
   assert.match(syncSource, /const failedDates = \[\]/);
   assert.match(syncSource, /One date could not be reconciled; continuing with the remaining dates/);
   assert.match(syncSource, /Some encrypted dates or voice notes remain queued/);
+});
+
+test('full sign-in refresh rehydrates every indexed date even when local version metadata matches', () => {
+  const startup = syncSource.slice(
+    syncSource.indexOf('export async function startVaultSync(credentials) {'),
+    syncSource.indexOf('function handleLocalDataChanged(event)')
+  );
+  assert.match(startup, /synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
+  assert.match(syncSource, /async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true, forceRemoteRead = false \}/);
+  assert.match(syncSource, /async function reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads = true, forceRemoteRead = false \}/);
+  const cleanRestore = syncSource.slice(syncSource.indexOf('const localRemote = local.remoteUpdatedAt'), syncSource.indexOf('export function selectVaultReconciliationDates'));
+  assert.match(cleanRestore, /if \(forceRemoteRead \|\| remoteVersionChanged\)/);
+  assert.match(cleanRestore, /const remote = await fetchRemoteDay\(dateString\)/);
+  assert.match(cleanRestore, /await restoreDailyBundle\(bundle, \{ expectedLocalChangeVersion: localChangeVersion \}\)/);
+  assert.match(cleanRestore, /await markLocalDailyPacketSynced\(/);
+  assert.doesNotMatch(cleanRestore, /method: 'PUT'/);
+});
+
+test('sign-in capture preserves clean packets until the remote copy has been rehydrated', () => {
+  const capture = syncSource.slice(
+    syncSource.indexOf('async function captureExistingLocalDates()'),
+    syncSource.indexOf('export async function startLocalVaultStorage(')
+  );
+  assert.match(capture, /const existing = await getLocalDailyPacket\(dateString\)/);
+  assert.match(capture, /if \(existing && existing\.dirty !== true\) continue/);
+  assert.match(capture, /await captureDailyPacket\(dateString\)/);
+});
+
+test('ADD can await one date-specific sync without forcing a full vault upload', () => {
+  const start = syncSource.indexOf('export async function syncDailyDateNow(dateString)');
+  const end = syncSource.indexOf('function queueVaultSync(', start);
+  assert.ok(start >= 0 && end > start);
+  const syncDate = syncSource.slice(start, end);
+  assert.match(syncDate, /await captureDailyPacket\(dateString\)/);
+  assert.match(syncDate, /await uploadPendingVoiceNoteAttachments\(dateString\)/);
+  assert.match(syncDate, /synchronizeVault\(\{[\s\S]*?dateStrings: \[dateString\],[\s\S]*?allowUploads: voiceAttachmentsReady/);
+  assert.doesNotMatch(syncDate, /refreshAll:\s*true/);
+  assert.match(syncDate, /localChangeSyncQueue\.catch\(\(\) => \{\}\)\.then/);
 });
 
 test('cross-device reconciliation avoids Cloudflare writes when the merged packet already matches remote', () => {
@@ -178,9 +216,7 @@ test('regular sign-in waits for full vault reconciliation before revealing the a
   const restore = onlineLogin.indexOf('await startVaultSyncBeforeOpening(credentials)');
   const reveal = onlineLogin.indexOf('showApplication();', restore);
   assert.ok(restore >= 0 && reveal > restore);
-  assert.match(sessionSource, /function showVaultSyncStartupWarning\(startup\)/);
-  assert.match(sessionSource, /Some saved entries or voice notes are still queued/);
-  assert.match(sessionSource, /No saved dates were returned by this account/);
+  assert.doesNotMatch(sessionSource, /showVaultSyncStartupWarning|Restoring your saved entries/);
   assert.match(syncSource, /localDateCount: finalLocalRecords\.length/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.add\(bundle\.dateString\)/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.delete\(bundle\.dateString\)/);

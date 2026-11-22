@@ -198,27 +198,6 @@ function startVaultSyncBeforeOpening(credentials) {
   return startup;
 }
 
-function showVaultSyncStartupWarning(startup) {
-  if (!startup || locking) return;
-  const outcome = startup.outcome;
-  let message = '';
-  if (!startup.ok) {
-    message = 'Cloud sync could not finish. Your saved entries remain on this device; check Settings → Encrypted Vault Sync.';
-  } else if (outcome?.complete === false || outcome?.voiceAttachmentsReady === false) {
-    message = 'Some saved entries or voice notes are still queued. Check Settings → Encrypted Vault Sync.';
-  } else if (outcome?.remoteDateCount === 0 && outcome?.localDateCount === 0) {
-    message = 'No saved dates were returned by this account. Check that this is the same account used on your other device.';
-  }
-  if (!message) return;
-  const target = byId('garden-status');
-  if (target) {
-    target.textContent = message;
-    target.dataset.state = 'error';
-  } else {
-    setStatus('vault-login-message', message, 'error');
-  }
-}
-
 function showAccountPanel(panelId, focusId) {
   ['vault-signin-panel', 'vault-signup-panel', 'vault-recovery-panel', 'vault-legacy-upgrade-panel'].forEach(id => {
     byId(id)?.classList.toggle('hidden', id !== panelId);
@@ -518,14 +497,11 @@ async function submitVaultLogin(event) {
     const migration = await adoptVaultEncryptionKey(credentials.encryptionKey, passphrase);
     passphrase = '';
     activeCredentials = credentials;
-    // Do not show an empty Diary while the shared vault is still being restored.
-    // A cloud failure leaves local access available, but is shown clearly in the app.
-    setStatus('vault-login-message', 'Restoring your saved entries…', 'info');
-    const syncStartup = await startVaultSyncBeforeOpening(credentials);
+    // Restore the shared vault before revealing the unlocked application.
+    await startVaultSyncBeforeOpening(credentials);
     if (usernameField) usernameField.value = credentials.username;
     showApplication();
     resetInactivityTimer();
-    showVaultSyncStartupWarning(syncStartup);
 
     const offlineNotice = offlineProfileSaved
       ? ''

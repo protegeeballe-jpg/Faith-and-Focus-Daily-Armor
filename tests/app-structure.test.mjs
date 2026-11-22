@@ -865,6 +865,17 @@ test('the four Card 1 radio choices capture one-time local coordinates without c
  assert.match(terms,/one-time current location/);
 });
 
+test('Diary ADD awaits its date sync without displaying a sync statement',()=>{
+ const start=app.indexOf('async function addDiaryNote()');
+ const end=app.indexOf('function revokeDiaryVoiceNoteUrls()',start);
+ assert.ok(start>=0 && end>start);
+ const addHandler=app.slice(start,end);
+ assert.match(addHandler,/await addPrivateDiaryNote\(dateString, noteText\)/);
+ assert.match(addHandler,/await syncDailyDateNow\(dateString\)/);
+ assert.doesNotMatch(addHandler,/Note encrypted and saved on this device|Cloud sync is queued|Cloud sync will resume/);
+ assert.match(app,/import \{ syncDailyDateNow \} from '\.\/vault-sync\.js'/);
+});
+
 test('encrypted vault sync and JSON backup live in collapsible Settings sections',()=>{
  const settingsStart=html.indexOf('<dialog id="settings-modal"');
  const settingsEnd=html.indexOf('</dialog>',settingsStart);
@@ -906,17 +917,17 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v38-verified-login-layout/);
+ assert.match(serviceWorker,/faith-focus-shell-v39-force-vault-rehydrate/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
  const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
  const settings=readFileSync(new URL('../assets/settings-modal.js',import.meta.url),'utf8');
  assert.match(sync,/const MAX_DATE_RECONCILE_ATTEMPTS = 4/);
- assert.match(sync,/async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true \} = \{\}\)/);
+ assert.match(sync,/async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true, forceRemoteRead = false \} = \{\}\)/);
  assert.match(sync,/attempt <= MAX_DATE_RECONCILE_ATTEMPTS/);
  assert.match(sync,/error\.code !== 'VAULT_CONFLICT'/);
- assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads \}\)/);
+ assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads, forceRemoteRead \}\)/);
  assert.match(sync,/when the connection returns/);
  assert.match(sync,/await reconcileDay\(record\.dateString, null, \{ allowUploads \}\)/);
  assert.match(sync,/const pendingRecords = finalLocalRecords\.filter\(record => record\.dirty\)/);
@@ -953,7 +964,7 @@ test('completed voice notes upload encrypted attachments and publish their manif
  assert.match(vaultSync,/index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
  assert.match(vaultSync,/function queueVaultSync\(/);
  assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
- assert.match(vaultSync,/await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
+ assert.match(vaultSync,/await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
  assert.match(vaultSync,/function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
  assert.match(voiceNoteStore,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100/);
 });
@@ -967,7 +978,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v38-verified-login-layout/);
+ assert.match(serviceWorker,/faith-focus-shell-v39-force-vault-rehydrate/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
@@ -1005,7 +1016,7 @@ test('Garden snapshots are embedded in daily packets and merged without discardi
  assert.doesNotMatch(vaultSync,/publishSharedStateMerge/);
  assert.doesNotMatch(vaultSync,/dates\.add\(getCurrentDateString\(\)\)/);
  assert.match(vaultSync,/Only create local packets for dates that actually contain daily records or/);
- assert.match(vaultSync,/await captureExistingLocalDates\(\);[\s\S]*?await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\);[\s\S]*?await captureDailyPacket\(getCurrentDateString\(\)\);[\s\S]*?await synchronizeVault\(\);/);
+ assert.match(vaultSync,/await captureExistingLocalDates\(\);[\s\S]*?await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\);[\s\S]*?await captureDailyPacket\(getCurrentDateString\(\)\);[\s\S]*?await synchronizeVault\(\);/);
  assert.match(vaultSync,/isUsableLegacyWritingConfig\(remoteLegacyConfig\)/);
 });
 

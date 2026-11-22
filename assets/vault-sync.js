@@ -802,12 +802,12 @@ async function uploadDailyPacket(dateString, { baseUpdatedAt } = {}) {
   return true;
 }
 
-async function reconcileDay(dateString, remoteUpdatedAt, { allowUploads = true } = {}) {
+async function reconcileDay(dateString, remoteUpdatedAt, { allowUploads = true, forceRemoteRead = false } = {}) {
   for (let attempt = 1; attempt <= MAX_DATE_RECONCILE_ATTEMPTS; attempt += 1) {
     try {
       // reconcileDayOnce fetches the latest remote packet on every attempt, then
       // merges it with the latest local encrypted packet before a guarded write.
-      return await reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads });
+      return await reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads, forceRemoteRead });
     } catch (error) {
       if (error.code !== 'VAULT_CONFLICT') throw error;
       console.warn('[Vault Sync] Date changed during reconciliation; retrying against the latest cloud version:', {
@@ -830,7 +830,7 @@ async function reconcileDay(dateString, remoteUpdatedAt, { allowUploads = true }
   return false;
 }
 
-async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = true } = {}) {
+async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = true, forceRemoteRead = false } = {}) {
   const local = await getLocalDailyPacket(dateString);
   const localChangeVersion = localChangeVersions.get(dateString) || 0;
   if (!local) {
@@ -981,10 +981,19 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = tr
   }
 
   const localRemote = local.remoteUpdatedAt || null;
-  if (remoteUpdatedAt && remoteUpdatedAt !== localRemote) {
-    if (!localRemote || remoteUpdatedAt > localRemote) console.log('[Vault Sync] Newer remote date detected:', { vaultId: activeVault.vaultId, dateString, remoteUpdatedAt, localRemoteUpdatedAt: localRemote });
+  const remoteVersionChanged = Boolean(remoteUpdatedAt && remoteUpdatedAt !== localRemote);
+  if (forceRemoteRead || remoteVersionChanged) {
+    if (remoteVersionChanged && (!localRemote || remoteUpdatedAt > localRemote)) {
+      console.log('[Vault Sync] Remote date version requires reconciliation:', {
+        vaultId: activeVault.vaultId, dateString, remoteUpdatedAt, localRemoteUpdatedAt: localRemote
+      });
+    }
+    // A full sign-in restore must rehydrate browser storage even when its cached
+    // packet version matches the index. The local packet can survive while the
+    // corresponding localStorage / IndexedDB views are incomplete or missing.
+    // This path is read-and-restore only; it never PUTs an unchanged remote packet.
     const remote = await fetchRemoteDay(dateString);
-    if (remote.packet && remote.updatedAt && (!localRemote || remote.updatedAt > localRemote)) {
+    if (remote.packet) {
       const bundle = await decryptDailyBundle(remote.packet, activeVault.encryptionKey, decompressData);
       const restored = await restoreDailyBundle(bundle, { expectedLocalChangeVersion: localChangeVersion });
       if (!restored.applied) {
@@ -994,7 +1003,7 @@ async function reconcileDayOnce(dateString, remoteUpdatedAt, { allowUploads = tr
       const unchangedSinceSnapshot = (localChangeVersions.get(dateString) || 0) === localChangeVersion;
       const syncResult = await markLocalDailyPacketSynced(
         dateString,
-        restored.voiceNotesReady ? remote.updatedAt : null,
+        restored.voiceNotesReady ? (remote.updatedAt || remoteUpdatedAt || null) : null,
         remote.packet,
         { requirePacketMatch: true, expectedPacket: unchangedSinceSnapshot ? local.packet : null }
       );
@@ -1090,6 +1099,59 @@ function synchronizeVault(options = { refreshAll: true }) {
   return operation;
 }
 
+export async function syncDailyDateNow(dateString) {
+  if (!isValidDateString(dateString) || !activeVault || activeVault.offlineOnly === true
+      || vaultSyncInitializing) return false;
+
+  const session = activeVault;
+  const generation = vaultSyncGeneration;
+  const isCurrent = () => activeVault === session && vaultSyncGeneration === generation
+    && session.offlineOnly !== true;
+
+  const operation = localChangeSyncQueue.catch(() => {}).then(async () => {
+    if (!isCurrent()) return false;
+    await captureDailyPacket(dateString);
+    if (!isCurrent()) return false;
+
+    let voiceAttachmentsReady = true;
+    try {
+      await uploadPendingVoiceNoteAttachments(dateString);
+    } catch (error) {
+      voiceAttachmentsReady = false;
+      console.warn('[Vault Sync] A date-specific voice-note upload remains queued.', {
+        dateString, error: error?.message || String(error)
+      });
+    }
+    if (!isCurrent()) return false;
+
+    lastCloudSyncStartedAt = Date.now();
+    const outcome = await synchronizeVault({
+      dateStrings: [dateString],
+      allowUploads: voiceAttachmentsReady
+    });
+    return Boolean(voiceAttachmentsReady && outcome?.complete === true);
+  });
+
+  localChangeSyncQueue = operation.catch(error => {
+    if (isCurrent()) {
+      console.warn('[Vault Sync] The date remains saved locally and its cloud reconciliation will retry.', {
+        dateString, error: error?.message || String(error)
+      });
+    }
+    return false;
+  });
+  try {
+    return await operation;
+  } catch (error) {
+    if (isCurrent()) {
+      console.warn('[Vault Sync] The date remains saved locally and its cloud reconciliation will retry.', {
+        dateString, error: error?.message || String(error)
+      });
+    }
+    return false;
+  }
+}
+
 function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = false, immediate = false } = {}) {
   if (!activeVault || activeVault.offlineOnly === true) return;
   if (isValidDateString(dateString)) pendingDailySyncDates.add(dateString);
@@ -1166,7 +1228,7 @@ function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = fals
   }, delay);
 }
 
-async function performVaultSync({ dateStrings = [], refreshAll = false, allowUploads = true } = {}) {
+async function performVaultSync({ dateStrings = [], refreshAll = false, allowUploads = true, forceRemoteRead = false } = {}) {
   if (!activeVault || activeVault.offlineOnly === true) return;
   try {
     status('Checking your encrypted vault…');
@@ -1189,7 +1251,7 @@ async function performVaultSync({ dateStrings = [], refreshAll = false, allowUpl
     for (const dateString of reconciliationDates) {
       const remoteUpdatedAt = typeof index[dateString] === 'string' ? index[dateString] : null;
       try {
-        if (await reconcileDay(dateString, remoteUpdatedAt, { allowUploads })) restored += 1;
+        if (await reconcileDay(dateString, remoteUpdatedAt, { allowUploads, forceRemoteRead })) restored += 1;
       } catch (error) {
         if (error?.code === 'VAULT_SESSION_EXPIRED') throw error;
         failedDates.push(dateString);
@@ -1257,7 +1319,14 @@ async function captureExistingLocalDates() {
   const dates = new Set(listLocalStorageDates());
   const voiceNotes = await exportEncryptedVoiceNotes();
   voiceNotes.forEach(record => dates.add(record.dateString));
-  for (const dateString of [...dates].sort()) await captureDailyPacket(dateString);
+  for (const dateString of [...dates].sort()) {
+    // A clean packet is already a complete encrypted snapshot. Do not rebuild
+    // it from a possibly partial browser view before a sign-in/foreground restore;
+    // doing so could dirty an intact packet and cause an unnecessary cloud PUT.
+    const existing = await getLocalDailyPacket(dateString);
+    if (existing && existing.dirty !== true) continue;
+    await captureDailyPacket(dateString);
+  }
 }
 
 
@@ -1337,7 +1406,7 @@ export async function startVaultSync(credentials) {
     // Always pull the shared vault after sign-in. If audio uploads are delayed,
     // merge remote data locally and leave cloud writes queued until attachments
     // are safely accepted.
-    let syncOutcome = await synchronizeVault({ refreshAll: true, allowUploads: voiceAttachmentsReady });
+    let syncOutcome = await synchronizeVault({ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true });
     if (!isCurrent()) return false;
 
     // Reconcile remote dates before attaching account-wide state to today's packet.
