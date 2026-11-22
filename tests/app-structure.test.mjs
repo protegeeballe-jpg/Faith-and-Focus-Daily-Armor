@@ -147,6 +147,10 @@ test('Forge Room setup is top-aligned and the subtitle remains readable on mobil
  assert.match(roomLayout,/\.garden-overlay\.garden-room-home \.garden-intro\s*\{[^}]*background:rgba\(255,255,255,/s);
  assert.match(roomLayout,/backdrop-filter:blur\(6px\)/);
  assert.match(roomLayout,/@media \(max-height:620px\)/);
+ assert.match(gardenCss,/grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
+ assert.match(gardenCss,/\.garden-status:empty\s*\{[^}]*display:none !important/s);
+ assert.doesNotMatch(garden,/A gentle drink for both plants/);
+ assert.doesNotMatch(html,/id="garden-planting-complete"/);
  assert.match(gardenCss,/@media \(max-width:620px\)/);
  assert.match(html,/http-equiv="Content-Security-Policy"/);
  assert.match(html,/type="module" src="\.\/assets\/garden\.js"/);
@@ -897,7 +901,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v37-cross-device-sync/);
+ assert.match(serviceWorker,/faith-focus-shell-v38-verified-login-layout/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -958,7 +962,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v37-cross-device-sync/);
+ assert.match(serviceWorker,/faith-focus-shell-v38-verified-login-layout/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
