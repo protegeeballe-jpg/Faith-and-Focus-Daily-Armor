@@ -103,7 +103,7 @@ test('Diary writes and voice notes share a debounced cloud queue with guarded fo
   assert.match(syncSource, /function queueVaultSync\(/);
   assert.match(syncSource, /await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
   assert.match(syncSource, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(syncSource, /await synchronizeVault\(\{ dateStrings: dates, refreshAll: shouldRefreshAll \}\)/);
+  assert.match(syncSource, /await synchronizeVault\(\{[\s\S]*?dateStrings: dates,[\s\S]*?refreshAll: shouldRefreshAll,[\s\S]*?allowUploads: voiceAttachmentsReady/);
   assert.match(syncSource, /function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
   assert.match(syncSource, /function handleOnline\(\)/);
   assert.ok(syncSource.includes("window.addEventListener('online', handleOnline);"));
