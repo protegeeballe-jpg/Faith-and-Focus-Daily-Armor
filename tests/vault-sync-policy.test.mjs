@@ -167,3 +167,20 @@ test('Diary encrypted write batches are captured once after both encrypted recor
     writer.indexOf("window.dispatchEvent(new CustomEvent('faith-focus:local-data-changed'"));
   assert.match(syncSource, /!window\.__faithFocusVaultBatchWrite/);
 });
+
+
+test('regular sign-in waits for full vault reconciliation before revealing the app', () => {
+  const loginStart = sessionSource.indexOf('async function submitVaultLogin(event)');
+  const signupStart = sessionSource.indexOf('async function submitVaultSignup(event)', loginStart);
+  assert.ok(loginStart >= 0 && signupStart > loginStart);
+  const login = sessionSource.slice(loginStart, signupStart);
+  const restore = login.indexOf('await startVaultSyncBeforeOpening(credentials)');
+  const reveal = login.indexOf('showApplication();');
+  assert.ok(restore >= 0 && reveal > restore);
+  assert.match(sessionSource, /function showVaultSyncStartupWarning\(startup\)/);
+  assert.match(sessionSource, /Some saved entries or voice notes are still queued/);
+  assert.match(syncSource, /pendingVoiceNoteHydrationDates\.add\(bundle\.dateString\)/);
+  assert.match(syncSource, /pendingVoiceNoteHydrationDates\.delete\(bundle\.dateString\)/);
+  assert.match(syncSource, /complete: pendingDates\.length === 0/);
+  assert.match(syncSource, /voiceAttachmentsReady\s*\}/);
+});
