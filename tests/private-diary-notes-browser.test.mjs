@@ -177,8 +177,8 @@ test('Chromium: one shared Diary notepad adds encrypted notes while the device i
   assert.equal(await page.locator('#diary-additional-notes textarea').count(), 1,
     'Adding a note must reuse the original notepad');
   assert.equal(await page.locator('#diary-additional-notes-list textarea').count(), 0);
-  assert.match(await page.locator('#writing-save-status').textContent(),
-    /saved on this device|Saved securely/i);
+  assert.equal(await page.locator('#writing-save-status').textContent(), '',
+    'ADD must not add an informational sync statement to the Diary.');
 
   await page.evaluate(async () => {
     const legacyEntry = document.getElementById('private-diary-entry');
