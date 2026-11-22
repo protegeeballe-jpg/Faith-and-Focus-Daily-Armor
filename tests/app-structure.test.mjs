@@ -86,6 +86,20 @@ test('Diary uses one visible notepad and a lower-right ADD action',()=>{
  assert.ok(app.includes('noteBody.textContent = note.text ||'));
  assert.ok(appCss.includes('justify-content:flex-end'));
 });
+test('location is a single Health Checklist choice and GPS history appears only in the Diary', () => {
+ assert.equal((html.match(/name="daily-location"/g) || []).length, 4);
+ assert.equal((html.match(/type="radio" name="daily-location"/g) || []).length, 4);
+ assert.doesNotMatch(html, /id="location-checkin-details"|location-checkin-privacy-note/);
+ assert.match(app, /saveLocationCheckin\(localStorage, dateString, locationId, position\)/);
+ assert.match(app, /renderDiaryLocationLogs\(dateString\)/);
+ assert.doesNotMatch(app, /renderLocationCheckinDetails/);
+});
+
+test('Diary controls stay compact without explanatory paragraphs', () => {
+ assert.doesNotMatch(html, /Use the single notepad below|Your note is encrypted and saved on this device|Your Health Checklist location check-ins for|Saved Voice Notes and saved locally|Saved voice notes are encrypted before local storage/);
+ assert.doesNotMatch(html, /diary-note-composer-help|diary-archive-intro/);
+});
+
 test('the main Diary paragraph uses versioned replacement semantics and remains backward compatible',()=>{
  assert.match(writing,/PRIVATE_DIARY_META_KEY/);
  assert.match(writing,/function unpackPrivateWritingDiary/);
@@ -618,7 +632,7 @@ test('the exact restrictive CSP preserves watercolor image, CSS, and blob audio 
 test('Diary voice notes are saved persistently, encrypted, and preserved by checklist reset',()=>{
   assert.match(html,/id="diary-voice-notes"/);
   assert.match(html,/id="diary-voice-note-list"/);
-  assert.match(html,/Voice notes are encrypted with your account key/);
+  assert.match(html,/Saved Voice Notes/);
   assert.doesNotMatch(html,/audio-container|diary-audio|temporary playback in this session/);
   assert.match(app,/savePrivateVoiceNoteSegment/);
   assert.match(app,/finalizePrivateVoiceNoteDraft\(draft.id\)/);
@@ -790,20 +804,21 @@ test('phone checklist date, clock, and Reset text use matching compact sizes',()
  assert.match(appCss,/checklist-device-clock\s*\{[^}]*font-size:\.58rem !important/s);
 });
 
-test('the four Card 1 checkboxes capture one-time local coordinates without changing the card design',()=>{
+test('the four Card 1 radio choices capture one-time local coordinates without changing the card design',()=>{
  const firstCardStart=html.indexOf('<!-- CARD 1 -->');
  const firstCardEnd=html.indexOf('<!-- CARD 2 -->',firstCardStart);
  const firstCard=html.slice(firstCardStart,firstCardEnd);
  const locationIds=['loc-home','loc-office','loc-house','loc-out'];
  for(const id of locationIds){
-  assert.match(firstCard,new RegExp('type="checkbox"[^>]*class="app-chk sec-1"[^>]*data-id="'+id+'"'));
+  assert.match(firstCard,new RegExp('type="radio"[^>]*name="daily-location"[^>]*class="app-chk sec-1"[^>]*data-id="'+id+'"'));
  }
  assert.equal((firstCard.match(/class="app-chk sec-1"/g)||[]).length,4);
  assert.match(app,/navigator\.geolocation\.getCurrentPosition/);
  assert.match(app,/enableHighAccuracy: true, maximumAge: 0, timeout: 15000/);
  assert.match(app,/saveLocationCheckin\(localStorage, dateString, locationId, position\)/);
  assert.doesNotMatch(app,/navigator\.geolocation\.watchPosition/);
- assert.match(html,/Only you can view these details in the App/);
+ assert.doesNotMatch(html,/Only you can view these details in the App/);
+  assert.match(html,/name="daily-location"/);
  const locationModule=readFileSync(new URL('../assets/location-checkin.js',import.meta.url),'utf8');
  const vaultSync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
  assert.match(locationModule,/faith_focus_location_checkins_v1_/);
@@ -824,7 +839,7 @@ test('the four Card 1 checkboxes capture one-time local coordinates without chan
  assert.match(app,/loadLocationCheckinEntries\(localStorage, dateString\)/);
  assert.match(html,/id="diary-location-history"/);
  assert.match(html,/id="diary-location-log"/);
- assert.match(html,/cannot be edited or removed through the App/);
+ assert.match(html,/READ ONLY/);
  assert.match(app,/function formatLocationCheckinEntry\(/);
  assert.match(app,/function createLocationCoordinateControls\(record\)/);
  assert.match(app,/google\.com\/maps\/search/);
@@ -889,12 +904,12 @@ test('vault sync retries date-level conditional-write conflicts and Settings has
  const sync=readFileSync(new URL('../assets/vault-sync.js',import.meta.url),'utf8');
  const settings=readFileSync(new URL('../assets/settings-modal.js',import.meta.url),'utf8');
  assert.match(sync,/const MAX_DATE_RECONCILE_ATTEMPTS = 4/);
- assert.match(sync,/async function reconcileDay\(dateString, remoteUpdatedAt\)/);
+ assert.match(sync,/async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true \} = \{\}\)/);
  assert.match(sync,/attempt <= MAX_DATE_RECONCILE_ATTEMPTS/);
  assert.match(sync,/error\.code !== 'VAULT_CONFLICT'/);
- assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt\)/);
+ assert.match(sync,/await reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads \}\)/);
  assert.match(sync,/when the connection returns/);
- assert.match(sync,/await reconcileDay\(record\.dateString, null\)/);
+ assert.match(sync,/await reconcileDay\(record\.dateString, null, \{ allowUploads \}\)/);
  assert.match(sync,/const pendingRecords = finalLocalRecords\.filter\(record => record\.dirty\)/);
  assert.match(sync,/expectedPacket: unchangedSinceSnapshot \? local\.packet : null/);
  const storage=readFileSync(new URL('../assets/vault-storage.js',import.meta.url),'utf8');
@@ -929,7 +944,7 @@ test('completed voice notes upload encrypted attachments and publish their manif
  assert.match(vaultSync,/index >= MAX_VOICE_NOTE_ATTACHMENT_CHUNKS/);
  assert.match(vaultSync,/function queueVaultSync\(/);
  assert.match(vaultSync,/await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
- assert.match(vaultSync,/await synchronizeVault\(\)/);
+ assert.match(vaultSync,/await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
  assert.match(vaultSync,/function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
  assert.match(voiceNoteStore,/MAX_VOICE_NOTE_ATTACHMENT_CHUNKS = 100/);
 });
@@ -973,15 +988,15 @@ test('Garden snapshots are embedded in daily packets and merged without discardi
  assert.match(gardenModel,/export function mergeGardenStates/);
  assert.match(vaultSync,/GARDEN_DAILY_SYNC_PREFIX\s*\+\s*dateString/);
  assert.match(vaultSync,/mergeGardenStates\(mergedGarden, incomingGarden\)/);
- assert.match(vaultSync,/restoreSharedAppState\(remoteBundle\)/);
+ assert.match(vaultSync,/restoreDailyBundle\(remoteBundle, \{ expectedLocalChangeVersion: localChangeVersion \}\)/);
  assert.match(vaultSync,/await mergeDailyBundles\(localBundle, remoteBundle/);
  assert.match(vaultSync,/mergeEncryptedPrivateWritingRecords\(dateString, localWriting, remoteWriting, activeVault\.encryptionKey\)/);
  assert.match(vaultSync,/markLocalDailyPacketSynced\([\s\S]*?mergedPacket[\s\S]*?requirePacketMatch: true/);
- assert.match(vaultSync,/await restoreDailyBundle\(mergedBundle\)/);
+ assert.match(vaultSync,/await restoreDailyBundle\(mergedBundle, \{ expectedLocalChangeVersion: localChangeVersion \}\)/);
  assert.doesNotMatch(vaultSync,/publishSharedStateMerge/);
  assert.doesNotMatch(vaultSync,/dates\.add\(getCurrentDateString\(\)\)/);
  assert.match(vaultSync,/Only create local packets for dates that actually contain daily records or/);
- assert.match(vaultSync,/await captureExistingLocalDates\(\);[\s\S]*?await synchronizeVault\(\);[\s\S]*?await captureDailyPacket\(getCurrentDateString\(\)\);[\s\S]*?await synchronizeVault\(\);/);
+ assert.match(vaultSync,/await captureExistingLocalDates\(\);[\s\S]*?await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\);[\s\S]*?await captureDailyPacket\(getCurrentDateString\(\)\);[\s\S]*?await synchronizeVault\(\);/);
  assert.match(vaultSync,/isUsableLegacyWritingConfig\(remoteLegacyConfig\)/);
 });
 
@@ -1161,5 +1176,5 @@ test('encrypted Diary note writes are batched for one changed-date cloud capture
  assert.match(writer,/faith-focus:local-data-changed/);
  assert.match(vaultSync,/!window\.__faithFocusVaultBatchWrite/);
  assert.match(vaultSync,/selectVaultReconciliationDates/);
- assert.match(vaultSync,/await synchronizeVault\(\{ dateStrings: dates, refreshAll: shouldRefreshAll \}\)/);
+ assert.match(vaultSync,/await synchronizeVault\(\{[\s\S]*?dateStrings: dates,[\s\S]*?refreshAll: shouldRefreshAll,[\s\S]*?allowUploads: voiceAttachmentsReady/);
 });

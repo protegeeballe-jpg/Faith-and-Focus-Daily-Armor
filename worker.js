@@ -1978,6 +1978,17 @@ export class VaultCoordinator {
         if (existingChunkHash && existingChunkHash !== chunkHash) {
           return jsonResponse({ error: "This voice-note segment is already bound to different encrypted audio." }, 409);
         }
+        if (existingChunkHash === chunkHash) {
+          let existingChunk = null;
+          try { existingChunk = await this.env.VAULT_PACKETS.get(voiceKey); }
+          catch { return jsonResponse({ error: "The encrypted voice-note segment could not be checked. Please retry." }, 503); }
+          if (existingChunk === upload.ciphertextChunk) {
+            return jsonResponse({
+              ok: true, stored: true, unchanged: true,
+              id: voiceId, dateString: voiceDate, index: voiceIndex, totalChunks: upload.totalChunks
+            }, 200);
+          }
+        }
         await this.enforceKvWriteSpacing(voiceKey);
         try { await this.env.VAULT_PACKETS.put(voiceKey, upload.ciphertextChunk); }
         catch { return jsonResponse({ error: "The encrypted voice-note segment could not be stored. Please retry." }, 503); }

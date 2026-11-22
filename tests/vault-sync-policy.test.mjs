@@ -43,6 +43,31 @@ test('each account-opening path verifies the device before starting vault synchr
   assert.equal((sessionSource.match(/await startVaultSync\(credentials\)/g) || []).length, 3);
 });
 
+test('voice attachment upload failure never suppresses sign-in vault reconciliation', () => {
+  const startup = syncSource.slice(
+    syncSource.indexOf('export async function startVaultSync(credentials) {'),
+    syncSource.indexOf('function handleLocalDataChanged(event)')
+  );
+  assert.match(startup, /await uploadAllPendingVoiceNoteAttachments\(\)/);
+  assert.match(startup, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady \}\)/);
+  assert.doesNotMatch(startup, /if \(voiceAttachmentsReady\)\s*\{\s*await synchronizeVault/);
+  assert.match(syncSource, /async function restoreDailyBundle[\s\S]*?let voiceNotesReady = true/);
+  assert.match(syncSource, /return \{ voiceNotesReady, applied: true \}/);
+  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true \}/);
+});
+
+test('one failed date does not stop other dates from reconciling', () => {
+  assert.match(syncSource, /const failedDates = \[\]/);
+  assert.match(syncSource, /One date could not be reconciled; continuing with the remaining dates/);
+  assert.match(syncSource, /Some encrypted dates remain queued/);
+});
+
+test('cross-device reconciliation avoids Cloudflare writes when the merged packet already matches remote', () => {
+  assert.match(syncSource, /canonicalBundle\(mergedBundle\) === canonicalBundle\(remoteBundle\)/);
+  assert.match(syncSource, /markLocalDailyPacketSynced\([\s\S]*?remote\.packet/);
+  assert.match(syncSource, /allowUploads/);
+});
+
 test('live cross-device sync uses an authenticated WebSocket and changed-date reconciliation', () => {
   assert.ok(syncSource.includes('new WebSocket(url, ['));
   assert.ok(syncSource.includes("'faith-focus-sync-v1'"));
@@ -78,7 +103,7 @@ test('Diary writes and voice notes share a debounced cloud queue with guarded fo
   assert.match(syncSource, /function queueVaultSync\(/);
   assert.match(syncSource, /await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
   assert.match(syncSource, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(syncSource, /await synchronizeVault\(\{ dateStrings: dates, refreshAll: shouldRefreshAll \}\)/);
+  assert.match(syncSource, /await synchronizeVault\(\{[\s\S]*?dateStrings: dates,[\s\S]*?refreshAll: shouldRefreshAll,[\s\S]*?allowUploads: voiceAttachmentsReady/);
   assert.match(syncSource, /function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
   assert.match(syncSource, /function handleOnline\(\)/);
   assert.ok(syncSource.includes("window.addEventListener('online', handleOnline);"));

@@ -536,15 +536,13 @@
             <section id="diary-additional-notes" class="diary-additional-notes mt-5 rounded-2xl border p-4" aria-labelledby="diary-additional-notes-heading">
                 <div class="diary-additional-notes-header">
                     <h3 id="diary-additional-notes-heading" class="font-bold text-sm">Saved Notes</h3>
-                    <p class="mt-1 text-xs">Use the single notepad below. Select ADD to securely place each thought on this day’s page. Earlier Diary entries remain available below.</p>
                 </div>
                 <div class="diary-note-composer">
                     <label class="diary-note-composer-label" for="diary-note-composer">Write a note</label>
-                    <textarea id="diary-note-composer" class="diary-note-composer-input" rows="4" maxlength="8000" spellcheck="true" aria-describedby="diary-note-composer-help" placeholder="Write one thought, then select ADD to place it on today’s page." disabled aria-disabled="true"></textarea>
+                    <textarea id="diary-note-composer" class="diary-note-composer-input" rows="4" maxlength="8000" spellcheck="true" placeholder="Write one thought…" disabled aria-disabled="true"></textarea>
                     <div class="diary-note-composer-actions">
                         <button id="diary-add-note-button" type="button" class="diary-add-note-button" data-action="addPrivateDiaryNote" aria-label="Add note to Diary page" title="Add note to Diary page" disabled aria-disabled="true">ADD</button>
                     </div>
-                    <p id="diary-note-composer-help" class="diary-note-composer-help">Your note is encrypted and saved on this device when you press ADD. It can sync when your device reconnects.</p>
                 </div>
                 <ol id="diary-additional-notes-list" class="diary-additional-notes-list mt-3" aria-label="Saved private notes" aria-live="polite">
                     <li class="diary-additional-notes-empty">No additional notes yet. Write one note below and select ADD.</li>
@@ -555,14 +553,12 @@
                     <h3 id="diary-location-history-heading" class="font-bold text-sm text-purple-950">Location History</h3>
                     <span class="rounded-full bg-purple-100 px-2 py-1 text-[10px] font-bold tracking-wide text-purple-800">READ ONLY</span>
                 </div>
-                <p class="mt-2 text-xs text-purple-800">Your Health Checklist location check-ins for <strong id="diary-location-date">this date</strong> appear here. These records cannot be edited or removed through the App, and they are kept when you reset the Health Checklist.</p>
                 <ol id="diary-location-log" class="mt-3 space-y-2" aria-live="polite">
                     <li class="rounded-xl bg-white/70 px-3 py-3 text-xs text-purple-800">Unlock your Diary to view location history for this date.</li>
                 </ol>
             </section>
             <section id="diary-voice-notes" class="mt-5 rounded-2xl border border-purple-200 bg-purple-50/70 p-4" aria-labelledby="diary-voice-notes-heading">
                 <h3 id="diary-voice-notes-heading" class="font-bold text-sm text-purple-950">Saved Voice Notes</h3>
-                <p class="mt-2 text-xs text-purple-800">Voice notes are encrypted with your account key and saved locally. New recordings can be added to today’s Diary; previous recordings are playback-only. Location history is permanent and read-only.</p>
                 <ol id="diary-voice-note-list" class="mt-3 space-y-2" aria-live="polite">
                     <li class="rounded-xl bg-white/70 px-3 py-3 text-xs text-purple-800">Unlock your Diary to listen to saved voice notes.</li>
                 </ol>
@@ -577,7 +573,6 @@
                     <button type="button" data-action="lockPrivateWriting" class="px-3 py-2 bg-purple-100 border border-purple-300 text-purple-900 text-xs font-bold rounded-xl">Lock writing</button>
                 </div>
             </div>
-            <p class="text-[11px] text-purple-800/75 mt-3">Saved voice notes are encrypted before local storage and included in encrypted daily vault packets.</p>
             </div>
             <section id="diary-archive-panel" class="diary-archive-panel hidden" role="dialog" aria-modal="true" aria-labelledby="diary-archive-heading">
                 <div class="diary-archive-dialog">
@@ -589,7 +584,6 @@
                         <button type="button" class="diary-archive-close" data-action="closeDiaryArchive" aria-label="Close notebook">×</button>
                     </header>
                     <div id="diary-archive-list-view">
-                        <p class="diary-archive-intro">Your written entries, voice notes, and location check-ins, organized by your device's calendar dates.</p>
                         <ol id="diary-archive-date-list" class="diary-archive-date-list" aria-live="polite">
                             <li class="diary-archive-empty">Unlock your Diary to view saved dates.</li>
                         </ol>
@@ -652,7 +646,6 @@
                     <span id="missed-card-count" class="missed-card-count" aria-live="polite"></span>
                 </div>
                 <p id="missed-card-date" class="missed-card-date"></p>
-                <p class="missed-card-copy">These cards were left incomplete yesterday. There is no penalty. Review what matters when you are ready.</p>
                 <ul id="missed-card-list" class="missed-card-list"></ul>
                 <div class="missed-card-actions">
                     <button type="button" class="missed-card-dismiss" data-action="dismissMissedCardNotifications">Dismiss reminders</button>
@@ -666,18 +659,16 @@
                     <span id="trophy-1" class="text-3xl opacity-30 transition-all">📍</span>
                 </div>
                 <div class="grid grid-cols-2 gap-3 text-sm mb-4">
-                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="checkbox" class="app-chk sec-1" data-id="loc-home"> AT HOME </label>
-                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="checkbox" class="app-chk sec-1" data-id="loc-office"> AT WORK </label>
-                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="checkbox" class="app-chk sec-1" data-id="loc-house"> AT SOMEONE ELSE'S HOUSE</label>
-                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="checkbox" class="app-chk sec-1" data-id="loc-out"> OUT HERE. SOMEWHERE </label>
+                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="radio" name="daily-location" class="app-chk sec-1" data-id="loc-home"> AT HOME </label>
+                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="radio" name="daily-location" class="app-chk sec-1" data-id="loc-office"> AT WORK </label>
+                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="radio" name="daily-location" class="app-chk sec-1" data-id="loc-house"> AT SOMEONE ELSE'S HOUSE</label>
+                    <label class="flex items-center gap-3 p-3 bg-white/80 rounded-2xl cursor-pointer hover:bg-white"><input type="radio" name="daily-location" class="app-chk sec-1" data-id="loc-out"> OUT HERE. SOMEWHERE </label>
                 </div>
-                <p class="text-xs text-amber-800/80 italic">"Why bother? Because your well-being matters as much as your financial stability."</p>
             </div>
 
             <div id="location-checkin-footer" class="location-checkin-footer">
                 <p id="location-checkin-message" class="location-checkin-message hidden" role="status" aria-live="polite"></p>
-                <div id="location-checkin-details" class="location-checkin-details hidden" aria-label="Saved location check-in details"></div>
-                <p class="location-checkin-privacy-note">Only you can view these details in the App after signing in. They are included inside the encrypted daily packet for your account's cloud sync.</p>
+
             </div>
 
             <!-- CARD 2 -->
