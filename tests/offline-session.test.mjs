@@ -173,7 +173,7 @@ test('the local profile store keeps a narrow allow-list and expires stale aliase
 });
 
 test('the service worker installs the updated offline-capable app shell', () => {
-  assert.match(worker, /faith-focus-shell-v38-verified-login-layout/);
+  assert.match(worker, /faith-focus-shell-v39-force-vault-rehydrate/);
   for (const resource of ['./assets/vault-storage.js', './assets/vault-sync.js', './assets/vault-session.js']) {
     assert.ok(worker.includes("'" + resource + "'"), 'Missing offline resource: ' + resource);
   }
