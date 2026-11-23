@@ -1086,10 +1086,7 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
       }
       continue;
     }
-    if (!retainedLocalRecord && sameVoiceNoteManifest(localCandidate, remoteRecord)
-        && typeof remoteRecord.ciphertext === 'string'
-        && typeof localPacketRecord?.ciphertext === 'string'
-        && localPacketRecord.ciphertext === remoteRecord.ciphertext) continue;
+    if (!retainedLocalRecord && sameVoiceNoteManifest(localCandidate, remoteRecord)) continue;
 
     if (!retainedLocalRecord) {
       const error = new Error('A conflicting local voice-note packet has no matching encrypted recording in local storage. Both device copies remain preserved.');
