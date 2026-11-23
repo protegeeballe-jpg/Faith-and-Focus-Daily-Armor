@@ -568,12 +568,17 @@ async function uploadPendingVoiceNoteAttachments(dateString) {
 }
 
 async function uploadAllPendingVoiceNoteAttachments() {
-  if (!activeVault || activeVault.offlineOnly === true) return 0;
+  if (!activeVault || activeVault.offlineOnly === true) return { uploaded: 0, pending: 0 };
   const records = await exportEncryptedVoiceNotes();
   const dates = [...new Set(records.map(record => record.dateString))].sort();
   let uploaded = 0;
-  for (const dateString of dates) uploaded += await uploadPendingVoiceNoteAttachments(dateString);
-  return uploaded;
+  let pending = 0;
+  for (const dateString of dates) {
+    const result = await uploadPendingVoiceNoteAttachments(dateString);
+    uploaded += result.uploaded;
+    pending += result.pending;
+  }
+  return { uploaded, pending };
 }
 
 async function hydrateVoiceNoteAttachments(dateString, notes) {
@@ -1239,11 +1244,8 @@ export async function syncDailyDateNow(dateString) {
     if (!isCurrent()) return false;
 
     lastCloudSyncStartedAt = Date.now();
-    const outcome = await synchronizeVault({
-      dateStrings: [dateString],
-      allowUploads: voiceAttachmentsReady
-    });
-    return Boolean(voiceAttachmentsReady && outcome?.complete === true);
+    const outcome = await synchronizeVault({ dateStrings: [dateString] });
+    return outcome?.complete === true;
   });
 
   localChangeSyncQueue = operation.catch(error => {
@@ -1302,28 +1304,20 @@ function queueVaultSync({ dateString = null, dateStrings = [], refreshAll = fals
         if (!isCurrent()) return;
       }
 
-      let voiceAttachmentsReady = true;
-      try {
-        if (shouldRefreshAll) {
-          await uploadAllPendingVoiceNoteAttachments();
-        } else {
-          for (const pendingDate of dates) {
-            if (!isCurrent()) return;
-            await uploadPendingVoiceNoteAttachments(pendingDate);
-          }
+      if (shouldRefreshAll) {
+        await uploadAllPendingVoiceNoteAttachments();
+      } else {
+        for (const pendingDate of dates) {
+          if (!isCurrent()) return;
+          await uploadPendingVoiceNoteAttachments(pendingDate);
         }
-      } catch (error) {
-        voiceAttachmentsReady = false;
-        console.warn('[Vault Sync] Voice-note uploads remain queued; continuing daily-data reconciliation.', error);
-        status('Checklist and written Diary sync is continuing. Voice-note uploads remain queued.', 'info');
       }
 
       if (!isCurrent()) return;
       status('Synchronizing your encrypted Checklist and Diary…', 'info');
       await synchronizeVault({
         dateStrings: dates,
-        refreshAll: shouldRefreshAll,
-        allowUploads: voiceAttachmentsReady
+        refreshAll: shouldRefreshAll
       });
     });
 
