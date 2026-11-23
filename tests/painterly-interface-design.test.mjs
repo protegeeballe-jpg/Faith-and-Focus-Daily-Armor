@@ -58,7 +58,7 @@ test('keyboard focus and reduced-motion preferences are respected throughout the
 });
 
 test('the offline shell version changes when the visual app shell changes', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v41-precision-frame-sizing/);
+  assert.match(serviceWorker, /faith-focus-shell-v42-polish-stylesheet/);
   assert.match(serviceWorker, /\.\/assets\/app\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden\.css/);
   assert.match(serviceWorker, /\.\/assets\/garden-room-background\.jpg/);

@@ -6,11 +6,12 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const density = readFileSync(new URL('../assets/mobile.css', import.meta.url), 'utf8');
 const precision = density.slice(density.lastIndexOf('/* Precision sizing:'));
 
-test('shared UI density stylesheet remains last in the application style cascade', () => {
+test('polish refinements load before final mobile-specific overrides', () => {
   const app = html.indexOf('assets/app.css');
   const garden = html.indexOf('assets/garden.css');
+  const polish = html.indexOf('assets/polish.css');
   const mobile = html.indexOf('assets/mobile.css');
-  assert.ok(app >= 0 && garden > app && mobile > garden);
+  assert.ok(app >= 0 && garden > app && polish > garden && mobile > polish);
 });
 
 test('shared typography scale reduces oversized type without shrinking the base font excessively', () => {
