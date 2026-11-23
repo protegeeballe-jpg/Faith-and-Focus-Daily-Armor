@@ -271,6 +271,7 @@ test('remote voice-note identity recovery does not trigger a local capture befor
   const hydrateEnd = syncSource.indexOf('async function captureDailyPacket(', hydrateStart);
   const hydrate = syncSource.slice(hydrateStart, hydrateEnd);
   assert.match(hydrate, /rekeyedLocalRecord = true/);
+  assert.match(hydrate, /scheduleVoiceNoteUploadRetry\(dateString\)/);
   assert.doesNotMatch(hydrate, /scheduleCapture\(/);
   assert.match(syncSource, /if \(rekeyedLocalVoiceNote\) scheduleVoiceNoteUploadRetry\(bundle\.dateString\)/);
 });
