@@ -46,7 +46,7 @@ test('short checklist action rows and buttons shrink to their labels and control
 });
 
 test('Diary sections stay narrower than the Diary frame while the writing field remains usable', () => {
-  assert.match(precision, /#view-diary #diary-location-history\s*\{[^}]*width:\s*min\(88%, var\(--ff-content-panel-width\)\)/s);
+  assert.match(precision, /#view-diary \.diary-additional-notes,[\s\S]*?#view-diary #diary-voice-notes\s*\{[^}]*width:\s*min\(88%, var\(--ff-content-panel-width\)\)/s);
   assert.match(precision, /#view-diary \.diary-note-composer\s*\{[^}]*width:\s*min\(92%, 22rem\)/s);
 });
 
