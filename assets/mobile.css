@@ -379,3 +379,65 @@ body { line-height: var(--ff-ui-body-leading); }
 @media (min-width: 621px) and (max-height: 590px) {
   #view-checklist .step-card { padding: .7rem .8rem !important; }
 }
+
+/* Content-led frame sizing: narrower surfaces with rows sized to their content. */
+:root {
+  --ff-content-column-max: 42rem;
+  --ff-content-card-max: 38rem;
+  --ff-content-panel-max: 30rem;
+}
+.garden-shell {
+  width: min(86vw, var(--ff-content-column-max));
+  max-width: var(--ff-content-column-max);
+}
+#view-checklist > main {
+  width: 100%;
+  max-width: 40rem;
+  margin-inline: auto !important;
+}
+#view-checklist .step-card {
+  width: 100%;
+  max-width: var(--ff-content-card-max);
+  margin-inline: auto;
+}
+#view-checklist .guided-task-row,
+#view-checklist .step-card .ff-guide-row,
+#view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+#view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+#view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+#view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: .55rem;
+}
+#view-diary:not(.hidden) > .card-lavender {
+  width: min(100%, var(--ff-content-card-max));
+  margin-inline: auto;
+}
+#view-diary .diary-additional-notes,
+#view-diary #diary-location-history,
+#view-diary #diary-voice-notes {
+  width: min(100%, var(--ff-content-panel-max));
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+#view-diary .diary-note-composer {
+  width: min(100%, 28rem);
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+#view-diary #diary-additional-notes-list > li,
+#view-diary #diary-location-log > li,
+#view-diary #diary-voice-note-list > li {
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.settings-modal {
+  width: min(86vw, var(--ff-content-card-max));
+}
+
