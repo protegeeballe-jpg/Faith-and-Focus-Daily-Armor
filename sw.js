@@ -24,6 +24,7 @@ const PRECACHE_URLS = [
     './assets/tailwind.generated.css',
     './assets/app.css',
     './assets/garden.css',
+    './assets/polish.css',
     './assets/legal.css',
     './assets/mobile.css',
 
