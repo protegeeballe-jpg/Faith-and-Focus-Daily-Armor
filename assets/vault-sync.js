@@ -461,6 +461,12 @@ function clearVoiceNoteUploadRetry(dateString) {
   voiceUploadRetryAttempts.delete(dateString);
 }
 
+function clearVoiceNoteUploadRetries() {
+  voiceUploadRetryTimers.forEach(timer => window.clearTimeout(timer));
+  voiceUploadRetryTimers.clear();
+  voiceUploadRetryAttempts.clear();
+}
+
 async function resolveVoiceNoteChunkConflict(dateString, record, index, expectedChunk, ciphertextLength, totalChunks) {
   // A 409 is only treated as an idempotent success after a read proves that
   // the exact encrypted bytes and attachment metadata already exist remotely.
@@ -1776,6 +1782,7 @@ export async function startVaultSync(credentials) {
       dailySyncTimer = null;
       pendingDailySyncDates.clear();
       pendingFullVaultRefresh = false;
+      clearVoiceNoteUploadRetries();
       removeVaultSyncListeners();
       activeVault = null;
     }
@@ -1852,6 +1859,7 @@ export async function stopVaultSync() {
     dailySyncTimer = null;
     pendingDailySyncDates.clear();
     pendingFullVaultRefresh = false;
+    clearVoiceNoteUploadRetries();
     removeVaultSyncListeners();
     activeVault = null;
   }
