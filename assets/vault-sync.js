@@ -630,8 +630,12 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
       continue;
     }
     const local = localById.get(note.id);
-    if (local && sameVoiceNoteManifest(local, note)) {
-      hydrated.push(local);
+    if (local && await voiceNoteContentMatchesRemoteAttachment(local, note)) {
+      if (local.remoteUploaded !== true
+          && !await markEncryptedVoiceNoteUploaded(note.id, local)) {
+        throw new Error('The local voice recording changed while its remote attachment was being verified. The local copy remains preserved.');
+      }
+      hydrated.push({ ...local, remoteUploaded: true });
       continue;
     }
     if (local) {
@@ -945,6 +949,34 @@ function sameVoiceNoteManifest(leftRecord, rightRecord) {
   ].every(field => left[field] === right[field]);
 }
 
+async function voiceNoteContentMatchesRemoteAttachment(localRecord, remoteRecord) {
+  if (!sameVoiceNoteManifest(localRecord, remoteRecord)) return false;
+  if (typeof remoteRecord.ciphertext === 'string') {
+    return localRecord.ciphertext === remoteRecord.ciphertext;
+  }
+  if (localRecord.remoteUploaded === true) return true;
+  if (typeof localRecord.ciphertext !== 'string'
+      || localRecord.ciphertext.length !== remoteRecord.ciphertextLength) return false;
+
+  for (let index = 0; index < remoteRecord.attachmentChunkCount; index += 1) {
+    let remote;
+    try {
+      remote = await requestVoiceNoteAttachment(remoteRecord.dateString, remoteRecord.id, { index });
+    } catch (error) {
+      if (error?.code === 'VAULT_SESSION_EXPIRED') throw error;
+      return false;
+    }
+    if (!remote || remote.id !== remoteRecord.id || remote.dateString !== remoteRecord.dateString
+        || remote.index !== index || remote.totalChunks !== remoteRecord.attachmentChunkCount
+        || remote.ciphertextLength !== remoteRecord.ciphertextLength
+        || typeof remote.ciphertextChunk !== 'string') return false;
+    const start = index * VOICE_NOTE_ATTACHMENT_CHUNK_CHARS;
+    const expectedChunk = localRecord.ciphertext.slice(start, start + VOICE_NOTE_ATTACHMENT_CHUNK_CHARS);
+    if (remote.ciphertextChunk !== expectedChunk) return false;
+  }
+  return true;
+}
+
 async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
   const localRecords = await exportEncryptedVoiceNotesForDateFull(bundle.dateString);
   const localById = new Map(localRecords.map(record => [record.id, record]));
@@ -1017,7 +1049,7 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
     if (!localRecord && !localPacketRecord) continue;
 
     if (localRecord && typeof localPacketRecord?.ciphertext === 'string'
-        && !sameVoiceNoteManifest(localRecord, localPacketRecord)) {
+        && localRecord.ciphertext !== localPacketRecord.ciphertext) {
       const error = new Error('The local packet and attachment store contain different recordings under the same identifier. Both copies remain preserved for safe recovery.');
       error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
       throw error;
@@ -1044,7 +1076,20 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
     const localCandidate = retainedLocalRecord
       ? createVoiceNoteAttachmentManifest(retainedLocalRecord)
       : voiceNoteManifestForComparison(localPacketRecord);
-    if (sameVoiceNoteManifest(localCandidate, remoteRecord)) continue;
+    if (retainedLocalRecord
+        && await voiceNoteContentMatchesRemoteAttachment(retainedLocalRecord, remoteRecord)) {
+      if (retainedLocalRecord.remoteUploaded !== true
+          && !await markEncryptedVoiceNoteUploaded(id, retainedLocalRecord)) {
+        const error = new Error('The local voice recording changed while its remote attachment was being verified. Both device copies remain preserved.');
+        error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
+        throw error;
+      }
+      continue;
+    }
+    if (!retainedLocalRecord && sameVoiceNoteManifest(localCandidate, remoteRecord)
+        && typeof remoteRecord.ciphertext === 'string'
+        && typeof localPacketRecord?.ciphertext === 'string'
+        && localPacketRecord.ciphertext === remoteRecord.ciphertext) continue;
 
     if (!retainedLocalRecord) {
       const error = new Error('A conflicting local voice-note packet has no matching encrypted recording in local storage. Both device copies remain preserved.');
