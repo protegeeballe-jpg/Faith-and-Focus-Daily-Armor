@@ -600,19 +600,27 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
       throw new Error('A voice-note entry failed validation. Both encrypted copies remain preserved.');
     }
     if (typeof note.ciphertext === 'string') {
-      const local = localById.get(note.id);
-      if (local && !sameVoiceNoteManifest(local, note)) {
+      let local = localById.get(note.id);
+      if (local && local.ciphertext !== note.ciphertext) {
+        // The packet and attachment store disagree on this ID. Preserve the
+        // stored recording under a fresh ID, then retain the packet's ciphertext
+        // under its original ID before continuing the restore.
         await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
         localById.delete(note.id);
         rekeyedLocalRecord = true;
         scheduleVoiceNoteUploadRetry(dateString);
+        local = null;
       }
-      // Legacy packets embed full audio. Keep it locally and queue the separate
-      // attachment upload without replacing a different local recording.
-      hydrated.push({
-        ...note,
-        remoteUploaded: local?.remoteUploaded === true && sameVoiceNoteManifest(local, note)
-      });
+      if (!local) {
+        await saveEncryptedVoiceNoteRecord(note, { remoteUploaded: false });
+        local = await getEncryptedVoiceNoteRecord(note.id);
+        if (!local) throw new Error('A legacy encrypted voice recording could not be retained in local storage.');
+        localById.set(note.id, local);
+        scheduleVoiceNoteUploadRetry(dateString);
+      }
+      // Persist legacy ciphertext now, not at the end of the full restore.
+      // A later attachment failure must not discard this earlier local recording.
+      hydrated.push(local);
       continue;
     }
     const local = localById.get(note.id);
