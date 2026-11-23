@@ -38,3 +38,14 @@ test('short desktop viewports retain tighter card spacing', () => {
   assert.match(density, /@media \(min-width: 621px\) and \(max-height: 760px\)[\s\S]*?#view-checklist \.step-card\s*\{\s*padding:\s*\.85rem/);
   assert.match(density, /@media \(min-width: 621px\) and \(max-height: 590px\)[\s\S]*?#view-checklist \.step-card\s*\{\s*padding:\s*\.7rem/);
 });
+
+test('shared frames use a content-led width system instead of filling wide viewports', () => {
+  assert.match(density, /--ff-content-column-max:\s*42rem/);
+  assert.match(density, /--ff-content-card-max:\s*38rem/);
+  assert.match(density, /\.garden-shell\s*\{\s*width:\s*min\(86vw,\s*var\(--ff-content-column-max\)\)/);
+  assert.match(density, /#view-checklist \.step-card\s*\{\s*width:\s*100%;\s*max-width:\s*var\(--ff-content-card-max\)/);
+  assert.match(density, /#view-checklist \.step-card \.space-y-3 > div\.flex\.items-center\.justify-between,[\s\S]*?width:\s*fit-content/);
+  assert.match(density, /#view-diary #diary-location-history\s*\{\s*width:\s*min\(100%,\s*var\(--ff-content-panel-max\)\)/);
+  assert.match(density, /#view-diary \.diary-note-composer\s*\{\s*width:\s*min\(100%,\s*28rem\)/);
+});
+
