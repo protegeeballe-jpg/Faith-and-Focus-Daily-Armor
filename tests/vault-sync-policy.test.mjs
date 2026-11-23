@@ -288,3 +288,15 @@ test('legacy embedded audio is retained before colliding identifiers are resolve
   assert.match(syncSource, /An embedded local voice recording could not be safely retained/);
   assert.match(syncSource, /scheduleVoiceNoteUploadRetry\(localBundle\.dateString\)/);
 });
+
+test('voice upload retry timers are cleared when a vault session ends or fails to start', () => {
+  assert.match(syncSource, /function clearVoiceNoteUploadRetries\(\)/);
+  assert.match(syncSource, /voiceUploadRetryTimers\.forEach\(timer => window\.clearTimeout\(timer\)\)/);
+  const startup = syncSource.slice(
+    syncSource.indexOf('export async function startVaultSync(credentials) {'),
+    syncSource.indexOf('function handleLocalDataChanged(event)')
+  );
+  assert.match(startup, /clearVoiceNoteUploadRetries\(\)/);
+  const stop = syncSource.slice(syncSource.indexOf('export async function stopVaultSync()'));
+  assert.match(stop, /clearVoiceNoteUploadRetries\(\)/);
+});
