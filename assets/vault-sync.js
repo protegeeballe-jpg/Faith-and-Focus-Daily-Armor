@@ -422,6 +422,7 @@ async function requestVoiceNoteAttachment(dateString, id, {
       error.response = result;
       if (response.status === 401) error.code = 'VAULT_SESSION_EXPIRED';
       if (response.status === 409) error.code = 'VOICE_NOTE_CONFLICT';
+      if (response.status === 404 && uploading) error.transient = true;
       if (response.status === 429 || response.status >= 500) error.transient = true;
       throw error;
     }
