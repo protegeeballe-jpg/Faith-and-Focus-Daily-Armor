@@ -1,18 +1,9 @@
 /*
- * Faith & Focus: Daily Armor — phone layout.
+ * Faith & Focus: Daily Armor — responsive layout refinements.
  *
- * Loaded AFTER app.css and garden.css, and every rule below sits inside a
- * phone-width media query, so the desktop layout is untouched.
- * To undo everything: delete the <link> to this file in index.html.
- *
- * What it changes on phones:
- *   1. Checklist toolbar: one readable row (Room · date and time · Reset).
- *   2. Checklist rows: checkbox first, task text in the middle, quote button
- *      at the end (icon only once the task is unlocked).
- *   3. Tighter card spacing so each card fits one screen more often.
- *   4. Bigger, clearer Previous / Next buttons.
- *   5. "Daily Armor Is Complete" page fits closer to one screen.
- *   6. Diary: Notes / Location / Voice tabs, one section per screen.
+ * Loaded after app.css and garden.css. The phone-specific layout stays inside
+ * its breakpoint; the shared density baseline is appended at the end.
+ * Remove the <link> to this file in index.html to roll back these refinements.
  */
 
 /* The diary tab bar only exists visually on phones. */
@@ -302,4 +293,82 @@
     margin-top: .5rem !important;
     padding: .6rem !important;
   }
+}
+
+
+/* Shared density baseline: compact, readable, and consistent across scenes. */
+:root {
+  --ff-ui-base-size: 15px;
+  --ff-ui-body-leading: 1.5;
+  --ff-ui-card-padding: 1.2rem;
+}
+html { font-size: var(--ff-ui-base-size); }
+body { line-height: var(--ff-ui-body-leading); }
+
+.text-xs { font-size: .72rem; line-height: 1.4; }
+.text-sm { font-size: .84rem; line-height: 1.45; }
+.text-base { font-size: .95rem; line-height: 1.5; }
+.text-lg { font-size: 1.05rem; line-height: 1.35; }
+.text-xl { font-size: 1.2rem; line-height: 1.3; }
+.text-2xl { font-size: 1.42rem; line-height: 1.25; }
+.text-3xl { font-size: 1.7rem; line-height: 1.2; }
+.text-4xl { font-size: 2.05rem; line-height: 1.15; }
+.text-5xl { font-size: 2.7rem; line-height: 1.1; }
+
+#view-checklist > main { margin-top: .85rem !important; }
+#view-checklist .step-card {
+  padding: var(--ff-ui-card-padding) 1.35rem !important;
+}
+#view-checklist .step-card > div:first-child { margin-bottom: .7rem !important; }
+#view-checklist .step-card .grid { gap: .65rem !important; }
+
+#view-diary { padding: 1rem .75rem !important; }
+#view-diary:not(.hidden) > .card-lavender { padding: 1.1rem !important; }
+#view-diary .writing-lock-card,
+#view-diary section[aria-labelledby] { padding: .85rem !important; }
+#view-diary section.mt-5 { margin-top: .8rem !important; }
+
+#little-garden .garden-topbar { margin-bottom: .35rem; padding: .45rem .7rem; }
+#little-garden .garden-planting-panel { padding: .85rem; }
+#little-garden .garden-choice-grid { gap: .6rem; margin: .7rem 0; }
+#little-garden .garden-room-actions { gap: .5rem; padding: .7rem; }
+#little-garden .garden-growth-grid { gap: .65rem; padding: .75rem; }
+#little-garden .garden-growth-card { padding: .75rem; }
+
+@media (max-width: 620px) {
+  #view-checklist > main { margin-top: .45rem !important; }
+  #view-checklist .step-card { padding: .62rem .68rem !important; }
+  #view-checklist .step-card > div:first-child { margin-bottom: .38rem !important; }
+  #view-checklist .guided-task-row { gap: .38rem; padding: .28rem .38rem; }
+  #view-checklist .guided-task-row .guide-quote-launch { min-height: 44px; }
+  #view-checklist .guided-task-row:has(.guide-checkbox-label.is-unlocked) > .guide-quote-launch {
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    min-height: 44px !important;
+  }
+
+  #view-diary { padding: 0 .15rem !important; }
+  #view-diary:not(.hidden) > .card-lavender { padding: .48rem !important; }
+  #view-diary .writing-lock-card,
+  #view-diary section[aria-labelledby] { padding: .5rem !important; }
+  #view-diary section.mt-5 { margin-top: .45rem !important; }
+
+  #little-garden .garden-room-actions { gap: .28rem; padding: .3rem; }
+  #little-garden .garden-growth-grid { gap: .4rem; padding: .3rem; }
+  #little-garden .garden-growth-card { padding: .42rem; }
+
+  #vault-login-form input,
+  #vault-signup-form input,
+  #view-diary input,
+  #view-diary select,
+  #view-diary textarea { font-size: 16px; }
+  #vault-login-submit,
+  #vault-signup-form button { min-height: 44px; }
+}
+
+@media (min-width: 621px) {
+  #view-checklist .step-card { padding: 1.2rem 1.35rem !important; }
+  #view-diary { padding: 1.1rem .85rem !important; }
+  #view-diary:not(.hidden) > .card-lavender { padding: 1.1rem !important; }
 }
