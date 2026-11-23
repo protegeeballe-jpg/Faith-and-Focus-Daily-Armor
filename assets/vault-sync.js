@@ -1890,6 +1890,7 @@ export async function stopVaultSync() {
   dailySyncTimer = null;
   pendingDailySyncDates.clear();
   pendingFullVaultRefresh = false;
+  clearVoiceNoteUploadRetries();
   try {
     if (activeVault) {
       activeVaultRequestControllers.forEach(controller => {
