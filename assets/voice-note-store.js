@@ -581,21 +581,29 @@ export async function rekeyEncryptedVoiceNoteRecord(id, key) {
     return { ...replacement, remoteUploaded: false };
 }
 
-export async function markEncryptedVoiceNoteUploaded(id) {
+export async function markEncryptedVoiceNoteUploaded(id, expectedRecord = null) {
     if (typeof id !== 'string' || !VOICE_NOTE_ID_PATTERN.test(id)) return false;
     const database = await openVoiceNoteDatabase();
+    let marked = false;
     try {
         const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
         const completed = waitForTransaction(transaction);
         const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
         const request = store.get(id);
         request.onsuccess = () => {
-            if (request.result && typeof request.result.ciphertext === 'string') {
-                store.put({ ...request.result, remoteUploaded: true });
-            }
+            const current = request.result;
+            if (!current || typeof current.ciphertext !== 'string') return;
+            if (expectedRecord && (
+                current.dateString !== expectedRecord.dateString
+                || current.capturedAt !== expectedRecord.capturedAt
+                || current.ciphertext !== expectedRecord.ciphertext
+                || current.iv !== expectedRecord.iv
+            )) return;
+            store.put({ ...current, remoteUploaded: true });
+            marked = true;
         };
         await completed;
-        return true;
+        return marked;
     } finally {
         database.close();
     }
@@ -606,11 +614,36 @@ export async function saveEncryptedVoiceNoteRecord(record, { remoteUploaded = fa
         throw new TypeError('A complete encrypted voice-note record is required.');
     }
     const database = await openVoiceNoteDatabase();
+    let conflictingRecord = false;
     try {
         const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
         const completed = waitForTransaction(transaction);
-        transaction.objectStore(VOICE_NOTE_STORE_NAME).put({ ...record, remoteUploaded: remoteUploaded === true });
-        await completed;
+        const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
+        const request = store.get(record.id);
+        request.onsuccess = () => {
+            const existing = request.result;
+            if (existing && (
+                existing.dateString !== record.dateString
+                || existing.ciphertext !== record.ciphertext
+                || existing.iv !== record.iv
+            )) {
+                conflictingRecord = true;
+                try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+                return;
+            }
+            store.put({
+                ...record,
+                remoteUploaded: remoteUploaded === true || existing?.remoteUploaded === true
+            });
+        };
+        try {
+            await completed;
+        } catch (error) {
+            if (conflictingRecord) {
+                throw new Error('A different encrypted voice recording already uses this identifier. The existing copy was not replaced.');
+            }
+            throw error;
+        }
     } finally {
         database.close();
     }
