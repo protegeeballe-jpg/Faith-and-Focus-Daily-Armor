@@ -523,7 +523,12 @@ async function uploadVoiceNoteRecord(dateString, initialRecord) {
     }
 
     if (restartWithNewId) continue;
-    await markEncryptedVoiceNoteUploaded(record.id);
+    const markedUploaded = await markEncryptedVoiceNoteUploaded(record.id, record);
+    if (!markedUploaded) {
+      const error = new Error('The local voice recording changed while its cloud upload was completing. The current local copy remains queued for a fresh upload.');
+      error.transient = true;
+      throw error;
+    }
     return { uploaded: true, rekeyed, id: record.id };
   }
 }
@@ -913,9 +918,6 @@ async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
   const localRecords = await exportEncryptedVoiceNotesForDateFull(bundle.dateString);
   const localById = new Map(localRecords.map(record => [record.id, record]));
   const remoteById = new Map((remoteBundle?.voiceNotes || []).map(record => [record.id, record]));
-  const confirmedIds = new Set(localRecords
-    .filter(record => record.remoteUploaded === true)
-    .map(record => record.id));
   const rekeyedIds = new Set();
 
   // A local recording that shares an ID with different remote metadata is a
@@ -1081,7 +1083,7 @@ async function reconcileDay(dateString, remoteUpdatedAt, { forceRemoteRead = fal
 }
 
 async function reconcileDayOnce(dateString, remoteUpdatedAt, { forceRemoteRead = false } = {}) {
-  const local = await getLocalDailyPacket(dateString);
+  let local = await getLocalDailyPacket(dateString);
   const localChangeVersion = localChangeVersions.get(dateString) || 0;
   if (!local) {
     console.log('[Vault Sync] Remote date has no local packet; fetching and restoring encrypted date:', {
