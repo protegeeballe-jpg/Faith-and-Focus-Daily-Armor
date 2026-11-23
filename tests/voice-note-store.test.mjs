@@ -155,3 +155,27 @@ test('voice-note MIME validation accepts supported codecs and rejects actual lin
     assert.equal(isAllowedVoiceNoteMimeType('audio/ogg;codecs=vorbis\\n'), false);
     assert.equal(isAllowedVoiceNoteMimeType('audio/ogg;codecs=vorbis\\r'), false);
 });
+
+test('uploaded acknowledgement is conditional on the exact ciphertext snapshot', () => {
+    const source = readFileSync(new URL('../assets/voice-note-store.js', import.meta.url), 'utf8');
+    const start = source.indexOf('export async function markEncryptedVoiceNoteUploaded(');
+    const end = source.indexOf('\n}\n', start);
+    const acknowledgement = source.slice(start, end + 3);
+
+    assert.match(acknowledgement, /markEncryptedVoiceNoteUploaded\(id, expectedRecord = null\)/);
+    assert.match(acknowledgement, /current\.ciphertext !== expectedRecord\.ciphertext/);
+    assert.match(acknowledgement, /current\.iv !== expectedRecord\.iv/);
+    assert.match(acknowledgement, /return marked/);
+});
+
+test('saving a voice-note record never overwrites different ciphertext under an existing ID', () => {
+    const source = readFileSync(new URL('../assets/voice-note-store.js', import.meta.url), 'utf8');
+    const start = source.indexOf('export async function saveEncryptedVoiceNoteRecord(');
+    const end = source.indexOf('\n}\n', start);
+    const save = source.slice(start, end + 3);
+
+    assert.match(save, /store\.get\(record\.id\)/);
+    assert.match(save, /existing\.ciphertext !== record\.ciphertext/);
+    assert.match(save, /transaction\.abort\(\)/);
+    assert.match(save, /existing copy was not replaced/);
+});

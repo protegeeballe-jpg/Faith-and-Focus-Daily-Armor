@@ -534,21 +534,85 @@ export async function getEncryptedVoiceNoteRecord(id) {
     }
 }
 
-export async function markEncryptedVoiceNoteUploaded(id) {
-    if (typeof id !== 'string' || !VOICE_NOTE_ID_PATTERN.test(id)) return false;
+export async function rekeyEncryptedVoiceNoteRecord(id, key) {
+    if (typeof id !== 'string' || !VOICE_NOTE_ID_PATTERN.test(id) || !key) {
+        throw new TypeError('An unlocked Diary and valid voice-note identifier are required.');
+    }
+    const original = await getEncryptedVoiceNoteRecord(id);
+    if (!original) throw new Error('The conflicting local voice recording is no longer available.');
+    const plaintext = await decryptVoiceNoteRecord(original, key);
+    const replacementId = makeVoiceNoteId(original.dateString);
+    if (replacementId === id) throw new Error('A new voice-note identifier could not be generated safely.');
+    const replacement = await encryptVoiceNoteBlob(
+        plaintext, key, original.dateString, replacementId, original.capturedAt
+    );
+
     const database = await openVoiceNoteDatabase();
+    let sourceChanged = false;
     try {
         const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
         const completed = waitForTransaction(transaction);
         const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
         const request = store.get(id);
         request.onsuccess = () => {
-            if (request.result && typeof request.result.ciphertext === 'string') {
-                store.put({ ...request.result, remoteUploaded: true });
+            const current = request.result;
+            if (!current || current.dateString !== original.dateString
+                || current.capturedAt !== original.capturedAt
+                || current.mimeType !== original.mimeType
+                || current.version !== original.version
+                || current.algorithm !== original.algorithm
+                || current.ciphertext !== original.ciphertext
+                || current.iv !== original.iv) {
+                sourceChanged = true;
+                try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+                return;
             }
+            store.add({ ...replacement, remoteUploaded: false });
+            store.delete(id);
+        };
+        request.onerror = () => {
+            try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+        };
+        try {
+            await completed;
+        } catch (error) {
+            if (sourceChanged) {
+                throw new Error('The local voice recording changed during conflict recovery. Its original copy was preserved.');
+            }
+            throw error;
+        }
+    } finally {
+        database.close();
+    }
+    return { ...replacement, remoteUploaded: false };
+}
+
+export async function markEncryptedVoiceNoteUploaded(id, expectedRecord = null) {
+    if (typeof id !== 'string' || !VOICE_NOTE_ID_PATTERN.test(id)) return false;
+    const database = await openVoiceNoteDatabase();
+    let marked = false;
+    try {
+        const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
+        const completed = waitForTransaction(transaction);
+        const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
+        const request = store.get(id);
+        request.onsuccess = () => {
+            const current = request.result;
+            if (!current || typeof current.ciphertext !== 'string') return;
+            if (expectedRecord && (
+                current.dateString !== expectedRecord.dateString
+                || current.capturedAt !== expectedRecord.capturedAt
+                || current.mimeType !== expectedRecord.mimeType
+                || current.version !== expectedRecord.version
+                || current.algorithm !== expectedRecord.algorithm
+                || current.ciphertext !== expectedRecord.ciphertext
+                || current.iv !== expectedRecord.iv
+            )) return;
+            store.put({ ...current, remoteUploaded: true });
+            marked = true;
         };
         await completed;
-        return true;
+        return marked;
     } finally {
         database.close();
     }
@@ -559,11 +623,40 @@ export async function saveEncryptedVoiceNoteRecord(record, { remoteUploaded = fa
         throw new TypeError('A complete encrypted voice-note record is required.');
     }
     const database = await openVoiceNoteDatabase();
+    let conflictingRecord = false;
     try {
         const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
         const completed = waitForTransaction(transaction);
-        transaction.objectStore(VOICE_NOTE_STORE_NAME).put({ ...record, remoteUploaded: remoteUploaded === true });
-        await completed;
+        const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
+        const request = store.get(record.id);
+        request.onsuccess = () => {
+            const existing = request.result;
+            if (existing && (
+                existing.dateString !== record.dateString
+                || existing.capturedAt !== record.capturedAt
+                || existing.mimeType !== record.mimeType
+                || existing.version !== record.version
+                || existing.algorithm !== record.algorithm
+                || existing.ciphertext !== record.ciphertext
+                || existing.iv !== record.iv
+            )) {
+                conflictingRecord = true;
+                try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+                return;
+            }
+            store.put({
+                ...record,
+                remoteUploaded: remoteUploaded === true || existing?.remoteUploaded === true
+            });
+        };
+        try {
+            await completed;
+        } catch (error) {
+            if (conflictingRecord) {
+                throw new Error('A different encrypted voice recording already uses this identifier. The existing copy was not replaced.');
+            }
+            throw error;
+        }
     } finally {
         database.close();
     }
@@ -657,6 +750,15 @@ export async function exportEncryptedVoiceNotesForDate(dateString) {
     return records.filter(record => typeof record.ciphertext === 'string').map(createVoiceNoteAttachmentManifest);
 }
 
+export async function exportUploadedEncryptedVoiceNotesForDate(dateString) {
+    if (!isValidDateString(dateString)) throw new TypeError('A valid Diary date is required.');
+    const records = await getStoredRecords(dateString);
+    records.sort((left, right) => Date.parse(left.capturedAt) - Date.parse(right.capturedAt));
+    return records
+        .filter(record => record.remoteUploaded === true && typeof record.ciphertext === 'string')
+        .map(createVoiceNoteAttachmentManifest);
+}
+
 export async function restoreEncryptedVoiceNotesForDate(dateString, records) {
     if (!isValidDateString(dateString)
         || !validateEncryptedVoiceNoteBackup(records)
@@ -664,19 +766,51 @@ export async function restoreEncryptedVoiceNotesForDate(dateString, records) {
         throw new Error('The daily packet contains invalid voice-note records.');
     }
     const database = await openVoiceNoteDatabase();
+    let conflictingLocalRecord = false;
     try {
         const transaction = database.transaction(VOICE_NOTE_STORE_NAME, 'readwrite');
         const completed = waitForTransaction(transaction);
         const store = transaction.objectStore(VOICE_NOTE_STORE_NAME);
-        const request = store.index('dateString').getAllKeys(dateString);
+        const request = store.index('dateString').getAll(dateString);
         request.onsuccess = () => {
-            for (const key of request.result) store.delete(key);
-            records.forEach(record => store.put({ ...record, remoteUploaded: record.remoteUploaded === true }));
+            const existingRecords = request.result || [];
+            const nextRecords = new Map(records.map(record => [
+                record.id, { ...record, remoteUploaded: record.remoteUploaded === true }
+            ]));
+
+            // Unpublished recordings are local user data, not disposable cache.
+            // Preserve them while replacing the cloud-confirmed portion.
+            for (const existing of existingRecords) {
+                const incoming = nextRecords.get(existing.id);
+                if (existing.remoteUploaded !== true && !incoming) {
+                    nextRecords.set(existing.id, existing);
+                    continue;
+                }
+                if (existing.remoteUploaded !== true && incoming
+                    && (existing.ciphertext !== incoming.ciphertext || existing.iv !== incoming.iv)) {
+                    conflictingLocalRecord = true;
+                    try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
+                    return;
+                }
+            }
+
+            const nextIds = new Set(nextRecords.keys());
+            for (const existing of existingRecords) {
+                if (!nextIds.has(existing.id)) store.delete(existing.id);
+            }
+            for (const record of nextRecords.values()) store.put(record);
         };
         request.onerror = () => {
             try { transaction.abort(); } catch { /* The transaction may already be closed. */ }
         };
-        await completed;
+        try {
+            await completed;
+        } catch (error) {
+            if (conflictingLocalRecord) {
+                throw new Error('A pending local voice recording conflicts with the restored identifier. The local copy was preserved.');
+            }
+            throw error;
+        }
     } finally {
         database.close();
     }
