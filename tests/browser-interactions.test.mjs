@@ -321,6 +321,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
   });
 
   const profiles = [
+    {name: 'phone-narrow-360x800', viewport: {width: 360, height: 800}, deviceScaleFactor: 3},
+    {name: 'phone-standard-390x844', viewport: {width: 390, height: 844}, deviceScaleFactor: 2},
+    {name: 'tablet-768x1024', viewport: {width: 768, height: 1024}, deviceScaleFactor: 1},
     {name: 'laptop-1366x768', viewport: {width: 1366, height: 768}, deviceScaleFactor: 1},
     {name: 'laptop-short-window-1366x650', viewport: {width: 1366, height: 650}, deviceScaleFactor: 1},
     {name: 'laptop-compact-1366x590', viewport: {width: 1366, height: 590}, deviceScaleFactor: 1},
@@ -350,6 +353,29 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       });
       await page.getByRole('button', {name: 'Open Health Checklist'}).click();
       await page.locator('#card-step-1').waitFor({state: 'visible'});
+
+      const densityMetrics = await page.evaluate(() => {
+        const card = document.querySelector('#card-step-1');
+        const heading = card?.querySelector('h2');
+        const rect = card?.getBoundingClientRect();
+        return {
+          rootFontSize: getComputedStyle(document.documentElement).fontSize,
+          cardPaddingTop: parseFloat(getComputedStyle(card).paddingTop),
+          headingFontSize: parseFloat(getComputedStyle(heading).fontSize),
+          cardLeft: rect?.left ?? -1,
+          cardRight: rect?.right ?? Infinity,
+          viewportWidth: window.innerWidth
+        };
+      });
+      assert.equal(densityMetrics.rootFontSize, '15px',
+        profile.name + ': shared type scale must load');
+      assert.ok(densityMetrics.cardPaddingTop >= 8 && densityMetrics.cardPaddingTop <= 19,
+        profile.name + ': card padding must remain compact but comfortable');
+      assert.ok(densityMetrics.headingFontSize >= 14 && densityMetrics.headingFontSize <= 20,
+        profile.name + ': checklist heading must remain readable');
+      assert.ok(densityMetrics.cardLeft >= -1
+          && densityMetrics.cardRight <= densityMetrics.viewportWidth + 1,
+        profile.name + ': checklist card must remain inside the viewport');
 
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
