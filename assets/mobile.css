@@ -441,3 +441,8 @@ body { line-height: var(--ff-ui-body-leading); }
   width: min(86vw, var(--ff-content-card-max));
 }
 
+@media (max-width: 480px) {
+  .garden-shell { width: 94vw; }
+  .settings-modal { width: calc(100% - 1rem); }
+}
+
