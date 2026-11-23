@@ -300,3 +300,23 @@ test('voice upload retry timers are cleared when a vault session ends or fails t
   const stop = syncSource.slice(syncSource.indexOf('export async function stopVaultSync()'));
   assert.match(stop, /clearVoiceNoteUploadRetries\(\)/);
 });
+
+test('voice-note identity reuse requires byte-exact remote attachment confirmation', () => {
+  assert.match(syncSource, /async function voiceNoteContentMatchesRemoteAttachment\(localRecord, remoteRecord\)/);
+  assert.match(syncSource, /remote\.ciphertextChunk !== expectedChunk/);
+  assert.match(syncSource, /await voiceNoteContentMatchesRemoteAttachment\(retainedLocalRecord, remoteRecord\)/);
+  assert.match(syncSource, /await voiceNoteContentMatchesRemoteAttachment\(local, note\)/);
+  assert.match(syncSource, /markEncryptedVoiceNoteUploaded\(id, retainedLocalRecord\)/);
+});
+
+test('legacy inline audio is committed to IndexedDB before later attachment hydration can fail', () => {
+  const start = syncSource.indexOf('async function hydrateVoiceNoteAttachments(');
+  const end = syncSource.indexOf('async function captureDailyPacket(', start);
+  const hydrate = syncSource.slice(start, end);
+  const inline = hydrate.indexOf("if (typeof note.ciphertext === 'string')");
+  const save = hydrate.indexOf('await saveEncryptedVoiceNoteRecord(note, { remoteUploaded: false })', inline);
+  const readBack = hydrate.indexOf('await getEncryptedVoiceNoteRecord(note.id)', save);
+  const laterDownload = hydrate.indexOf('await requestVoiceNoteAttachment(dateString, note.id', inline);
+  assert.ok(inline >= 0 && save > inline && readBack > save && laterDownload > readBack);
+  assert.match(hydrate, /A legacy encrypted voice recording could not be retained in local storage/);
+});
