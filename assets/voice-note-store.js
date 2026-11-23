@@ -556,7 +556,13 @@ export async function rekeyEncryptedVoiceNoteRecord(id, key) {
         const request = store.get(id);
         request.onsuccess = () => {
             const current = request.result;
-            if (!current || current.ciphertext !== original.ciphertext || current.iv !== original.iv) {
+            if (!current || current.dateString !== original.dateString
+                || current.capturedAt !== original.capturedAt
+                || current.mimeType !== original.mimeType
+                || current.version !== original.version
+                || current.algorithm !== original.algorithm
+                || current.ciphertext !== original.ciphertext
+                || current.iv !== original.iv) {
                 sourceChanged = true;
                 try { transaction.abort(); } catch { /* The transaction may already be closing. */ }
                 return;
@@ -596,6 +602,9 @@ export async function markEncryptedVoiceNoteUploaded(id, expectedRecord = null) 
             if (expectedRecord && (
                 current.dateString !== expectedRecord.dateString
                 || current.capturedAt !== expectedRecord.capturedAt
+                || current.mimeType !== expectedRecord.mimeType
+                || current.version !== expectedRecord.version
+                || current.algorithm !== expectedRecord.algorithm
                 || current.ciphertext !== expectedRecord.ciphertext
                 || current.iv !== expectedRecord.iv
             )) return;
@@ -624,6 +633,10 @@ export async function saveEncryptedVoiceNoteRecord(record, { remoteUploaded = fa
             const existing = request.result;
             if (existing && (
                 existing.dateString !== record.dateString
+                || existing.capturedAt !== record.capturedAt
+                || existing.mimeType !== record.mimeType
+                || existing.version !== record.version
+                || existing.algorithm !== record.algorithm
                 || existing.ciphertext !== record.ciphertext
                 || existing.iv !== record.iv
             )) {
