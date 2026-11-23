@@ -235,7 +235,7 @@ test('regular sign-in waits for full vault reconciliation before revealing the a
   assert.match(syncSource, /localDateCount: finalLocalRecords\.length/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.add\(bundle\.dateString\)/);
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.delete\(bundle\.dateString\)/);
-  assert.match(syncSource, /complete: pendingDates\.length === 0/);
+  assert.match(syncSource, /complete: pendingDates\.length === 0 && voiceNoteStoreAvailable/);
   assert.match(syncSource, /voiceAttachmentsReady\s*\}/);
 });
 
@@ -264,4 +264,13 @@ test('local voice-note upload state is included in reconciliation completeness',
   assert.match(syncSource, /\.filter\(record => record\.remoteUploaded !== true/);
   assert.match(syncSource, /pendingVoiceNotes\.map\(record => record\.dateString\)/);
   assert.match(syncSource, /complete: pendingDates\.length === 0 && voiceNoteStoreAvailable/);
+});
+
+test('remote voice-note identity recovery does not trigger a local capture before restore finishes', () => {
+  const hydrateStart = syncSource.indexOf('async function hydrateVoiceNoteAttachments(');
+  const hydrateEnd = syncSource.indexOf('async function captureDailyPacket(', hydrateStart);
+  const hydrate = syncSource.slice(hydrateStart, hydrateEnd);
+  assert.match(hydrate, /rekeyedLocalRecord = true/);
+  assert.doesNotMatch(hydrate, /scheduleCapture\(/);
+  assert.match(syncSource, /if \(rekeyedLocalVoiceNote\) scheduleVoiceNoteUploadRetry\(bundle\.dateString\)/);
 });
