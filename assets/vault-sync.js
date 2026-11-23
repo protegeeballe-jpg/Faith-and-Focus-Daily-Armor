@@ -604,6 +604,7 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
         await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
         localById.delete(note.id);
         rekeyedLocalRecord = true;
+        scheduleVoiceNoteUploadRetry(dateString);
       }
       // Legacy packets embed full audio. Keep it locally and queue the separate
       // attachment upload without replacing a different local recording.
@@ -624,6 +625,7 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
       await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
       localById.delete(note.id);
       rekeyedLocalRecord = true;
+      scheduleVoiceNoteUploadRetry(dateString);
     }
     const chunks = [];
     for (let index = 0; index < note.attachmentChunkCount; index += 1) {
