@@ -7,9 +7,10 @@ import {
   getLocalDailyPacket, listLocalDailyPackets, putLocalDailyPacket, markLocalDailyPacketSynced
 } from './vault-storage.js';
 import {
-  exportEncryptedVoiceNotes, exportEncryptedVoiceNotesForDate, exportEncryptedVoiceNotesForDateFull,
-  restoreEncryptedVoiceNotesForDate, getEncryptedVoiceNoteRecord, markEncryptedVoiceNoteUploaded,
-  saveEncryptedVoiceNoteRecord, createVoiceNoteAttachmentManifest, validateEncryptedVoiceNoteRecord,
+  exportEncryptedVoiceNotes, exportEncryptedVoiceNotesForDate, exportUploadedEncryptedVoiceNotesForDate,
+  exportEncryptedVoiceNotesForDateFull, restoreEncryptedVoiceNotesForDate, getEncryptedVoiceNoteRecord,
+  markEncryptedVoiceNoteUploaded, rekeyEncryptedVoiceNoteRecord, saveEncryptedVoiceNoteRecord,
+  createVoiceNoteAttachmentManifest, validateEncryptedVoiceNoteRecord,
   VOICE_NOTE_ATTACHMENT_CHUNK_CHARS, MAX_VOICE_NOTE_ATTACHMENT_CHUNKS
 } from './voice-note-store.js';
 import { GARDEN_STORAGE_KEY, GARDEN_DAILY_SYNC_PREFIX, mergeGardenStates, validateGardenState } from './garden-model.js';
@@ -61,6 +62,8 @@ let lastStatus = '';
 let storageHooksInstalled = false;
 let localFlushPromise = null;
 let activeVaultRequestControllers = new Set();
+let voiceUploadRetryTimers = new Map();
+let voiceUploadRetryAttempts = new Map();
 
 const byId = id => document.getElementById(id);
 
@@ -268,7 +271,7 @@ async function buildDailyBundle(dateString) {
   if (gardenSnapshot !== null) records[gardenRecordKey] = gardenSnapshot;
   else delete records[gardenRecordKey];
 
-  const voiceNotes = await exportEncryptedVoiceNotesForDate(dateString);
+  const voiceNotes = await exportUploadedEncryptedVoiceNotesForDate(dateString);
   return {
     format: 'faith-focus-daily-bundle',
     version: 1,
