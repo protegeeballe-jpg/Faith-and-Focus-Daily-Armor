@@ -275,3 +275,16 @@ test('remote voice-note identity recovery does not trigger a local capture befor
   assert.doesNotMatch(hydrate, /scheduleCapture\(/);
   assert.match(syncSource, /if \(rekeyedLocalVoiceNote\) scheduleVoiceNoteUploadRetry\(bundle\.dateString\)/);
 });
+
+test('a missing voice-upload route is retryable without blocking daily reconciliation', () => {
+  assert.match(syncSource, /response\.status === 404 && uploading\) error\.transient = true/);
+  assert.match(syncSource, /if \(retryableFailure\) scheduleVoiceNoteUploadRetry\(dateString\)/);
+  assert.match(syncSource, /daily packet reconciliation will continue independently/);
+});
+
+test('legacy embedded audio is retained before colliding identifiers are resolved', () => {
+  assert.match(syncSource, /if \(!localRecord && typeof localPacketRecord\?\.ciphertext === 'string'\)/);
+  assert.match(syncSource, /saveEncryptedVoiceNoteRecord\(localPacketRecord, \{ remoteUploaded: false \}\)/);
+  assert.match(syncSource, /An embedded local voice recording could not be safely retained/);
+  assert.match(syncSource, /scheduleVoiceNoteUploadRetry\(localBundle\.dateString\)/);
+});
