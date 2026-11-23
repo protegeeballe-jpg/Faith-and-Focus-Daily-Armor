@@ -980,18 +980,30 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
     const localPacketRecord = localPacketById.get(id);
     if (!localRecord && !localPacketRecord) continue;
 
-    const localCandidate = localRecord
-      ? createVoiceNoteAttachmentManifest(localRecord)
+    if (!localRecord && typeof localPacketRecord?.ciphertext === 'string') {
+      // Older packets may still carry complete encrypted audio even when the
+      // newer attachment store has no copy. Keep those bytes before merging.
+      try {
+        await saveEncryptedVoiceNoteRecord(localPacketRecord, { remoteUploaded: false });
+        const savedRecord = await getEncryptedVoiceNoteRecord(id);
+        if (!savedRecord) throw new Error('The embedded local recording could not be retained.');
+        localById.set(id, savedRecord);
+        if (savedRecord.remoteUploaded !== true) scheduleVoiceNoteUploadRetry(localBundle.dateString);
+      } catch (cause) {
+        const error = new Error('An embedded local voice recording could not be safely retained. Both device copies remain preserved.');
+        error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
+        error.cause = cause;
+        throw error;
+      }
+    }
+
+    const retainedLocalRecord = localById.get(id);
+    const localCandidate = retainedLocalRecord
+      ? createVoiceNoteAttachmentManifest(retainedLocalRecord)
       : voiceNoteManifestForComparison(localPacketRecord);
     if (sameVoiceNoteManifest(localCandidate, remoteRecord)) continue;
 
-    if (!localRecord && typeof localPacketRecord?.ciphertext === 'string') {
-      // Older packets may still carry complete encrypted audio even when the
-      // newer attachment store has no copy. Materialize it before re-keying.
-      await saveEncryptedVoiceNoteRecord(localPacketRecord, { remoteUploaded: false });
-      localById.set(id, await getEncryptedVoiceNoteRecord(id));
-    }
-    if (!localById.get(id)) {
+    if (!retainedLocalRecord) {
       const error = new Error('A conflicting local voice-note packet has no matching encrypted recording in local storage. Both device copies remain preserved.');
       error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
       throw error;
