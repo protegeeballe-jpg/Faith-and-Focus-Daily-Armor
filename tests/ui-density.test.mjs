@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 
 const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const density = readFileSync(new URL('../assets/mobile.css', import.meta.url), 'utf8');
+const precision = density.slice(density.lastIndexOf('/* Precision sizing:'));
 
 test('shared UI density stylesheet remains last in the application style cascade', () => {
   const app = html.indexOf('assets/app.css');
@@ -13,39 +14,44 @@ test('shared UI density stylesheet remains last in the application style cascade
 });
 
 test('shared typography scale reduces oversized type without shrinking the base font excessively', () => {
-  assert.match(density, /--ff-ui-base-size:\s*15px/);
-  assert.match(density, /--ff-ui-body-leading:\s*1\.5/);
-  assert.match(density, /\.text-sm\s*\{\s*font-size:\s*\.84rem/);
-  assert.match(density, /\.text-base\s*\{\s*font-size:\s*\.95rem/);
-  assert.match(density, /\.text-3xl\s*\{\s*font-size:\s*1\.7rem/);
+  assert.match(density, /--ff-ui-base-size:\\s*15px/);
+  assert.match(density, /--ff-ui-body-leading:\\s*1\\.5/);
+  assert.match(density, /\\.text-sm\\s*\\{\\s*font-size:\\s*\\.84rem/);
+  assert.match(density, /\\.text-base\\s*\\{\\s*font-size:\\s*\\.95rem/);
+  assert.match(density, /\\.text-3xl\\s*\\{\\s*font-size:\\s*1\\.7rem/);
 });
 
-test('checklist and Diary padding use compact shared values', () => {
-  assert.match(density, /#view-checklist \.step-card\s*\{\s*padding:\s*var\(--ff-ui-card-padding\) 1\.35rem !important/);
-  assert.match(density, /#view-checklist > main\s*\{\s*margin-top:\s*\.85rem !important/);
-  assert.match(density, /#view-diary:not\(\.hidden\) > \.card-lavender\s*\{\s*padding:\s*1\.1rem !important/);
-  assert.match(density, /#little-garden \.garden-room-actions\s*\{[^}]*padding:\s*\.7rem/);
+test('frames use exact compact padding measurements', () => {
+  assert.match(precision, /--ff-frame-pad-y:\\s*8px/);
+  assert.match(precision, /--ff-frame-pad-x:\\s*10px/);
+  assert.match(precision, /--ff-row-pad-y:\\s*6px/);
+  assert.match(precision, /--ff-row-pad-x:\\s*8px/);
+  assert.match(precision, /#view-checklist \\.step-card\\s*\\{[^}]*padding:\\s*var\\(--ff-frame-pad-y\\) var\\(--ff-frame-pad-x\\) !important/s);
 });
 
-test('phone controls keep practical touch targets and form-entry text remains readable', () => {
-  assert.match(density, /#view-checklist \.guided-task-row:has\(\.guide-checkbox-label\.is-unlocked\) > \.guide-quote-launch\s*\{[^}]*width:\s*44px !important/);
-  assert.match(density, /#view-checklist \.guided-task-row:has\(\.guide-checkbox-label\.is-unlocked\) > \.guide-quote-launch\s*\{[^}]*min-height:\s*44px !important/);
-  assert.match(density, /#vault-login-form input,[\s\S]*?#view-diary textarea\s*\{\s*font-size:\s*16px/);
-  assert.match(density, /#vault-login-submit,[\s\S]*?#vault-signup-form button\s*\{\s*min-height:\s*44px/);
+test('content width scales smoothly instead of allowing frames to occupy almost the full viewport', () => {
+  assert.match(precision, /--ff-content-column-width:\\s*48rem/);
+  assert.match(precision, /--ff-content-card-width:\\s*36rem/);
+  assert.match(precision, /--ff-content-panel-width:\\s*24rem/);
+  assert.match(precision, /width:\\s*min\\(calc\\(33vw \\+ 240px\\), calc\\(100vw - 16px\\), var\\(--ff-content-column-width\\)\\)/);
+  assert.match(precision, /#view-checklist > main\\s*\\{[^}]*max-width:\\s*var\\(--ff-content-card-width\\)/s);
 });
 
-test('short desktop viewports retain tighter card spacing', () => {
-  assert.match(density, /@media \(min-width: 621px\) and \(max-height: 760px\)[\s\S]*?#view-checklist \.step-card\s*\{\s*padding:\s*\.85rem/);
-  assert.match(density, /@media \(min-width: 621px\) and \(max-height: 590px\)[\s\S]*?#view-checklist \.step-card\s*\{\s*padding:\s*\.7rem/);
+test('short checklist action rows and buttons shrink to their labels and controls', () => {
+  assert.match(precision, /#view-checklist \\.step-card \\.ff-guide-row,[\\s\\S]*?display:\\s*inline-flex !important/);
+  assert.match(precision, /width:\\s*fit-content/);
+  assert.match(precision, /--ff-button-pad-y:\\s*4px/);
+  assert.match(precision, /--ff-button-pad-x:\\s*8px/);
+  assert.match(precision, /#view-checklist \\.checklist-step-navigation button\\s*\\{[^}]*flex-grow:\\s*0 !important/s);
 });
 
-test('shared frames use a content-led width system instead of filling wide viewports', () => {
-  assert.match(density, /--ff-content-column-max:\s*42rem/);
-  assert.match(density, /--ff-content-card-max:\s*38rem/);
-  assert.match(density, /\.garden-shell\s*\{\s*width:\s*min\(86vw,\s*var\(--ff-content-column-max\)\)/);
-  assert.match(density, /#view-checklist \.step-card\s*\{\s*width:\s*100%;\s*max-width:\s*var\(--ff-content-card-max\)/);
-  assert.match(density, /#view-checklist \.step-card \.space-y-3 > div\.flex\.items-center\.justify-between,[\s\S]*?width:\s*fit-content/);
-  assert.match(density, /#view-diary \.diary-additional-notes,[\s\S]*?#view-diary #diary-voice-notes\s*\{\s*width:\s*min\(100%,\s*var\(--ff-content-panel-max\)\)/);
-  assert.match(density, /#view-diary \.diary-note-composer\s*\{\s*width:\s*min\(100%,\s*28rem\)/);
+test('Diary sections stay narrower than the Diary frame while the writing field remains usable', () => {
+  assert.match(precision, /#view-diary #diary-location-history\\s*\\{[^}]*width:\\s*min\\(88%, var\\(--ff-content-panel-width\\)\\)/s);
+  assert.match(precision, /#view-diary \\.diary-note-composer\\s*\\{[^}]*width:\\s*min\\(92%, 22rem\\)/s);
 });
 
+test('phone controls preserve touch targets and form-entry text remains readable', () => {
+  assert.match(precision, /@media \\(max-width: 620px\\)[\\s\\S]*?min-height:\\s*44px !important/);
+  assert.match(density, /#vault-login-form input,[\\s\\S]*?#view-diary textarea\\s*\\{\\s*font-size:\\s*16px/);
+  assert.match(density, /#vault-login-submit,[\\s\\S]*?#vault-signup-form button\\s*\\{\\s*min-height:\\s*44px/);
+});
