@@ -889,10 +889,56 @@ async function fetchRemoteDay(dateString) {
   return result;
 }
 
+async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
+  const localRecords = await exportEncryptedVoiceNotesForDateFull(bundle.dateString);
+  const localById = new Map(localRecords.map(record => [record.id, record]));
+  const remoteById = new Map((remoteBundle?.voiceNotes || []).map(record => [record.id, record]));
+  const confirmedIds = new Set(localRecords
+    .filter(record => record.remoteUploaded === true)
+    .map(record => record.id));
+  const rekeyedIds = new Set();
+
+  // A local recording that shares an ID with different remote metadata is a
+  // real identity collision. Preserve its plaintext audio through an atomic
+  // re-encryption under a new ID, and leave the remote recording untouched.
+  for (const [id, remoteManifest] of remoteById) {
+    const localRecord = localById.get(id);
+    if (!localRecord) continue;
+    const localManifest = createVoiceNoteAttachmentManifest(localRecord);
+    if (JSON.stringify(localManifest) !== JSON.stringify(remoteManifest)) {
+      await rekeyEncryptedVoiceNoteRecord(id, activeVault.encryptionKey);
+      rekeyedIds.add(id);
+    }
+  }
+
+  const voiceNotes = (bundle.voiceNotes || []).filter(note => {
+    if (rekeyedIds.has(note.id)) return false;
+    if (confirmedIds.has(note.id)) return true;
+    const remote = remoteById.get(note.id);
+    return Boolean(remote && JSON.stringify(remote) === JSON.stringify(note));
+  });
+  return {
+    bundle: { ...bundle, voiceNotes },
+    rekeyed: rekeyedIds.size > 0
+  };
+}
+
 async function uploadDailyPacket(dateString, { baseUpdatedAt } = {}) {
-  const local = await getLocalDailyPacket(dateString);
+  let local = await getLocalDailyPacket(dateString);
   if (!local?.dirty) return false;
   const localChangeVersion = localChangeVersions.get(dateString) || 0;
+  let bundle = await decryptDailyBundle(local.packet, activeVault.encryptionKey, decompressData);
+  const filtered = await filterUnconfirmedVoiceNotes(bundle);
+  if (filtered.rekeyed || canonicalBundle(filtered.bundle) !== canonicalBundle(bundle)) {
+    const packet = await encryptDailyBundle(filtered.bundle, activeVault.encryptionKey, compressData);
+    await putLocalDailyPacket({
+      ...local,
+      packet,
+      localUpdatedAt: Date.now(),
+      dirty: true
+    });
+    local = await getLocalDailyPacket(dateString);
+  }
   const uploadBaseUpdatedAt = baseUpdatedAt === undefined
     ? (local.remoteUpdatedAt || null)
     : (baseUpdatedAt || null);
@@ -917,7 +963,7 @@ async function uploadDailyPacket(dateString, { baseUpdatedAt } = {}) {
     vaultId: activeVault.vaultId, dateString, packetKey: activeVault.vaultId + ':' + dateString,
     updatedAt: result.updatedAt, stillMatchesUploadedSnapshot: syncResult.stillMatchesUploadedSnapshot
   });
-  if (!syncResult.stillMatchesUploadedSnapshot) scheduleCapture(dateString);
+  if (filtered.rekeyed || !syncResult.stillMatchesUploadedSnapshot) scheduleCapture(dateString);
   return true;
 }
 
