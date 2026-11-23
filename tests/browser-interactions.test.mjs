@@ -477,7 +477,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         for (let index = 0; index < await actions.count(); index++) {
           const button = actions.nth(index);
           const target = await button.getAttribute('data-target');
-          await assertPointerHitTarget(button, profile.name + ' card ' + step);
+          await assertPointerHitTarget(button, profile.name + ' card ' + step + ' action ' + target);
           await button.click();
           assert.equal(await page.locator('#anim-modal').evaluate(
             modal => !modal.classList.contains('hidden')), true,
@@ -607,7 +607,7 @@ async function assertPointerHitTarget(locator, profileName) {
   assert.equal(hitTest.receivesPointer, true,
     profileName + ': control must accept pointer events');
   assert.equal(hitTest.hitTarget, true,
-    profileName + ': another element must not cover the control hit area');
+    profileName + ': another element must not cover the control hit area; ' + JSON.stringify(hitTest));
 }
 
 
