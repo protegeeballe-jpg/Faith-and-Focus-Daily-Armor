@@ -359,28 +359,67 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         const card = document.querySelector('#card-step-1');
         const heading = card?.querySelector('h2');
         const rect = card?.getBoundingClientRect();
+        const shellRect = document.querySelector('#little-garden .garden-shell')?.getBoundingClientRect();
+        const nextButton = document.querySelector('#btn-next');
+        const nextStyle = nextButton ? getComputedStyle(nextButton) : null;
+        const cardStyle = card ? getComputedStyle(card) : null;
+        const nextRect = nextButton?.getBoundingClientRect();
         return {
           rootFontSize: getComputedStyle(document.documentElement).fontSize,
-          cardPaddingTop: parseFloat(getComputedStyle(card).paddingTop),
+          cardPaddingTop: parseFloat(cardStyle?.paddingTop || '0'),
+          cardPaddingBottom: parseFloat(cardStyle?.paddingBottom || '0'),
+          cardPaddingLeft: parseFloat(cardStyle?.paddingLeft || '0'),
+          cardPaddingRight: parseFloat(cardStyle?.paddingRight || '0'),
           headingFontSize: parseFloat(getComputedStyle(heading).fontSize),
           cardLeft: rect?.left ?? -1,
           cardRight: rect?.right ?? Infinity,
           cardWidth: rect?.width ?? 0,
+          shellWidth: shellRect?.width ?? 0,
+          nextButtonWidth: nextRect?.width ?? 0,
+          nextButtonHeight: nextRect?.height ?? 0,
+          nextButtonFlexGrow: parseFloat(nextStyle?.flexGrow || '0'),
+          nextButtonPaddingTop: parseFloat(nextStyle?.paddingTop || '0'),
+          nextButtonPaddingLeft: parseFloat(nextStyle?.paddingLeft || '0'),
           viewportWidth: window.innerWidth
         };
       });
       assert.equal(densityMetrics.rootFontSize, '15px',
         profile.name + ': shared type scale must load');
-      assert.ok(densityMetrics.cardPaddingTop >= 8 && densityMetrics.cardPaddingTop <= 19,
-        profile.name + ': card padding must remain compact but comfortable');
+      assert.ok(densityMetrics.cardPaddingTop >= 6
+          && densityMetrics.cardPaddingTop <= 8.5
+          && densityMetrics.cardPaddingBottom <= 8.5,
+        profile.name + ': frame top and bottom padding must stay within 8px');
+      assert.ok(densityMetrics.cardPaddingLeft <= 10.5
+          && densityMetrics.cardPaddingRight <= 10.5,
+        profile.name + ': frame side padding must stay within 10px');
       assert.ok(densityMetrics.headingFontSize >= 14 && densityMetrics.headingFontSize <= 20,
         profile.name + ': checklist heading must remain readable');
       assert.ok(densityMetrics.cardLeft >= -1
           && densityMetrics.cardRight <= densityMetrics.viewportWidth + 1,
         profile.name + ': checklist card must remain inside the viewport');
+      const shellRatio = densityMetrics.shellWidth / densityMetrics.viewportWidth;
       const frameRatio = densityMetrics.cardWidth / densityMetrics.viewportWidth;
-      assert.ok(frameRatio >= .35 && frameRatio <= .91,
-        profile.name + ': checklist frame must use a deliberate content-column width');
+      if (profile.viewport.width <= 480) {
+        assert.ok(shellRatio >= .88 && shellRatio <= .98,
+          profile.name + ': phone content should use the screen without edge-to-edge frames');
+        assert.ok(frameRatio <= .94,
+          profile.name + ': phone activity frame must retain a visible outer gutter');
+      } else {
+        assert.ok(shellRatio >= .45 && shellRatio <= .75,
+          profile.name + ': tablet and desktop column must not occupy nearly the full viewport');
+        assert.ok(frameRatio <= .74,
+          profile.name + ': tablet and desktop activity frame must stay proportionate');
+      }
+      assert.equal(densityMetrics.nextButtonFlexGrow, 0,
+        profile.name + ': navigation buttons must not stretch to fill the footer');
+      assert.ok(densityMetrics.nextButtonWidth < densityMetrics.viewportWidth * .35,
+        profile.name + ': navigation button width must follow its label');
+      assert.ok(densityMetrics.nextButtonPaddingTop <= 4.5
+          && densityMetrics.nextButtonPaddingLeft <= 8.5,
+        profile.name + ': navigation button padding must remain compact');
+      assert.ok(densityMetrics.nextButtonHeight >= 36
+          && densityMetrics.nextButtonHeight <= 44,
+        profile.name + ': button height must remain compact while preserving touch sizing');
 
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
@@ -391,9 +430,37 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         const card = page.locator('#card-step-' + step);
         if (step === 3 && profile.viewport.width >= 481) {
           const actionRow = card.locator('.ff-guide-row').first();
-          const rowBox = await actionRow.boundingBox();
-          assert.ok(rowBox && rowBox.width < densityMetrics.cardWidth * .88,
-            profile.name + ': checklist action frames must hug their labels and controls');
+          const rowMetrics = await actionRow.evaluate(element => {
+            const style = getComputedStyle(element);
+            const button = element.querySelector('button');
+            const buttonStyle = button ? getComputedStyle(button) : null;
+            const rect = element.getBoundingClientRect();
+            const buttonRect = button?.getBoundingClientRect();
+            return {
+              display: style.display,
+              width: rect.width,
+              paddingTop: parseFloat(style.paddingTop),
+              paddingLeft: parseFloat(style.paddingLeft),
+              buttonWidth: buttonRect?.width ?? 0,
+              buttonHeight: buttonRect?.height ?? 0,
+              buttonPaddingTop: parseFloat(buttonStyle?.paddingTop || '0'),
+              buttonPaddingLeft: parseFloat(buttonStyle?.paddingLeft || '0'),
+              buttonFlexGrow: parseFloat(buttonStyle?.flexGrow || '0')
+            };
+          });
+          assert.equal(rowMetrics.display, 'inline-flex',
+            profile.name + ': short action frames must shrink-wrap their contents');
+          assert.ok(rowMetrics.width <= densityMetrics.cardWidth * .86,
+            profile.name + ': checklist action frames must not span the activity card');
+          assert.ok(rowMetrics.paddingTop <= 6.5 && rowMetrics.paddingLeft <= 8.5,
+            profile.name + ': action-row padding must stay at 6px by 8px');
+          assert.equal(rowMetrics.buttonFlexGrow, 0,
+            profile.name + ': action button must not expand inside its frame');
+          assert.ok(rowMetrics.buttonPaddingTop <= 4.5
+              && rowMetrics.buttonPaddingLeft <= 8.5,
+            profile.name + ': action button padding must stay at 4px by 8px');
+          assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
+            profile.name + ': action button height must stay within its compact touch-size range');
         }
         const launchers = card.locator('.guide-quote-launch');
         if (await launchers.count()) {
@@ -485,6 +552,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         return {
           card: box('#view-diary > .card-lavender')?.width ?? 0,
           notes: box('#diary-additional-notes')?.width ?? 0,
+          location: box('#diary-location-history')?.width ?? 0,
           composer: box('#diary-note-composer')?.width ?? 0,
           emptyNote: box('#diary-additional-notes-list > li')?.width ?? 0,
           viewportWidth: window.innerWidth
@@ -496,12 +564,14 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         profile.name + ': Diary sections must fit inside the main frame');
       assert.ok(diaryMetrics.composer > 0 && diaryMetrics.composer <= diaryMetrics.notes,
         profile.name + ': note composer must remain inside its section frame');
-      if (profile.viewport.width >= 481) {
-        assert.ok(diaryMetrics.notes < diaryMetrics.card * .96,
-          profile.name + ': Diary section frame must be narrower than its parent');
-        assert.ok(diaryMetrics.emptyNote < diaryMetrics.notes * .96,
-          profile.name + ': short Diary empty-state frames must fit their message');
-      }
+      assert.ok(diaryMetrics.location > 0 && diaryMetrics.location <= 360,
+        profile.name + ': Location History frame must respect the 360px panel cap');
+      assert.ok(diaryMetrics.notes <= 360 && diaryMetrics.notes < diaryMetrics.card * .9,
+        profile.name + ': Saved Notes frame must be visibly narrower than the Diary card');
+      assert.ok(diaryMetrics.composer <= 330 && diaryMetrics.composer < diaryMetrics.notes * .94,
+        profile.name + ': note composer must stay content-sized inside Saved Notes');
+      assert.ok(diaryMetrics.emptyNote < diaryMetrics.notes * .96,
+        profile.name + ': short Diary empty-state frames must fit their message');
 
       assert.deepEqual(pageErrors, [],
         profile.name + ': checklist interaction must not throw browser runtime errors');
