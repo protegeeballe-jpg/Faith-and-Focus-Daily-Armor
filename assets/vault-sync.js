@@ -414,16 +414,24 @@ async function requestVoiceNoteAttachment(dateString, id, {
     let result = {};
     try { result = await response.json(); } catch { result = {}; }
     if (!response.ok) {
-      if (response.status === 401) throw new Error('Your device session expired. Sign in again before synchronizing voice notes.');
-      if (response.status === 404) return null;
-      if (response.status === 413) throw new Error('An encrypted voice-note segment exceeds the request limit. Its local copy remains saved.');
-      if (response.status === 429) throw new Error(result.error || 'The cloud service is receiving too many requests. Try again later.');
-      throw new Error(result.error || 'Voice-note synchronization failed (HTTP ' + response.status + ').');
+      if (response.status === 404 && !uploading) return null;
+      const error = new Error(
+        result.error || 'Voice-note synchronization failed (HTTP ' + response.status + ').'
+      );
+      error.status = response.status;
+      error.response = result;
+      if (response.status === 401) error.code = 'VAULT_SESSION_EXPIRED';
+      if (response.status === 409) error.code = 'VOICE_NOTE_CONFLICT';
+      if (response.status === 429 || response.status >= 500) error.transient = true;
+      throw error;
     }
     return result;
   } catch (error) {
     if (error instanceof TypeError || error?.name === 'NetworkError') {
-      throw new Error('Voice-note synchronization is temporarily unavailable. The encrypted recording remains saved on this device.');
+      const networkError = new Error('Voice-note synchronization is temporarily unavailable. The encrypted recording remains saved on this device.');
+      networkError.transient = true;
+      networkError.cause = error;
+      throw networkError;
     }
     throw error;
   } finally {
@@ -431,29 +439,132 @@ async function requestVoiceNoteAttachment(dateString, id, {
   }
 }
 
-async function uploadPendingVoiceNoteAttachments(dateString) {
-  if (!activeVault || activeVault.offlineOnly === true) return 0;
-  const records = await exportEncryptedVoiceNotesForDateFull(dateString);
-  let uploaded = 0;
-  for (const record of records) {
-    if (record.remoteUploaded === true) continue;
+function scheduleVoiceNoteUploadRetry(dateString) {
+  if (!isValidDateString(dateString) || voiceUploadRetryTimers.has(dateString)) return;
+  const attempt = (voiceUploadRetryAttempts.get(dateString) || 0) + 1;
+  voiceUploadRetryAttempts.set(dateString, attempt);
+  const delay = Math.min(5 * 60_000, 5_000 * (2 ** Math.min(attempt - 1, 6)));
+  const timer = window.setTimeout(() => {
+    voiceUploadRetryTimers.delete(dateString);
+    if (activeVault && activeVault.offlineOnly !== true && window.navigator?.onLine !== false) {
+      queueVaultSync({ dateString });
+    }
+  }, delay);
+  voiceUploadRetryTimers.set(dateString, timer);
+}
+
+function clearVoiceNoteUploadRetry(dateString) {
+  const timer = voiceUploadRetryTimers.get(dateString);
+  if (timer !== undefined) window.clearTimeout(timer);
+  voiceUploadRetryTimers.delete(dateString);
+  voiceUploadRetryAttempts.delete(dateString);
+}
+
+async function resolveVoiceNoteChunkConflict(dateString, record, index, expectedChunk, ciphertextLength, totalChunks) {
+  // A 409 is only treated as an idempotent success after a read proves that
+  // the exact encrypted bytes and attachment metadata already exist remotely.
+  const firstChunk = await requestVoiceNoteAttachment(dateString, record.id, { index: 0 });
+  if (!firstChunk) return 'conflict';
+  if (firstChunk.id !== record.id || firstChunk.dateString !== dateString
+      || firstChunk.ciphertextLength !== ciphertextLength
+      || firstChunk.totalChunks !== totalChunks) return 'conflict';
+
+  const existing = index === 0
+    ? firstChunk
+    : await requestVoiceNoteAttachment(dateString, record.id, { index });
+  if (!existing) return 'conflict';
+  if (existing.id === record.id && existing.dateString === dateString
+      && existing.index === index && existing.totalChunks === totalChunks
+      && existing.ciphertextLength === ciphertextLength
+      && existing.ciphertextChunk === expectedChunk) return 'already-stored';
+  return 'conflict';
+}
+
+async function uploadVoiceNoteRecord(dateString, initialRecord) {
+  let record = initialRecord;
+  let rekeyed = false;
+
+  for (;;) {
     const ciphertextLength = record.ciphertext.length;
     const totalChunks = Math.ceil(ciphertextLength / VOICE_NOTE_ATTACHMENT_CHUNK_CHARS);
+    let restartWithNewId = false;
+
     for (let index = 0; index < totalChunks; index += 1) {
       const start = index * VOICE_NOTE_ATTACHMENT_CHUNK_CHARS;
       const ciphertextChunk = record.ciphertext.slice(start, start + VOICE_NOTE_ATTACHMENT_CHUNK_CHARS);
-      const result = await requestVoiceNoteAttachment(dateString, record.id, {
-        index, ciphertextChunk, ciphertextLength, totalChunks
-      });
+      let result;
+      try {
+        result = await requestVoiceNoteAttachment(dateString, record.id, {
+          index, ciphertextChunk, ciphertextLength, totalChunks
+        });
+      } catch (error) {
+        if (error.status !== 409) throw error;
+        const resolution = await resolveVoiceNoteChunkConflict(
+          dateString, record, index, ciphertextChunk, ciphertextLength, totalChunks
+        );
+        if (resolution === 'already-stored') continue;
+        if (rekeyed) {
+          const permanentConflict = new Error('A replacement voice-note identifier also conflicts with existing cloud data. The encrypted local recording remains preserved.');
+          permanentConflict.code = 'VOICE_NOTE_CONFLICT';
+          throw permanentConflict;
+        }
+        // The identifier is already bound to different remote bytes. Re-encrypt
+        // the local recording under a fresh ID; never overwrite the remote copy.
+        record = await rekeyEncryptedVoiceNoteRecord(record.id, activeVault.encryptionKey);
+        rekeyed = true;
+        restartWithNewId = true;
+        break;
+      }
+
       if (result?.id !== record.id || result?.dateString !== dateString
           || result?.stored !== true || result?.index !== index || result?.totalChunks !== totalChunks) {
         throw new Error('The cloud did not confirm encrypted voice-note segment ' + (index + 1) + ' of ' + totalChunks + '. The full local recording remains queued.');
       }
     }
+
+    if (restartWithNewId) continue;
     await markEncryptedVoiceNoteUploaded(record.id);
-    uploaded += 1;
+    return { uploaded: true, rekeyed, id: record.id };
   }
-  return uploaded;
+}
+
+async function uploadPendingVoiceNoteAttachments(dateString) {
+  if (!activeVault || activeVault.offlineOnly === true) return { uploaded: 0, pending: 0 };
+  const records = await exportEncryptedVoiceNotesForDateFull(dateString);
+  let uploaded = 0;
+  let pending = 0;
+  let retryableFailure = false;
+  let attempted = false;
+
+  for (const record of records) {
+    if (record.remoteUploaded === true) continue;
+    attempted = true;
+    try {
+      await uploadVoiceNoteRecord(dateString, record);
+      uploaded += 1;
+    } catch (error) {
+      if (error?.code === 'VAULT_SESSION_EXPIRED') throw error;
+      pending += 1;
+      if (error?.transient === true || error?.status === 429 || error?.status >= 500) {
+        retryableFailure = true;
+      }
+      console.warn('[Vault Sync] One encrypted voice note remains local; other notes and the daily packet can continue.', {
+        dateString,
+        voiceNoteId: record.id,
+        status: error?.status || null,
+        code: error?.code || null,
+        error: error?.message || String(error)
+      });
+    }
+  }
+
+  // Rebuild the date packet after attachment attempts. Only recordings marked
+  // remoteUploaded by a confirmed upload (or exact remote match) enter its
+  // manifest list. Unpublished local audio remains safely in IndexedDB.
+  if (attempted || uploaded) await captureDailyPacket(dateString);
+  if (retryableFailure) scheduleVoiceNoteUploadRetry(dateString);
+  else if (pending === 0) clearVoiceNoteUploadRetry(dateString);
+  return { uploaded, pending };
 }
 
 async function uploadAllPendingVoiceNoteAttachments() {
