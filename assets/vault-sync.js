@@ -934,8 +934,30 @@ function sameVoiceNoteManifest(leftRecord, rightRecord) {
 async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
   const localRecords = await exportEncryptedVoiceNotesForDateFull(bundle.dateString);
   const localById = new Map(localRecords.map(record => [record.id, record]));
-  const remoteById = new Map((remoteBundle?.voiceNotes || []).map(record => [record.id, record]));
   const rekeyedIds = new Set();
+
+  // Keep older full-ciphertext packets recoverable before filtering them from
+  // the manifest list. If the local store already has different bytes under
+  // that ID, re-key that copy first so neither recording overwrites the other.
+  for (const note of bundle.voiceNotes || []) {
+    if (typeof note.ciphertext !== 'string') continue;
+    const local = localById.get(note.id);
+    if (!local) {
+      await saveEncryptedVoiceNoteRecord(note, { remoteUploaded: false });
+      localById.set(note.id, await getEncryptedVoiceNoteRecord(note.id));
+      scheduleVoiceNoteUploadRetry(bundle.dateString);
+      continue;
+    }
+    if (!sameVoiceNoteManifest(local, note)) {
+      await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
+      rekeyedIds.add(note.id);
+      await saveEncryptedVoiceNoteRecord(note, { remoteUploaded: false });
+      localById.set(note.id, await getEncryptedVoiceNoteRecord(note.id));
+      scheduleVoiceNoteUploadRetry(bundle.dateString);
+    }
+  }
+
+  const remoteById = new Map((remoteBundle?.voiceNotes || []).map(record => [record.id, record]));
 
   // A local recording that shares an ID with different remote metadata is a
   // real identity collision. Preserve its plaintext audio through an atomic
