@@ -49,11 +49,13 @@ test('voice attachment upload failure never suppresses sign-in vault reconciliat
     syncSource.indexOf('function handleLocalDataChanged(event)')
   );
   assert.match(startup, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(startup, /await synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
-  assert.doesNotMatch(startup, /if \(voiceAttachmentsReady\)\s*\{\s*await synchronizeVault/);
+  assert.match(startup, /uploadSummary\.pending === 0/);
+  assert.match(startup, /synchronizeVault\(\{ refreshAll: true, forceRemoteRead: true \}\)/);
+  assert.doesNotMatch(startup, /allowUploads|if \(voiceAttachmentsReady\)\s*\{\s*await synchronizeVault/);
   assert.match(syncSource, /async function restoreDailyBundle[\s\S]*?let voiceNotesReady = true/);
   assert.match(syncSource, /return \{ voiceNotesReady, applied: true \}/);
-  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, allowUploads = true, forceRemoteRead = false \}/);
+  assert.match(syncSource, /async function performVaultSync\(\{ dateStrings = \[\], refreshAll = false, forceRemoteRead = false \}/);
+  assert.match(syncSource, /pendingVoiceNoteCount: voiceNoteStoreAvailable \? pendingVoiceNotes\.length : null/);
 });
 
 test('one failed date does not stop other dates from reconciling', () => {
@@ -67,9 +69,10 @@ test('full sign-in refresh rehydrates every indexed date even when local version
     syncSource.indexOf('export async function startVaultSync(credentials) {'),
     syncSource.indexOf('function handleLocalDataChanged(event)')
   );
-  assert.match(startup, /synchronizeVault\(\{ refreshAll: true, allowUploads: voiceAttachmentsReady, forceRemoteRead: true \}\)/);
-  assert.match(syncSource, /async function reconcileDay\(dateString, remoteUpdatedAt, \{ allowUploads = true, forceRemoteRead = false \}/);
-  assert.match(syncSource, /async function reconcileDayOnce\(dateString, remoteUpdatedAt, \{ allowUploads = true, forceRemoteRead = false \}/);
+  assert.match(startup, /synchronizeVault\(\{ refreshAll: true, forceRemoteRead: true \}\)/);
+  assert.match(syncSource, /async function reconcileDay\(dateString, remoteUpdatedAt, \{ forceRemoteRead = false \}/);
+  assert.match(syncSource, /async function reconcileDayOnce\(dateString, remoteUpdatedAt, \{ forceRemoteRead = false \}/);
+  assert.doesNotMatch(syncSource, /allowUploads/);
   const cleanRestore = syncSource.slice(syncSource.indexOf('const localRemote = local.remoteUpdatedAt'), syncSource.indexOf('export function selectVaultReconciliationDates'));
   assert.match(cleanRestore, /if \(forceRemoteRead \|\| remoteVersionChanged\)/);
   assert.match(cleanRestore, /const remote = await fetchRemoteDay\(dateString\)/);
@@ -95,7 +98,9 @@ test('ADD can await one date-specific sync without forcing a full vault upload',
   const syncDate = syncSource.slice(start, end);
   assert.match(syncDate, /await captureDailyPacket\(dateString\)/);
   assert.match(syncDate, /await uploadPendingVoiceNoteAttachments\(dateString\)/);
-  assert.match(syncDate, /synchronizeVault\(\{[\s\S]*?dateStrings: \[dateString\],[\s\S]*?allowUploads: voiceAttachmentsReady/);
+  assert.match(syncDate, /synchronizeVault\(\{ dateStrings: \[dateString\] \}\)/);
+  assert.doesNotMatch(syncDate, /allowUploads|voiceAttachmentsReady/);
+  assert.match(syncDate, /error\?\.code === 'VAULT_SESSION_EXPIRED'/);
   assert.doesNotMatch(syncDate, /refreshAll:\s*true/);
   assert.match(syncDate, /localChangeSyncQueue\.catch\(\(\) => \{\}\)\.then/);
 });
@@ -103,7 +108,11 @@ test('ADD can await one date-specific sync without forcing a full vault upload',
 test('cross-device reconciliation avoids Cloudflare writes when the merged packet already matches remote', () => {
   assert.match(syncSource, /canonicalBundle\(mergedBundle\) === canonicalBundle\(remoteBundle\)/);
   assert.match(syncSource, /markLocalDailyPacketSynced\([\s\S]*?remote\.packet/);
-  assert.match(syncSource, /allowUploads/);
+  const resolver = syncSource.indexOf('await resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)');
+  const merge = syncSource.indexOf('await mergeDailyBundles(localBundle, remoteBundle', resolver);
+  assert.ok(resolver >= 0 && merge > resolver, 'voice-note ID collisions must be resolved before bundle merging');
+  assert.match(syncSource, /const filteredMergedBundle = await filterUnconfirmedVoiceNotes\(mergedBundle, remoteBundle\)/);
+  assert.doesNotMatch(syncSource, /allowUploads/);
 });
 
 test('live cross-device sync uses an authenticated WebSocket and changed-date reconciliation', () => {
@@ -141,7 +150,13 @@ test('Diary writes and voice notes share a debounced cloud queue with guarded fo
   assert.match(syncSource, /function queueVaultSync\(/);
   assert.match(syncSource, /await uploadPendingVoiceNoteAttachments\(pendingDate\)/);
   assert.match(syncSource, /await uploadAllPendingVoiceNoteAttachments\(\)/);
-  assert.match(syncSource, /await synchronizeVault\(\{[\s\S]*?dateStrings: dates,[\s\S]*?refreshAll: shouldRefreshAll,[\s\S]*?allowUploads: voiceAttachmentsReady/);
+  assert.match(syncSource, /await synchronizeVault\(\{[\s\S]*?dateStrings: dates,[\s\S]*?refreshAll: shouldRefreshAll[\s\S]*?\}\)/);
+  assert.doesNotMatch(syncSource, /allowUploads/);
+  const queueStart = syncSource.indexOf('const operation = localChangeSyncQueue.catch(() => {}).then(async () => {', syncSource.indexOf('function queueVaultSync('));
+  const queueEnd = syncSource.indexOf('localChangeSyncQueue = operation.catch', queueStart);
+  const queuedOperation = syncSource.slice(queueStart, queueEnd);
+  assert.ok(queuedOperation.indexOf('try {') < queuedOperation.indexOf('await uploadAllPendingVoiceNoteAttachments()'));
+  assert.ok(queuedOperation.indexOf('await synchronizeVault({') > queuedOperation.indexOf('catch (error)'));
   assert.match(syncSource, /function handleLocalDataChanged\(event\)[\s\S]*?scheduleCapture\(/);
   assert.match(syncSource, /function handleOnline\(\)/);
   assert.ok(syncSource.includes("window.addEventListener('online', handleOnline);"));
@@ -222,4 +237,31 @@ test('regular sign-in waits for full vault reconciliation before revealing the a
   assert.match(syncSource, /pendingVoiceNoteHydrationDates\.delete\(bundle\.dateString\)/);
   assert.match(syncSource, /complete: pendingDates\.length === 0/);
   assert.match(syncSource, /voiceAttachmentsReady\s*\}/);
+});
+
+test('voice-note attachment hydration failures do not gate merged daily packet publication', () => {
+  const start = syncSource.indexOf('async function reconcileDayOnce(');
+  const end = syncSource.indexOf('function canonicalBundle(', start);
+  const reconcile = syncSource.slice(start, end);
+  const publish = reconcile.indexOf("const result = await vaultRequest('/vault/' + activeVault.vaultId + '/day/' + dateString");
+  assert.ok(publish > 0);
+  assert.doesNotMatch(reconcile, /await hydrateVoiceNoteAttachments\(dateString, mergedBundle\.voiceNotes\)/);
+  assert.match(reconcile, /Local manifests that have not been accepted by the Worker are excluded/);
+  assert.match(reconcile, /A newer local edit was kept safely/);
+});
+
+test('conflicting local voice-note identifiers are re-keyed atomically before daily merge', () => {
+  assert.match(syncSource, /async function resolveLocalVoiceNoteIdentityConflicts\(localBundle, remoteBundle\)/);
+  assert.match(syncSource, /await rekeyEncryptedVoiceNoteRecord\(id, activeVault\.encryptionKey\)/);
+  assert.match(syncSource, /\.filter\(note => !rekeyedIds\.has\(note\.id\)\)/);
+  assert.match(syncSource, /currentLocal\.packet !== local\.packet/);
+  assert.match(syncSource, /VOICE_NOTE_IDENTITY_CONFLICT/);
+  assert.match(syncSource, /function sameVoiceNoteManifest\(/);
+});
+
+test('local voice-note upload state is included in reconciliation completeness', () => {
+  assert.match(syncSource, /pendingVoiceNotes = \(await exportEncryptedVoiceNotes\(\)\)/);
+  assert.match(syncSource, /\.filter\(record => record\.remoteUploaded !== true/);
+  assert.match(syncSource, /pendingVoiceNotes\.map\(record => record\.dateString\)/);
+  assert.match(syncSource, /complete: pendingDates\.length === 0 && voiceNoteStoreAvailable/);
 });
