@@ -599,13 +599,16 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
       continue;
     }
     const local = localById.get(note.id);
-    if (local) {
-      const localManifest = createVoiceNoteAttachmentManifest(local);
-      if (JSON.stringify(localManifest) !== JSON.stringify(note)) {
-        throw new Error('A local voice note does not match the synchronized manifest. Both copies remain preserved.');
-      }
+    if (local && sameVoiceNoteManifest(local, note)) {
       hydrated.push(local);
       continue;
+    }
+    if (local) {
+      // Keep the device's recording under a fresh encrypted ID, then retrieve
+      // the distinct cloud recording that legitimately owns the old ID.
+      await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
+      localById.delete(note.id);
+      scheduleCapture(dateString);
     }
     const chunks = [];
     for (let index = 0; index < note.attachmentChunkCount; index += 1) {
@@ -927,11 +930,19 @@ async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
     }
   }
 
-  const voiceNotes = (bundle.voiceNotes || []).filter(note => {
-    if (rekeyedIds.has(note.id)) return false;
-    if (confirmedIds.has(note.id)) return true;
+  const voiceNotes = (bundle.voiceNotes || []).flatMap(note => {
+    if (rekeyedIds.has(note.id)) return [];
+    const local = localById.get(note.id);
+    if (local?.remoteUploaded === true) {
+      // The current locally stored ciphertext is the one the Worker accepted.
+      // Repair a stale packet manifest from that exact record, never publish
+      // metadata that merely happens to share its identifier.
+      return [sameVoiceNoteManifest(local, note)
+        ? note
+        : createVoiceNoteAttachmentManifest(local)];
+    }
     const remote = remoteById.get(note.id);
-    return Boolean(remote && sameVoiceNoteManifest(remote, note));
+    return remote && sameVoiceNoteManifest(remote, note) ? [remote] : [];
   });
   return {
     bundle: { ...bundle, voiceNotes },
@@ -956,7 +967,13 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
       : voiceNoteManifestForComparison(localPacketRecord);
     if (sameVoiceNoteManifest(localCandidate, remoteRecord)) continue;
 
-    if (!localRecord) {
+    if (!localRecord && typeof localPacketRecord?.ciphertext === 'string') {
+      // Older packets may still carry complete encrypted audio even when the
+      // newer attachment store has no copy. Materialize it before re-keying.
+      await saveEncryptedVoiceNoteRecord(localPacketRecord, { remoteUploaded: false });
+      localById.set(id, await getEncryptedVoiceNoteRecord(id));
+    }
+    if (!localById.get(id)) {
       const error = new Error('A conflicting local voice-note packet has no matching encrypted recording in local storage. Both device copies remain preserved.');
       error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
       throw error;
