@@ -950,7 +950,6 @@ async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
     }
     if (!sameVoiceNoteManifest(local, note)) {
       await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
-      rekeyedIds.add(note.id);
       await saveEncryptedVoiceNoteRecord(note, { remoteUploaded: false });
       localById.set(note.id, await getEncryptedVoiceNoteRecord(note.id));
       scheduleVoiceNoteUploadRetry(bundle.dateString);
@@ -1002,6 +1001,13 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
     const localRecord = localById.get(id);
     const localPacketRecord = localPacketById.get(id);
     if (!localRecord && !localPacketRecord) continue;
+
+    if (localRecord && typeof localPacketRecord?.ciphertext === 'string'
+        && !sameVoiceNoteManifest(localRecord, localPacketRecord)) {
+      const error = new Error('The local packet and attachment store contain different recordings under the same identifier. Both copies remain preserved for safe recovery.');
+      error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
+      throw error;
+    }
 
     if (!localRecord && typeof localPacketRecord?.ciphertext === 'string') {
       // Older packets may still carry complete encrypted audio even when the
