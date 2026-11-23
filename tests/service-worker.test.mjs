@@ -41,6 +41,7 @@ test('the offline shell includes every page and runtime dependency needed by the
         './assets/tailwind.generated.css',
         './assets/app.css',
         './assets/garden.css',
+        './assets/polish.css',
         './assets/legal.css',
         './assets/app.js',
         './assets/guide-quotes.js',
