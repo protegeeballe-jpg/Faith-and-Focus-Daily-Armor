@@ -380,56 +380,100 @@ body { line-height: var(--ff-ui-body-leading); }
   #view-checklist .step-card { padding: .7rem .8rem !important; }
 }
 
-/* Content-led frame sizing: narrower surfaces with rows sized to their content. */
+
+/* Precision sizing: fixed padding values and content-led surfaces. */
 :root {
-  --ff-content-column-max: 42rem;
-  --ff-content-card-max: 38rem;
-  --ff-content-panel-max: 30rem;
+  --ff-content-column-width: 48rem;
+  --ff-content-card-width: 36rem;
+  --ff-content-panel-width: 24rem;
+  --ff-frame-pad-y: 8px;
+  --ff-frame-pad-x: 10px;
+  --ff-row-pad-y: 6px;
+  --ff-row-pad-x: 8px;
+  --ff-button-pad-y: 4px;
+  --ff-button-pad-x: 8px;
 }
+
 .garden-shell {
-  width: min(86vw, var(--ff-content-column-max));
-  max-width: var(--ff-content-column-max);
-}
-#view-checklist > main {
-  width: 100%;
-  max-width: 40rem;
-  margin-inline: auto !important;
-}
-#view-checklist .step-card {
-  width: 100%;
-  max-width: var(--ff-content-card-max);
-  margin-inline: auto;
-}
-#view-checklist .guided-task-row,
-#view-checklist .step-card .ff-guide-row,
-#view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
-#view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
-  width: fit-content;
-  max-width: 100%;
+  width: min(calc(33vw + 240px), calc(100vw - 16px), var(--ff-content-column-width));
+  max-width: var(--ff-content-column-width);
   box-sizing: border-box;
 }
-#view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
-#view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
-  flex-wrap: wrap;
-  justify-content: flex-start;
-  gap: .55rem;
+
+.garden-room-card,
+.garden-outdoor-card {
+  width: 100%;
+  max-width: 42rem;
+  margin-inline: auto;
+  box-sizing: border-box;
 }
+
+#view-checklist,
+#view-diary:not(.hidden) {
+  width: min(100%, var(--ff-content-card-width));
+  max-width: var(--ff-content-card-width);
+  margin-inline: auto !important;
+  box-sizing: border-box;
+}
+
+#view-checklist > main {
+  width: 100%;
+  max-width: var(--ff-content-card-width);
+  margin-inline: auto !important;
+  padding: 0 8px 12px !important;
+  box-sizing: border-box;
+}
+
+#view-checklist .step-card {
+  width: 100%;
+  max-width: var(--ff-content-card-width);
+  margin-inline: auto;
+  padding: var(--ff-frame-pad-y) var(--ff-frame-pad-x) !important;
+  box-sizing: border-box;
+}
+
+#view-checklist .watercolor-progress,
+#view-checklist .ecosystem-card,
+#view-diary:not(.hidden) > .card-lavender,
+#view-diary .writing-lock-card,
+#view-diary .diary-additional-notes,
+#view-diary #diary-location-history,
+#view-diary #diary-voice-notes,
+#view-diary .diary-note-composer,
+#little-garden .garden-planting-panel,
+#little-garden .garden-growth-card,
+.drive-sync-panel,
+#view-pin > .card-yellow,
+#modal-content-box,
+.settings-modal-header,
+.settings-modal-content,
+.settings-disclosure > summary {
+  padding: var(--ff-frame-pad-y) var(--ff-frame-pad-x) !important;
+  box-sizing: border-box;
+}
+
 #view-diary:not(.hidden) > .card-lavender {
-  width: min(100%, var(--ff-content-card-max));
+  width: 100%;
+  max-width: var(--ff-content-card-width);
   margin-inline: auto;
 }
+
 #view-diary .diary-additional-notes,
 #view-diary #diary-location-history,
 #view-diary #diary-voice-notes {
-  width: min(100%, var(--ff-content-panel-max));
+  width: min(88%, var(--ff-content-panel-width));
+  max-width: var(--ff-content-panel-width);
   margin-inline: auto;
   box-sizing: border-box;
 }
+
 #view-diary .diary-note-composer {
-  width: min(100%, 28rem);
+  width: min(92%, 22rem);
+  max-width: 22rem;
   margin-inline: auto;
   box-sizing: border-box;
 }
+
 #view-diary #diary-additional-notes-list > li,
 #view-diary #diary-location-log > li,
 #view-diary #diary-voice-note-list > li {
@@ -437,12 +481,298 @@ body { line-height: var(--ff-ui-body-leading); }
   max-width: 100%;
   box-sizing: border-box;
 }
+
+#view-diary #diary-location-log > li,
+#view-diary #diary-voice-note-list > li,
+#view-diary .diary-note-card,
+#view-diary .diary-additional-notes-empty {
+  padding: 6px 8px !important;
+}
+
+#view-diary .diary-note-composer-input,
+#view-diary .writing-input,
+#view-checklist .step-card textarea,
+#vault-login-form input,
+#vault-signup-form input {
+  padding: 8px 10px !important;
+  box-sizing: border-box;
+}
+
+#view-checklist .step-card > div:first-child {
+  margin-bottom: 6px !important;
+}
+
+#view-checklist .step-card .grid {
+  gap: 8px !important;
+}
+
+#view-checklist .step-card .space-y-4 > :not([hidden]) ~ :not([hidden]),
+#view-checklist .step-card .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 6px !important;
+}
+
+#view-checklist .guided-task-row,
+#view-checklist .step-card .ff-guide-row,
+#view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+#view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+  display: inline-flex !important;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: var(--ff-row-pad-y) var(--ff-row-pad-x) !important;
+  margin-inline: 0;
+  box-sizing: border-box;
+}
+
+#view-checklist .guided-task-row {
+  min-height: 0;
+}
+
+#view-checklist .guided-task-row .guide-quote-launch,
+#view-checklist .guided-task-row:not(:has(.guide-checkbox-label.is-unlocked)) > .guide-quote-launch {
+  flex: 0 0 auto !important;
+  width: fit-content;
+  min-width: 0;
+}
+
+#view-checklist .guide-quote-launch,
+#view-checklist .ff-guide-row button,
+#view-checklist .step-card button[data-action="openModal"],
+.garden-action-button,
+.garden-small-button,
+#view-checklist .checklist-header-button,
+#view-checklist .checklist-step-navigation button,
+.diary-add-note-button,
+.diary-archive-back,
+.diary-return-today {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px !important;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  line-height: 1.15;
+  white-space: normal;
+}
+
+#view-checklist .checklist-step-navigation {
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px !important;
+}
+
+#view-checklist #btn-prev,
+#view-checklist #btn-next,
+#view-checklist .checklist-step-navigation #btn-prev,
+#view-checklist .checklist-step-navigation #btn-next {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px !important;
+  padding: 4px 8px !important;
+  flex: 0 0 auto !important;
+  flex-grow: 0 !important;
+  white-space: nowrap;
+}
+
+#view-checklist .checklist-step-navigation button {
+  flex-grow: 0 !important;
+  white-space: nowrap;
+}
+
+#view-diary section.mt-5 {
+  margin-top: 8px !important;
+}
+
+.settings-modal .garden-action-button {
+  min-height: 36px !important;
+  padding: 4px 8px !important;
+}
+
+#view-diary .diary-notebook-button {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 8px !important;
+  box-sizing: border-box;
+}
+
+#diary-key-action {
+  width: fit-content;
+  max-width: 100%;
+}
+
+#view-checklist .ff-guide-row button {
+  flex-grow: 0 !important;
+}
+
+#little-garden .garden-topbar {
+  margin-bottom: 4px;
+  padding: 6px 10px !important;
+}
+
+#little-garden .garden-room-actions {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  gap: 6px;
+  padding: 6px !important;
+}
+
+#little-garden .garden-room-actions .garden-action-button {
+  width: fit-content !important;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
+}
+
+#little-garden .garden-planting-panel {
+  width: min(90%, 28rem);
+  max-width: 28rem;
+  padding: var(--ff-frame-pad-y) var(--ff-frame-pad-x) !important;
+}
+
+#little-garden .garden-choice-grid,
+#little-garden .garden-growth-grid {
+  gap: 8px;
+  padding: 8px;
+}
+
+#little-garden .garden-growth-card {
+  padding: 8px !important;
+}
+
+#little-garden .garden-action-button,
+#little-garden .garden-small-button {
+  min-height: 36px !important;
+}
+
+#little-garden .garden-status {
+  width: min(92%, 36rem);
+  max-width: 36rem;
+  padding: 6px 8px !important;
+}
+
 .settings-modal {
-  width: min(86vw, var(--ff-content-card-max));
+  width: min(calc(33vw + 240px), calc(100vw - 16px), var(--ff-content-column-width));
+  max-width: var(--ff-content-column-width);
+  box-sizing: border-box;
 }
 
-@media (max-width: 480px) {
-  .garden-shell { width: 94vw; }
-  .settings-modal { width: calc(100% - 1rem); }
+.settings-disclosure > summary {
+  min-height: 40px;
+  padding: 6px 9px !important;
 }
 
+#view-pin > .card-yellow {
+  width: min(100%, 24rem);
+  padding: 10px !important;
+}
+
+#vault-login-submit,
+#vault-signup-form button,
+#diary-key-action,
+#modal-complete-btn {
+  padding: 6px 10px !important;
+  box-sizing: border-box;
+}
+
+@media (max-width: 620px) {
+  #view-checklist > main {
+    padding: 0 6px calc(5rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  #view-checklist .step-card {
+    padding: 7px 8px !important;
+  }
+
+  #view-checklist .guided-task-row,
+  #view-checklist .step-card .ff-guide-row,
+  #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+  #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+    gap: 6px;
+    padding: 6px 7px !important;
+  }
+
+  #view-checklist .guide-quote-launch,
+  #view-checklist .ff-guide-row button,
+  #view-checklist .step-card button[data-action="openModal"],
+  .garden-action-button,
+  .garden-small-button,
+  #view-checklist .checklist-header-button,
+  #view-checklist .checklist-step-navigation button,
+  .diary-add-note-button,
+  .diary-archive-back,
+  .diary-return-today {
+    min-height: 44px !important;
+    padding: 4px 8px !important;
+  }
+
+  #view-checklist .checklist-step-navigation {
+    gap: 6px;
+    padding: 4px !important;
+  }
+
+  #view-checklist #btn-prev,
+  #view-checklist #btn-next,
+  #view-checklist .checklist-step-navigation #btn-prev,
+  #view-checklist .checklist-step-navigation #btn-next {
+    min-height: 44px !important;
+    padding: 4px 8px !important;
+    flex: 0 0 auto !important;
+    flex-grow: 0 !important;
+  }
+
+  #little-garden .garden-action-button,
+  #little-garden .garden-small-button,
+  .settings-modal .garden-action-button,
+  .settings-disclosure > summary {
+    min-height: 44px !important;
+    padding: 4px 8px !important;
+  }
+
+  #view-checklist .step-card .grid label {
+    padding: 7px !important;
+  }
+
+  #view-diary:not(.hidden) > .card-lavender {
+    padding: 7px 8px !important;
+  }
+
+  #view-diary .diary-additional-notes,
+  #view-diary #diary-location-history,
+  #view-diary #diary-voice-notes {
+    width: 88%;
+    padding: 7px 8px !important;
+  }
+
+  #view-diary .diary-note-composer {
+    width: 92%;
+    padding: 6px !important;
+  }
+
+  #little-garden .garden-room-actions {
+    gap: 5px;
+    padding: 5px !important;
+  }
+
+  #little-garden .garden-growth-grid {
+    gap: 6px;
+    padding: 6px !important;
+  }
+
+  #little-garden .garden-growth-card {
+    padding: 7px !important;
+  }
+
+  #view-pin > .card-yellow {
+    padding: 9px !important;
+  }
+
+  #modal-content-box {
+    padding: 8px !important;
+  }
+}

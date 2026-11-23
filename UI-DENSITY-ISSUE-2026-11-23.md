@@ -9,6 +9,8 @@ App typography and internal spacing feel oversized and consume more screen space
 
 A follow-up visual review on 23 November 2026 identified a separate width problem: outer frames and row-level backgrounds stretch across most of the available viewport even when their labels and actions occupy a much smaller portion. Padding reduction alone does not solve this. Main content needs a deliberate centered reading column, short action rows should size to their contents, and nested Diary panels should be narrower than their parent while text-entry fields retain practical writing width.
 
+The next review found that the previous width acceptance bound was too permissive: a frame occupying 86% of the viewport could still pass a 91% maximum. Replace percentage-only assumptions with measured geometry at each viewport. Use 8px vertical / 10px horizontal frame padding, 6px / 8px action-row padding, 4px / 8px button padding, and non-growing content-width buttons. Maintain 44px minimum control height at phone widths; desktop controls may use a 36px minimum.
+
 ## Reference
 
 Use Facebook Messenger only as a high-level reference for compact readability and information density: restrained type sizing, clear hierarchy, comfortable line height, and efficient spacing. Do not reproduce Messenger branding, icons, colors, distinctive components, or exact layouts.
@@ -30,7 +32,11 @@ Basic measurements such as font sizes, line heights, and spacing values are func
 - Reduce oversized headings and body text into a consistent, deliberate type hierarchy.
 - Reduce excessive page, card, form, and section padding.
 - Use available viewport space more efficiently on mobile and desktop.
-- Constrain the shared content column on medium and large screens while preserving usable phone width.
+- Constrain the shared content column using a continuous viewport-width formula, with phone gutters and compact tablet/desktop proportions.
+- Limit frame padding to 8px vertically and 10px horizontally.
+- Limit short action-row padding to 6px vertically and 8px horizontally.
+- Limit button padding to 4px vertically and 8px horizontally; prevent non-primary buttons from growing to fill their containers.
+- Keep phone controls at least 44px high and desktop controls at least 36px high.
 - Let short checklist/action row frames follow their labels and controls instead of stretching to the full card width.
 - Keep nested Diary panels visually narrower than the outer Diary frame without clipping note fields or saved records.
 - Retain comfortable line height, readable controls, focus indicators, and touch targets.
