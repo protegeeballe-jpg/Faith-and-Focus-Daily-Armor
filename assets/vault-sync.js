@@ -599,9 +599,18 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
       throw new Error('A voice-note entry failed validation. Both encrypted copies remain preserved.');
     }
     if (typeof note.ciphertext === 'string') {
-      // Legacy packets embed the full audio, but the separate attachment key
-      // may not exist yet. Queue it for the next authorized upload pass.
-      hydrated.push({ ...note, remoteUploaded: false });
+      const local = localById.get(note.id);
+      if (local && !sameVoiceNoteManifest(local, note)) {
+        await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
+        localById.delete(note.id);
+        rekeyedLocalRecord = true;
+      }
+      // Legacy packets embed full audio. Keep it locally and queue the separate
+      // attachment upload without replacing a different local recording.
+      hydrated.push({
+        ...note,
+        remoteUploaded: local?.remoteUploaded === true && sameVoiceNoteManifest(local, note)
+      });
       continue;
     }
     const local = localById.get(note.id);
