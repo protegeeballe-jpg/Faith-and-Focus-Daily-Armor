@@ -1,0 +1,150 @@
+/*
+ * Faith & Focus: Daily Armor — breathing room (all screen sizes).
+ *
+ * Loaded after app.css and garden.css, and BEFORE mobile.css, so the phone
+ * rules in mobile.css can still refine these on small screens.
+ *
+ * This file only changes spacing, button text size, and button corner shape.
+ * It adds no images, no fonts, no colours and no settings, so your watercolor
+ * paper, washes, and colored-pencil shadows are exactly as they were.
+ * To undo it: delete its <link> in index.html.
+ */
+
+:root {
+  /* One place to tune the space between frames. */
+  --ff-frame-gap: clamp(.45rem, 1.3vh, .8rem);
+  /* Hand-painted corners: slightly uneven, like the Diary panels already use. */
+  --ff-brush-radius: 14px 11px 15px 12px / 12px 15px 11px 14px;
+}
+
+/* ---------- Space between frames ---------- */
+.garden-shell {
+  gap: var(--ff-frame-gap);
+}
+.garden-overlay.garden-room-home .garden-room-actions {
+  gap: .65rem;
+  padding: .7rem .7rem .85rem;
+}
+#view-checklist .step-card .space-y-4 > :not([hidden]) ~ :not([hidden]),
+#view-checklist .step-card .space-y-3 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: .6rem !important;
+}
+#checklist-fit-content > div:first-child {
+  margin-bottom: .55rem;
+}
+.guided-task-row {
+  gap: .65rem;
+  padding: .5rem .75rem;
+}
+#diary-editor-panel > section {
+  margin-top: .85rem;
+}
+#diary-location-log > li,
+#diary-voice-note-list > li {
+  padding: .65rem .8rem;
+}
+.diary-additional-notes-list > li {
+  margin-bottom: .45rem;
+}
+
+/* ---------- Space between button text and button edges ---------- */
+
+/* Forge Room buttons (Checklist, Diary, Garden). */
+.garden-overlay.garden-room-home .garden-room-actions .garden-action-button {
+  padding: .62rem 1.1rem;
+  font-size: .8rem;
+  border-radius: var(--ff-brush-radius);
+}
+.garden-action-button,
+.garden-small-button {
+  padding: .62rem 1.1rem;
+}
+
+/* Checklist toolbar: Room, date and time, Reset. */
+#view-checklist > header .checklist-header-button,
+#view-checklist > header .checklist-room-button,
+#view-checklist > header .checklist-reset-button {
+  min-width: 4rem;
+  min-height: 40px !important;
+  padding: .4rem 1rem !important;
+  font-size: .82rem !important;
+  border-radius: var(--ff-brush-radius);
+}
+#view-checklist > header .checklist-header-date-time {
+  padding: .25rem .8rem !important;
+  gap: .4rem !important;
+}
+#view-checklist > header .checklist-date-input {
+  font-size: .9rem !important;
+}
+#view-checklist > header .checklist-device-clock {
+  min-width: 3.4rem;
+  font-size: .85rem;
+}
+
+/* Read quote and the guide buttons (Breathing, Water, Feel Check, ...). */
+.garden-checklist-scene .guided-task-row .guide-quote-launch {
+  padding: .5rem .95rem !important;
+  gap: .55rem;
+  font-size: .78rem;
+  border-radius: var(--ff-brush-radius);
+}
+#view-checklist button[data-action="openModal"] {
+  min-height: 40px;
+  padding: .5rem 1.05rem;
+  font-size: .78rem;
+  line-height: 1.2;
+  border-radius: 999px;
+  box-shadow: 0 2px 0 rgba(88, 117, 88, .12), inset 0 0 8px rgba(255, 255, 255, .6);
+}
+#view-checklist div:has(> button[data-action="openModal"]) {
+  gap: .75rem;
+  padding: .55rem .85rem;
+  border-radius: 1rem;
+}
+
+/* Previous / Next. */
+#view-checklist .checklist-step-navigation #btn-prev,
+#view-checklist .checklist-step-navigation #btn-next {
+  min-height: 42px !important;
+  padding: .55rem 1.2rem !important;
+  font-size: .85rem !important;
+  border-radius: var(--ff-brush-radius);
+}
+
+/* Diary buttons. */
+.diary-add-note-button {
+  min-height: 2.5rem;
+  padding: .5rem 1.25rem;
+  font-size: .78rem;
+  border-radius: var(--ff-brush-radius);
+}
+.diary-update-button {
+  min-height: 2.5rem;
+  padding: .5rem 1.15rem;
+  font-size: .8rem;
+  border-radius: var(--ff-brush-radius);
+}
+.diary-notebook-button,
+.diary-return-today {
+  min-height: 2.5rem;
+  padding: .45rem 1rem;
+  font-size: .8rem;
+}
+#view-diary [data-action="lockPrivateWriting"] {
+  min-height: 2.5rem;
+  padding: .5rem 1.15rem;
+  font-size: .8rem;
+  border-radius: var(--ff-brush-radius);
+}
+#view-diary #record-btn {
+  padding: .6rem 1.3rem;
+  font-size: .82rem;
+  white-space: nowrap;
+  border-radius: var(--ff-brush-radius);
+}
+#view-diary [data-action="copyLocationCoordinates"] {
+  min-height: 2.25rem;
+  padding: .35rem .85rem;
+  font-size: .72rem;
+}
