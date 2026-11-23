@@ -299,6 +299,10 @@ test('voice upload retry timers are cleared when a vault session ends or fails t
   assert.match(startup, /clearVoiceNoteUploadRetries\(\)/);
   const stop = syncSource.slice(syncSource.indexOf('export async function stopVaultSync()'));
   assert.match(stop, /clearVoiceNoteUploadRetries\(\)/);
+  assert.ok(
+    stop.indexOf('clearVoiceNoteUploadRetries()') < stop.indexOf('await flushLocalVaultChanges()'),
+    'retry timers must be cancelled before a session flush can await'
+  );
 });
 
 test('voice-note identity reuse requires byte-exact remote attachment confirmation', () => {
