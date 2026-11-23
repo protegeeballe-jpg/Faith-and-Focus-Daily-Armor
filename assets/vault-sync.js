@@ -593,6 +593,7 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
   const localRecords = await exportEncryptedVoiceNotesForDateFull(dateString);
   const localById = new Map(localRecords.map(record => [record.id, record]));
   const hydrated = [];
+  let rekeyedLocalRecord = false;
   for (const note of notes) {
     if (!validateEncryptedVoiceNoteRecord(note) || note.dateString !== dateString) {
       throw new Error('A voice-note entry failed validation. Both encrypted copies remain preserved.');
@@ -613,7 +614,7 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
       // the distinct cloud recording that legitimately owns the old ID.
       await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
       localById.delete(note.id);
-      scheduleCapture(dateString);
+      rekeyedLocalRecord = true;
     }
     const chunks = [];
     for (let index = 0; index < note.attachmentChunkCount; index += 1) {
@@ -636,7 +637,7 @@ async function hydrateVoiceNoteAttachments(dateString, notes) {
     await saveEncryptedVoiceNoteRecord(restored, { remoteUploaded: true });
     hydrated.push(restored);
   }
-  return hydrated;
+  return { records: hydrated, rekeyedLocalRecord };
 }
 
 async function captureDailyPacket(dateString) {
@@ -813,9 +814,12 @@ function canonicalBundle(bundle) {
 
 async function restoreDailyBundle(bundle, { dispatch = true, expectedLocalChangeVersion = null } = {}) {
   let hydratedVoiceNotes = null;
+  let rekeyedLocalVoiceNote = false;
   let voiceNotesReady = true;
   try {
-    hydratedVoiceNotes = await hydrateVoiceNoteAttachments(bundle.dateString, bundle.voiceNotes);
+    const hydration = await hydrateVoiceNoteAttachments(bundle.dateString, bundle.voiceNotes);
+    hydratedVoiceNotes = hydration.records;
+    rekeyedLocalVoiceNote = hydration.rekeyedLocalRecord;
   } catch (error) {
     voiceNotesReady = false;
     console.warn('[Vault Sync] Voice-note attachments remain queued; restoring the rest of this date.', {
@@ -877,6 +881,7 @@ async function restoreDailyBundle(bundle, { dispatch = true, expectedLocalChange
   if (voiceNotesReady) pendingVoiceNoteHydrationDates.delete(bundle.dateString);
   else pendingVoiceNoteHydrationDates.add(bundle.dateString);
   if (dispatch) window.dispatchEvent(new CustomEvent('faith-focus:vault-data-restored', { detail: { dateString: bundle.dateString } }));
+  if (rekeyedLocalVoiceNote) scheduleVoiceNoteUploadRetry(bundle.dateString);
   return { voiceNotesReady, applied: true };
 }
 
@@ -986,6 +991,7 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
       // The atomic re-key keeps the local audio and leaves the remote ID intact.
       await rekeyEncryptedVoiceNoteRecord(id, activeVault.encryptionKey);
       rekeyedIds.add(id);
+      scheduleVoiceNoteUploadRetry(localBundle.dateString);
     } catch (cause) {
       const error = new Error('A local voice recording could not be safely separated from a remote recording that uses the same identifier. Both copies remain preserved.');
       error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
