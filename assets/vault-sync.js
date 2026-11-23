@@ -994,7 +994,7 @@ async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
       scheduleVoiceNoteUploadRetry(bundle.dateString);
       continue;
     }
-    if (!sameVoiceNoteManifest(local, note)) {
+    if (local.ciphertext !== note.ciphertext) {
       await rekeyEncryptedVoiceNoteRecord(note.id, activeVault.encryptionKey);
       await saveEncryptedVoiceNoteRecord(note, { remoteUploaded: false });
       localById.set(note.id, await getEncryptedVoiceNoteRecord(note.id));
@@ -1010,9 +1010,13 @@ async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
   for (const [id, remoteManifest] of remoteById) {
     const localRecord = localById.get(id);
     if (!localRecord) continue;
-    if (!sameVoiceNoteManifest(createVoiceNoteAttachmentManifest(localRecord), remoteManifest)) {
+    if (!await voiceNoteContentMatchesRemoteAttachment(localRecord, remoteManifest)) {
       await rekeyEncryptedVoiceNoteRecord(id, activeVault.encryptionKey);
       rekeyedIds.add(id);
+    } else if (typeof remoteManifest.ciphertext !== 'string'
+        && localRecord.remoteUploaded !== true
+        && !await markEncryptedVoiceNoteUploaded(id, localRecord)) {
+      throw new Error('The local voice recording changed while its remote attachment was being verified.');
     }
   }
 
@@ -1023,9 +1027,7 @@ async function filterUnconfirmedVoiceNotes(bundle, remoteBundle = null) {
       // The current locally stored ciphertext is the one the Worker accepted.
       // Repair a stale packet manifest from that exact record, never publish
       // metadata that merely happens to share its identifier.
-      return [sameVoiceNoteManifest(local, note)
-        ? note
-        : createVoiceNoteAttachmentManifest(local)];
+      return [createVoiceNoteAttachmentManifest(local)];
     }
     const remote = remoteById.get(note.id);
     return remote && sameVoiceNoteManifest(remote, note) ? [remote] : [];
@@ -1078,7 +1080,8 @@ async function resolveLocalVoiceNoteIdentityConflicts(localBundle, remoteBundle)
       : voiceNoteManifestForComparison(localPacketRecord);
     if (retainedLocalRecord
         && await voiceNoteContentMatchesRemoteAttachment(retainedLocalRecord, remoteRecord)) {
-      if (retainedLocalRecord.remoteUploaded !== true
+      if (typeof remoteRecord.ciphertext !== 'string'
+          && retainedLocalRecord.remoteUploaded !== true
           && !await markEncryptedVoiceNoteUploaded(id, retainedLocalRecord)) {
         const error = new Error('The local voice recording changed while its remote attachment was being verified. Both device copies remain preserved.');
         error.code = 'VOICE_NOTE_IDENTITY_CONFLICT';
