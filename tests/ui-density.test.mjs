@@ -45,7 +45,7 @@ test('shared frames use a content-led width system instead of filling wide viewp
   assert.match(density, /\.garden-shell\s*\{\s*width:\s*min\(86vw,\s*var\(--ff-content-column-max\)\)/);
   assert.match(density, /#view-checklist \.step-card\s*\{\s*width:\s*100%;\s*max-width:\s*var\(--ff-content-card-max\)/);
   assert.match(density, /#view-checklist \.step-card \.space-y-3 > div\.flex\.items-center\.justify-between,[\s\S]*?width:\s*fit-content/);
-  assert.match(density, /#view-diary #diary-location-history\s*\{\s*width:\s*min\(100%,\s*var\(--ff-content-panel-max\)\)/);
+  assert.match(density, /#view-diary \.diary-additional-notes,[\s\S]*?#view-diary #diary-voice-notes\s*\{\s*width:\s*min\(100%,\s*var\(--ff-content-panel-max\)\)/);
   assert.match(density, /#view-diary \.diary-note-composer\s*\{\s*width:\s*min\(100%,\s*28rem\)/);
 });
 
