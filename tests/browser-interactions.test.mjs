@@ -323,6 +323,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
   const profiles = [
     {name: 'phone-narrow-360x800', viewport: {width: 360, height: 800}, deviceScaleFactor: 3},
     {name: 'phone-standard-390x844', viewport: {width: 390, height: 844}, deviceScaleFactor: 2},
+    {name: 'compact-tablet-612x900', viewport: {width: 612, height: 900}, deviceScaleFactor: 1},
     {name: 'tablet-768x1024', viewport: {width: 768, height: 1024}, deviceScaleFactor: 1},
     {name: 'laptop-1366x768', viewport: {width: 1366, height: 768}, deviceScaleFactor: 1},
     {name: 'laptop-short-window-1366x650', viewport: {width: 1366, height: 650}, deviceScaleFactor: 1},
@@ -364,6 +365,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           headingFontSize: parseFloat(getComputedStyle(heading).fontSize),
           cardLeft: rect?.left ?? -1,
           cardRight: rect?.right ?? Infinity,
+          cardWidth: rect?.width ?? 0,
           viewportWidth: window.innerWidth
         };
       });
@@ -376,6 +378,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.ok(densityMetrics.cardLeft >= -1
           && densityMetrics.cardRight <= densityMetrics.viewportWidth + 1,
         profile.name + ': checklist card must remain inside the viewport');
+      const frameRatio = densityMetrics.cardWidth / densityMetrics.viewportWidth;
+      assert.ok(frameRatio >= .35 && frameRatio <= .91,
+        profile.name + ': checklist frame must use a deliberate content-column width');
 
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
@@ -384,6 +389,12 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         }
 
         const card = page.locator('#card-step-' + step);
+        if (step === 3 && profile.viewport.width >= 481) {
+          const actionRow = card.locator('.ff-guide-row').first();
+          const rowBox = await actionRow.boundingBox();
+          assert.ok(rowBox && rowBox.width < densityMetrics.cardWidth * .88,
+            profile.name + ': checklist action frames must hug their labels and controls');
+        }
         const launchers = card.locator('.guide-quote-launch');
         if (await launchers.count()) {
           const launcher = launchers.first();
@@ -461,6 +472,36 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       await page.locator('#chk-cloud-checked').check();
       assert.equal(await page.locator('#chk-cloud-checked').isChecked(), true,
         profile.name + ': cloud completion checkbox must respond to interaction');
+
+      await page.evaluate(() => {
+        document.dispatchEvent(new CustomEvent('garden:show-scene', {
+          detail: {scene: 'diary'}
+        }));
+        document.getElementById('diary-editor-panel')?.classList.remove('hidden');
+      });
+      await page.locator('#view-diary:not(.hidden) > .card-lavender').waitFor({state: 'visible'});
+      const diaryMetrics = await page.evaluate(() => {
+        const box = selector => document.querySelector(selector)?.getBoundingClientRect();
+        return {
+          card: box('#view-diary > .card-lavender')?.width ?? 0,
+          notes: box('#diary-additional-notes')?.width ?? 0,
+          composer: box('#diary-note-composer')?.width ?? 0,
+          emptyNote: box('#diary-additional-notes-list > li')?.width ?? 0,
+          viewportWidth: window.innerWidth
+        };
+      });
+      assert.ok(diaryMetrics.card > 0 && diaryMetrics.card <= diaryMetrics.viewportWidth + 1,
+        profile.name + ': Diary outer frame must remain within the viewport');
+      assert.ok(diaryMetrics.notes > 0 && diaryMetrics.notes <= diaryMetrics.card,
+        profile.name + ': Diary sections must fit inside the main frame');
+      assert.ok(diaryMetrics.composer > 0 && diaryMetrics.composer <= diaryMetrics.notes,
+        profile.name + ': note composer must remain inside its section frame');
+      if (profile.viewport.width >= 481) {
+        assert.ok(diaryMetrics.notes < diaryMetrics.card * .96,
+          profile.name + ': Diary section frame must be narrower than its parent');
+        assert.ok(diaryMetrics.emptyNote < diaryMetrics.notes * .96,
+          profile.name + ': short Diary empty-state frames must fit their message');
+      }
 
       assert.deepEqual(pageErrors, [],
         profile.name + ': checklist interaction must not throw browser runtime errors');
