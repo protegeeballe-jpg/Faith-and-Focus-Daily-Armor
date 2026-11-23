@@ -544,7 +544,10 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         document.dispatchEvent(new CustomEvent('garden:show-scene', {
           detail: {scene: 'diary'}
         }));
-        document.getElementById('diary-editor-panel')?.classList.remove('hidden');
+        const editor = document.getElementById('diary-editor-panel');
+        editor?.classList.remove('hidden');
+        editor?.removeAttribute('data-ff-tabs');
+        editor?.removeAttribute('data-ff-tab');
       });
       await page.locator('#view-diary:not(.hidden) > .card-lavender').waitFor({state: 'visible'});
       const diaryMetrics = await page.evaluate(() => {
@@ -585,7 +588,10 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
 });
 
 async function assertPointerHitTarget(locator, profileName) {
-  await locator.scrollIntoViewIfNeeded();
+  await locator.evaluate(element => element.scrollIntoView({
+    block: 'center',
+    inline: 'nearest'
+  }));
   const hitTest = await locator.evaluate(element => {
     const rect = element.getBoundingClientRect();
     const x = rect.left + rect.width / 2;
