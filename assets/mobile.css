@@ -442,7 +442,7 @@ body { line-height: var(--ff-ui-body-leading); }
 #view-diary .diary-note-composer,
 #little-garden .garden-planting-panel,
 #little-garden .garden-growth-card,
-#little-garden .drive-sync-panel,
+.drive-sync-panel,
 #view-pin > .card-yellow,
 #modal-content-box,
 .settings-modal-header,
@@ -566,9 +566,30 @@ body { line-height: var(--ff-ui-body-leading); }
   margin-top: 10px !important;
 }
 
+#view-checklist #btn-prev,
+#view-checklist #btn-next {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px !important;
+  padding: 4px 8px !important;
+  flex: 0 0 auto !important;
+  flex-grow: 0 !important;
+  white-space: nowrap;
+}
+
 #view-checklist .checklist-step-navigation button {
   flex-grow: 0 !important;
   white-space: nowrap;
+}
+
+#view-diary section.mt-5 {
+  margin-top: 8px !important;
+}
+
+.settings-modal .garden-action-button {
+  min-height: 36px !important;
+  padding: 4px 8px !important;
 }
 
 #view-checklist .ff-guide-row button {
@@ -617,7 +638,7 @@ body { line-height: var(--ff-ui-body-leading); }
   padding: 6px 8px !important;
 }
 
-#little-garden .settings-modal {
+.settings-modal {
   width: min(calc(33vw + 240px), calc(100vw - 16px), var(--ff-content-column-width));
   max-width: var(--ff-content-column-width);
   box-sizing: border-box;
@@ -675,6 +696,19 @@ body { line-height: var(--ff-ui-body-leading); }
   #view-checklist .checklist-step-navigation {
     gap: 6px;
     padding: 4px !important;
+  }
+
+  #view-checklist #btn-prev,
+  #view-checklist #btn-next {
+    min-height: 44px !important;
+    padding: 4px 8px !important;
+  }
+
+  #little-garden .garden-action-button,
+  #little-garden .garden-small-button,
+  .settings-modal .garden-action-button {
+    min-height: 44px !important;
+    padding: 4px 8px !important;
   }
 
   #view-checklist .step-card .grid label {
