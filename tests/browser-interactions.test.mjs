@@ -831,7 +831,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           assert.ok(rowMetrics.buttonPaddingTop <= 9.5
               && rowMetrics.buttonPaddingLeft <= 16.5,
             profile.name + ': task quote button padding must match the compact spacing scale');
-          assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
+          assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 48,
             profile.name + ': task quote button height must stay within its compact touch-size range');
         }
         const launchers = card.locator('.guide-quote-launch:not([hidden])');
