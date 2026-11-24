@@ -1008,7 +1008,7 @@ body { line-height: var(--ff-ui-body-leading); }
 }
 
 #view-checklist .step-card .cloud-item {
-  font-size: .7rem;
+  font-size: .7rem !important;
 }
 
 #view-checklist .step-card .cloud-item strong {
