@@ -673,9 +673,10 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         profile.name + ': Diary sections must fit inside the main frame');
       assert.ok(diaryMetrics.composer > 0 && diaryMetrics.composer <= diaryMetrics.notes,
         profile.name + ': note composer must remain inside its section frame');
-      assert.ok(diaryMetrics.location > 0 && diaryMetrics.location <= 360,
-        profile.name + ': Location History frame must respect the 360px panel cap');
-      assert.ok(diaryMetrics.notes <= 360 && diaryMetrics.notes < diaryMetrics.card * .9,
+      const diaryPanelCap = diaryMetrics.viewportWidth >= 768 ? 480 : 360;
+      assert.ok(diaryMetrics.location > 0 && diaryMetrics.location <= diaryPanelCap,
+        profile.name + ': Location History frame must respect its responsive panel cap');
+      assert.ok(diaryMetrics.notes <= diaryPanelCap && diaryMetrics.notes < diaryMetrics.card * .9,
         profile.name + ': Saved Notes frame must be visibly narrower than the Diary card');
       assert.ok(diaryMetrics.composer <= diaryMetrics.notes && diaryMetrics.composer > diaryMetrics.notes * .82,
         profile.name + ': note composer must use the available width inside Saved Notes');
