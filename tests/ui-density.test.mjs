@@ -116,7 +116,7 @@ test('Card 1 location answers give their text a full-width flex area beside a fi
   assert.ok(cardOne.includes('data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE\'S HOUSE</span>'));
   assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
 
-  const locationStyles = mobile.slice(mobile.indexOf('/* Card 1 location answers:'));
+  const locationStyles = density.slice(density.indexOf('/* Card 1 location answers:'));
   assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice {'));
   assert.ok(locationStyles.includes('width: 100%;'));
   assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice > input[type="radio"] {'));
