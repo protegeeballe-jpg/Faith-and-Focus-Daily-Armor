@@ -86,7 +86,7 @@ test('Health Checklist cards use a compact, consistent typography and watercolor
   assert.ok(checklist.includes('#view-checklist .step-card button:not(.cloud-item),'));
   assert.ok(checklist.includes('font-size: .68rem !important;'));
   assert.ok(checklist.includes('#view-checklist .step-card .cloud-item {'));
-  assert.ok(checklist.includes('font-size: .7rem;'));
+  assert.ok(checklist.includes('font-size: .7rem !important;'));
   assert.ok(checklist.includes('background: rgba(255, 255, 255, .52) !important;'));
   assert.ok(checklist.includes('font-size: .78rem;'));
   assert.ok(checklist.includes('font-weight: 500;'));
