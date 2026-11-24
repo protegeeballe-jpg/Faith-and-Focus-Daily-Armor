@@ -628,8 +628,8 @@
                 </div>
             </div>
             <section class="watercolor-progress rounded-xl px-2 py-1 mb-2" aria-label="Daily activity progress">
-                <div class="flex justify-between items-center gap-2 mb-1"><span class="text-sm font-bold text-slate-400">Today's Priceless Wins</span><span id="daily-progress-count" class="text-xs font-bold text-emerald-900 tabular-nums">0 of 20 steps</span></div>
-                <div class="watercolor-track" role="progressbar" aria-label="Completed health checklist activities" aria-valuemin="0" aria-valuemax="20" aria-valuenow="0" id="daily-progress-track"><div id="daily-progress-bar" class="watercolor-fill"></div></div>
+                <div class="flex justify-between items-center gap-2 mb-1"><span class="text-sm font-bold text-slate-400">Today's Priceless Wins</span><span id="daily-progress-count" class="text-xs font-bold text-emerald-900 tabular-nums">0 of 22 steps</span></div>
+                <div class="watercolor-track" role="progressbar" aria-label="Completed health checklist activities" aria-valuemin="0" aria-valuemax="22" aria-valuenow="0" id="daily-progress-track"><div id="daily-progress-bar" class="watercolor-fill"></div></div>
             </section>
             
 
@@ -674,6 +674,8 @@
                     <span id="trophy-2" class="text-3xl opacity-30 transition-all">🌅</span>
                 </div>
                 <div class="space-y-4 text-sm">
+                    <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" id="chk-bible-morning" class="app-chk sec-2" data-id="bible-morning"> <span>Complete morning Bible reading</span></label>
+                    
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" class="app-chk sec-2" data-id="start-1"> <span>Think of 3 Grateful Things (5 sec | Mental Notes)</span></label>
                     
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" id="chk-start-2" class="app-chk sec-2" data-id="start-2"> <span>Set Intentions (Self, Family, &amp; DESPICABLE you)</span></label>
@@ -739,6 +741,8 @@
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" class="app-chk sec-5" data-id="sleep-4"> <span>Kneel &amp; Pray</span></label>
                     
                     <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" id="chk-sleep-5" class="app-chk sec-5" data-id="sleep-5"> <span class="font-bold text-cyan-800">DRINK YOUR WATER 💧 </span></label>
+                    
+                    <label class="flex items-start gap-3 cursor-pointer"><input type="checkbox" id="chk-bible-evening" class="app-chk sec-5" data-id="bible-evening"> <span>Complete evening Bible reading</span></label>
                 </div>
             </div>
 
@@ -863,6 +867,50 @@
                 </details>
                 <p class="settings-modal-note">For your privacy, the account locks after 2 minutes without activity. Sign in again to continue. Local encrypted packets remain available on this device; a lock clears the in-memory account key and write credential.</p>
 
+            </div>
+        </div>
+    </dialog>
+
+
+    <!-- SHARED BIBLE READER -->
+    <dialog id="bible-reader-dialog" class="bible-reader-dialog" aria-labelledby="bible-reader-title" aria-describedby="bible-reader-intro">
+        <div class="bible-reader-shell">
+            <header class="bible-reader-header">
+                <div>
+                    <p class="bible-reader-eyebrow">READ &amp; REFLECT</p>
+                    <h2 id="bible-reader-title">Bible Reader</h2>
+                    <p id="bible-reader-intro">Choose your preferred Bible version, then select a Book, Chapter, and Verse.</p>
+                </div>
+                <button id="bible-reader-close" type="button" class="bible-reader-close" aria-label="Close Bible Reader" title="Close Bible Reader">×</button>
+            </header>
+            <div class="bible-reader-content">
+                <section class="bible-reader-version-control" aria-label="Bible version preference">
+                    <label for="bible-reader-version">Default Bible Version</label>
+                    <select id="bible-reader-version">
+                        <option value="english_web">World English Bible (WEB)</option>
+                    </select>
+                    <p id="bible-reader-default-status" role="status">Default on this device: World English Bible (WEB)</p>
+                </section>
+                <div class="bible-reader-reference-controls" aria-label="Scripture passage">
+                    <label for="bible-reader-book">Book
+                        <select id="bible-reader-book"><option value="">Book</option></select>
+                    </label>
+                    <label for="bible-reader-chapter">Chapter
+                        <select id="bible-reader-chapter"><option value="">Chapter</option></select>
+                    </label>
+                    <label for="bible-reader-verse">Verse
+                        <select id="bible-reader-verse"><option value="">Verse</option></select>
+                    </label>
+                </div>
+                <p id="bible-reader-status" class="bible-reader-status" role="status" aria-live="polite">Your Bible will load when you open Read &amp; Reflect.</p>
+                <section class="bible-reader-passage-region" aria-label="Selected Scripture passage">
+                    <h3 id="bible-reading-heading">Choose a passage to begin.</h3>
+                    <div id="bible-reading-text" class="bible-reader-passage"></div>
+                </section>
+                <footer class="bible-reader-actions">
+                    <button id="bible-reader-retry-btn" type="button" class="bible-reader-retry" hidden>Retry Loading</button>
+                    <button id="bible-reader-complete-btn" type="button" class="bible-reader-complete" disabled>I've Read &amp; Reflected</button>
+                </footer>
             </div>
         </div>
     </dialog>
