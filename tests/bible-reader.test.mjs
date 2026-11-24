@@ -90,10 +90,10 @@ test('Card 2 starts and Card 5 ends with Read & Reflect, both using one reader d
 });
 
 test('Bible data is lazy, released on close, and excluded from service-worker caching', () => {
-    assert.match(app, /createBibleReader\\(/);
-    assert.match(app, /bibleReader\\?\\.open\\(id\\)/);
-    assert.match(worker, /\\.\\/assets\\/bible-reader\\.js/);
-    assert.doesNotMatch(worker, /\\.\\/bible\\/[^']+\\.json/);
-    assert.match(css, /\\.bible-reader-dialog\\s*\\{/);
-    assert.match(css, /\\.bible-reader-verse\\.is-selected\\s*\\{/);
+    assert.match(app, /createBibleReader\(/);
+    assert.match(app, /bibleReader\?\.open\(id\)/);
+    assert.match(worker, /\.\/assets\/bible-reader\.js/);
+    assert.doesNotMatch(worker, /\.\/bible\/[^']+\.json/);
+    assert.match(css, /\.bible-reader-dialog\s*\{/);
+    assert.match(css, /\.bible-reader-verse\.is-selected\s*\{/);
 });
