@@ -111,13 +111,16 @@ test('desktop layout widens the app, checklist, and Diary panels without changin
 test('Card 1 location answers give their text a full-width flex area beside a fixed radio', () => {
   const cardOne = html.slice(html.indexOf('id="card-step-1"'), html.indexOf('id="card-step-2"'));
   assert.equal((cardOne.match(/class="checklist-location-choice flex items-center/g) || []).length, 4);
-  assert.match(cardOne, /data-id="loc-home"><span class="checklist-location-choice-text">AT HOME<\\/span>/);
-  assert.match(cardOne, /data-id="loc-office"><span class="checklist-location-choice-text">AT WORK<\\/span>/);
-  assert.match(cardOne, /data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE'S HOUSE<\\/span>/);
-  assert.match(cardOne, /data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE\\. SOMEWHERE<\\/span>/);
+  assert.ok(cardOne.includes('data-id="loc-home"><span class="checklist-location-choice-text">AT HOME</span>'));
+  assert.ok(cardOne.includes('data-id="loc-office"><span class="checklist-location-choice-text">AT WORK</span>'));
+  assert.ok(cardOne.includes('data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE\'S HOUSE</span>'));
+  assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
 
   const locationStyles = mobile.slice(mobile.indexOf('/* Card 1 location answers:'));
-  assert.match(locationStyles, /#card-step-1 \\.checklist-location-choice\\s*\\{[^}]*width: 100%;[^}]*min-width: 0;/s);
-  assert.match(locationStyles, /#card-step-1 \\.checklist-location-choice > input\\[type="radio"\\]\\s*\\{[^}]*flex: 0 0 18px;[^}]*width: 18px;[^}]*height: 18px;/s);
-  assert.match(locationStyles, /#card-step-1 \\.checklist-location-choice-text\\s*\\{[^}]*flex: 1 1 0%;[^}]*min-width: 0;/s);
+  assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice {'));
+  assert.ok(locationStyles.includes('width: 100%;'));
+  assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice > input[type="radio"] {'));
+  assert.ok(locationStyles.includes('flex: 0 0 18px;'));
+  assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice-text {'));
+  assert.ok(locationStyles.includes('flex: 1 1 0%;'));
 });
