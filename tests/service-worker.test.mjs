@@ -22,7 +22,7 @@ test('the main app page connects its manifest and service-worker registration mo
 });
 
 test('the offline shell version advances when cached assets change', () => {
-    assert.match(worker, /const CACHE_NAME = 'faith-focus-shell-v43-offline-repair'/);
+    assert.match(worker, /const CACHE_NAME = 'faith-focus-shell-v44-bible-reader'/);
 });
 
 test('the registration module resolves the worker and scope from the app path', () => {
@@ -46,6 +46,7 @@ test('the offline shell includes every page and runtime dependency needed by the
         './assets/legal.css',
         './assets/app.js',
         './assets/guide-quotes.js',
+        './assets/bible-reader.js',
         './assets/missed-card-notifications.js',
         './assets/garden.js',
         './assets/settings-modal.js',
@@ -114,4 +115,14 @@ test('the worker keeps previous open app tabs safe during an update', () => {
     assert.match(worker, /Deliberately do not call skipWaiting/);
     assert.match(worker, /self\.clients\.claim\(\)/);
     assert.match(worker, /cacheName\.startsWith\(CACHE_PREFIX\)/);
+});
+
+test('Bible JSON is fetched only by the reader and is never included in the offline shell cache', () => {
+    const precacheStart = worker.indexOf('const PRECACHE_URLS = [');
+    const precacheEnd = worker.indexOf('];', precacheStart);
+    assert.ok(precacheStart >= 0 && precacheEnd > precacheStart);
+    assert.doesNotMatch(worker.slice(precacheStart, precacheEnd), /(?:\.\/)?bible\//);
+    assert.match(worker, /pathWithinScope\.startsWith\('assets\/'\)/);
+    const reader = readFileSync(new URL('../assets/bible-reader.js', import.meta.url), 'utf8');
+    assert.match(reader, /fetchImpl\(url\.href,\s*\{\s*cache: 'no-store'/);
 });
