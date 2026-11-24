@@ -532,6 +532,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           cardWidth: label.closest('.step-card')?.getBoundingClientRect().width ?? 0,
           radioWidth: radio?.getBoundingClientRect().width ?? 0,
           radioDisplay: radio ? getComputedStyle(radio).display : '',
+          radioGuideHidden: radio?.classList.contains('guide-hidden') ?? false,
+          labelGuideClass: label.classList.contains('guide-checkbox-label'),
+          insideGuidedRow: Boolean(label.closest('.guided-task-row')),
           radioFlexShrink: radio ? getComputedStyle(radio).flexShrink : '',
           textWidth: text?.getBoundingClientRect().width ?? 0,
           textDisplay: text ? getComputedStyle(text).display : '',
@@ -547,6 +550,12 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         assert.ok(choice.width > 0, profile.name + ': location answers remain visible: ' + JSON.stringify(locationChoiceMetrics));
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control retains its 18px footprint');
+        assert.equal(choice.radioGuideHidden, false,
+          profile.name + ': location radio must not be hidden by the guide flow');
+        assert.equal(choice.labelGuideClass, false,
+          profile.name + ': location label must not become a gated guide label');
+        assert.equal(choice.insideGuidedRow, false,
+          profile.name + ': location choice must remain outside guided task rows');
         assert.equal(choice.radioFlexShrink, '0',
           profile.name + ': radio control must not compress answer text');
         assert.ok(choice.textWidth > 0 && choice.textScrollWidth <= choice.textClientWidth + 1,
