@@ -110,11 +110,18 @@ test('desktop layout widens the app, checklist, and Diary panels without changin
 
 test('Card 1 location answers sit directly on one watercolor card surface', () => {
   const cardOne = html.slice(html.indexOf('id="card-step-1"'), html.indexOf('id="card-step-2"'));
-  const locationLabels = cardOne.match(/<label class="checklist-location-choice[^"]*"[^>]*>[\\s\\S]*?<\\/label>/g) || [];
+  const locationLabels = [];
+  let labelStart = cardOne.indexOf('<label class="checklist-location-choice');
+  while (labelStart !== -1) {
+    const labelEnd = cardOne.indexOf('</label>', labelStart);
+    assert.notEqual(labelEnd, -1, 'Each location answer label must close');
+    locationLabels.push(cardOne.slice(labelStart, labelEnd + '</label>'.length));
+    labelStart = cardOne.indexOf('<label class="checklist-location-choice', labelEnd + '</label>'.length);
+  }
   assert.equal(locationLabels.length, 4);
   assert.ok(cardOne.includes('data-id="loc-home"><span class="checklist-location-choice-text">AT HOME</span>'));
   assert.ok(cardOne.includes('data-id="loc-office"><span class="checklist-location-choice-text">AT WORK</span>'));
-  assert.ok(cardOne.includes('data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE\\'S HOUSE</span>'));
+  assert.ok(cardOne.includes("data-id=\\"loc-house\\"><span class=\\"checklist-location-choice-text\\">AT SOMEONE ELSE'S HOUSE</span>"));
   assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
   assert.doesNotMatch(locationLabels.join('\\n'), /bg-white|rounded-2xl|p-3/);
 
