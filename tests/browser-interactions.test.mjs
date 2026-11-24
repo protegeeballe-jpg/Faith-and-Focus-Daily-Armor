@@ -450,6 +450,57 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           && densityMetrics.nextButtonHeight <= 44,
         profile.name + ': button height must remain compact while preserving touch sizing');
 
+      const locationChoiceMetrics = await page.locator(
+        '#card-step-1 .checklist-location-choice'
+      ).evaluateAll(labels => {
+        const grid = labels[0]?.parentElement;
+        const tracks = grid
+          ? getComputedStyle(grid).gridTemplateColumns.split(/\\s+/).map(value => parseFloat(value))
+          : [];
+        const trackWidth = tracks.length ? Math.min(...tracks) : 0;
+        return labels.map(label => {
+          const radio = label.querySelector('input[type="radio"]');
+          const text = label.querySelector('.checklist-location-choice-text');
+          const labelStyle = getComputedStyle(label);
+          const radioStyle = radio ? getComputedStyle(radio) : null;
+          const textStyle = text ? getComputedStyle(text) : null;
+          return {
+            labelWidth: label.getBoundingClientRect().width,
+            trackWidth,
+            radioWidth: radio?.getBoundingClientRect().width ?? 0,
+            radioFlexShrink: radioStyle?.flexShrink ?? '',
+            textWidth: text?.getBoundingClientRect().width ?? 0,
+            textHeight: text?.getBoundingClientRect().height ?? 0,
+            textLineHeight: parseFloat(textStyle?.lineHeight || '0'),
+            textScrollWidth: text?.scrollWidth ?? 0,
+            textClientWidth: text?.clientWidth ?? 0,
+            textScrollHeight: text?.scrollHeight ?? 0,
+            textClientHeight: text?.clientHeight ?? 0,
+            labelMinWidth: parseFloat(labelStyle.minWidth || '0')
+          };
+        });
+      });
+      assert.equal(locationChoiceMetrics.length, 4,
+        profile.name + ': all four location answers must remain present');
+      for (const choice of locationChoiceMetrics) {
+        assert.ok(choice.labelWidth >= choice.trackWidth - 1,
+          profile.name + ': each location answer surface must fill its grid cell');
+        assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
+          profile.name + ': radio control must retain its fixed 18px footprint');
+        assert.equal(choice.radioFlexShrink, '0',
+          profile.name + ': radio control must not compress the answer text');
+        assert.ok(choice.textWidth > 0 && choice.textScrollWidth <= choice.textClientWidth + 1,
+          profile.name + ': answer text must remain fully visible inside its label');
+      }
+      const atHomeMetrics = locationChoiceMetrics[0];
+      assert.ok(atHomeMetrics.textHeight <= atHomeMetrics.textLineHeight * 1.6,
+        profile.name + ': AT HOME must stay on one line instead of being squeezed');
+
+      const atHomeChoice = page.locator('#card-step-1 .checklist-location-choice').filter({hasText:'AT HOME'});
+      await atHomeChoice.click();
+      assert.equal(await atHomeChoice.locator('input[type="radio"]').isChecked(), true,
+        profile.name + ': clicking the AT HOME answer must still select its original radio');
+
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
           await page.locator('#btn-next').click();
