@@ -380,7 +380,9 @@ test('checklist activities open a painterly quote card through text-safe renderi
  assert.match(app,/const CHECKLIST_QUOTE_LABELS = Object\.freeze\(\{/);
  assert.match(app,/guideLabel\.textContent\s*=\s*taskLabel/);
  assert.match(app,/guideButton\.dataset\.taskId\s*=\s*id/);
- assert.match(app,/guideButton\.addEventListener\('click',\s*\(\)\s*=>\s*openModal\('guided',\s*id\)\)/);
+ assert.match(app,/guideButton\.addEventListener\('click',\s*\(\)\s*=>\s*\{/);
+ assert.match(app,/if \(isBibleTask\)\s*\{[\s\S]*?bibleReader\?\.open\(id\)/);
+ assert.match(app,/openModal\('guided',\s*id\)/);
  assert.match(app,/function syncGuideQuoteLaunchers\(\)/);
  assert.match(app,/launch\?\.classList\.remove\('is-hidden'\)/);
  assert.match(appCss,/\.guide-quote-card\s*\{/);
