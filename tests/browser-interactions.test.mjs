@@ -159,7 +159,7 @@ test('Chromium: checklist navigation, guided unlocks, checkbox persistence, clou
   assert.equal(await page.locator('#btn-prev').isDisabled(), false);
 
   // A guided task must unlock its associated checkbox through the actual modal action.
-  const guidedLaunch = page.locator('.guide-quote-launch[aria-label="Read quote for start-2"]');
+  const guidedLaunch = page.locator('.guide-quote-launch[data-task-id="start-2"]');
   await guidedLaunch.click();
   assert.equal(await page.locator('#anim-modal').isVisible(), true);
   await page.locator('#modal-complete-btn').click();
@@ -228,7 +228,7 @@ async function expectStoredChecklistValue(page, key, expected) {
 }
 
 
-test('Chromium: every in-card guide action button receives a real pointer click', {
+test('Chromium: task-specific quote buttons are the only in-card actions and receive a real pointer click', {
   timeout: 30000
 }, async t => {
   const host = await startStaticServer();
@@ -253,65 +253,88 @@ test('Chromium: every in-card guide action button receives a real pointer click'
   });
   await page.getByRole('button', {name: 'Open Health Checklist'}).click();
 
-  // Exercise the actual action buttons embedded in cards 2–5, not the card pager.
-  const expectedTargets = new Map([
-    ['prayer', 'start-2'],
-    ['water', 'start-4'],
-    ['breathing', 'mid-2'],
-    ['water', 'mid-3'],
-    ['feeling', 'mid-4'],
-    ['water', 'end-3'],
-    ['curfew', 'sleep-3'],
-    ['water', 'sleep-5']
-  ]);
+  const expectedLabels = {
+    1: {
+      'loc-home': 'At Home',
+      'loc-house': "At someone else's Home",
+      'loc-out': 'Out Here Somewhere',
+      'loc-office': 'At Work'
+    },
+    2: {
+      'start-1': 'Mental Notes',
+      'start-2': 'Set Intentions',
+      'start-3': 'Move Your Body',
+      'start-4': 'Drink Your Water'
+    },
+    3: {
+      'mid-1': 'Posture Check',
+      'mid-2': 'Breathing Exercise',
+      'mid-3': 'Drink Your Water',
+      'mid-4': 'Check Your Emotions',
+      'mid-5': 'Check Your Thoughts'
+    },
+    4: {
+      'end-1': 'My 3 Wins Today',
+      'end-2': "Tomorrow's Goals",
+      'end-3': 'Drink Your Water',
+      'end-4': 'Good Job Poke'
+    },
+    5: {
+      'sleep-1': 'Grateful to Others',
+      'sleep-2': 'Grateful to God',
+      'sleep-3': 'Digital Curfew',
+      'sleep-4': 'Kneel & Pray',
+      'sleep-5': 'Drink Your Water'
+    }
+  };
 
   for (let step = 1; step <= 5; step++) {
     if (step > 1) await page.locator('#btn-next').click();
     const card = page.locator('#card-step-' + step);
-    const actions = card.locator('button[data-action="openModal"]');
-    const count = await actions.count();
+    assert.equal(await card.locator('button[data-action="openModal"]').count(), 0,
+      'Redundant standalone guide buttons must be removed from card ' + step);
+    assert.equal(await card.locator('.ff-guide-row').count(), 0,
+      'Duplicate guide title rows must be removed from card ' + step);
 
-    for (let index = 0; index < count; index++) {
-      const button = actions.nth(index);
-      const type = await button.getAttribute('data-modal');
-      const target = await button.getAttribute('data-target');
-      assert.ok(expectedTargets.has(type), 'Unexpected in-card guide action: ' + type);
-      assert.ok(expectedTargets.get(type) === target
-        || (type === 'water' && ['start-4','mid-3','end-3','sleep-5'].includes(target)),
-        'Guide button must retain its intended target: ' + type + '/' + target);
+    const labels = expectedLabels[step];
+    const launchers = card.locator('.guide-quote-launch');
+    assert.equal(await launchers.count(), Object.keys(labels).length,
+      'Every task in card ' + step + ' must have exactly one quote action');
 
-      // Playwright performs browser hit-testing; an overlay intercepting the
-      // pointer causes this click to fail rather than silently invoking a handler.
+    for (const [target, expectedLabel] of Object.entries(labels)) {
+      const button = card.locator('.guide-quote-launch[data-task-id="' + target + '"]');
+      assert.equal(await button.locator('.guide-quote-label').textContent(), expectedLabel,
+        'Quote action must use the requested task label for ' + target);
+      await assertPointerHitTarget(button, 'task quote ' + target);
       await button.click();
       assert.equal(await page.locator('#anim-modal').evaluate(
         modal => !modal.classList.contains('hidden')), true,
-        'In-card button failed to open its guide: ' + type + '/' + target);
+        'Task quote action failed to open its guide: ' + target);
       assert.equal(await page.locator('#modal-complete-btn').isEnabled(), true);
-      await page.locator('#anim-modal [data-action="closeModal"]').click();
-      assert.equal(await page.locator('#anim-modal').evaluate(
-        modal => modal.classList.contains('hidden')), true,
-        'Guide modal close action failed for: ' + type + '/' + target);
-    }
 
-    // The generated Read quote launcher is another distinct control inside each card.
-    const launchers = card.locator('.guide-quote-launch');
-    const launcherCount = await launchers.count();
-    assert.ok(launcherCount > 0,
-      'Expected Read quote launchers in checklist card ' + step);
-    for (let index = 0; index < launcherCount; index++) {
-      await launchers.nth(index).click();
-      assert.equal(await page.locator('#anim-modal').evaluate(
-        modal => !modal.classList.contains('hidden')), true,
-        'Read quote launcher did not receive click in card ' + step);
-      await page.locator('#anim-modal [data-action="closeModal"]').click();
+      if (target === 'mid-2') {
+        const primaryAction = page.locator('#modal-complete-btn');
+        assert.match(await primaryAction.textContent(), /Start 5 breathing cycles/);
+        await page.clock.install();
+        await primaryAction.click();
+        assert.equal(await primaryAction.isDisabled(), true,
+          'Guided breathing must disable its start button while running');
+        assert.equal(await page.locator('#breathing-phase').textContent(), 'Breathe in');
+        await page.clock.runFor(60_000);
+        assert.equal(await primaryAction.isDisabled(), false,
+          'Guided breathing must re-enable after five completed cycles');
+        assert.match(await primaryAction.textContent(), /Good job!/);
+        await primaryAction.click();
+      } else {
+        await page.locator('#anim-modal [data-action="closeModal"]').click();
+      }
     }
   }
 
   assert.deepEqual(pageErrors, [],
-    'In-card guide actions must not produce browser runtime errors');
+    'In-card task quote interactions must not produce browser runtime errors');
   await context.close();
 });
-
 
 test('Chromium: location quote unlocks the radio and its button disappears after selection', async t => {
   const host = await startStaticServer();
@@ -331,7 +354,7 @@ test('Chromium: location quote unlocks the radio and its button disappears after
   await page.getByRole('button', {name: 'Open Health Checklist'}).click();
 
   const home = page.locator('#card-step-1 [data-id="loc-home"]');
-  const quote = page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+  const quote = page.locator('#card-step-1 .guide-quote-launch[data-task-id="loc-home"]');
   await quote.waitFor({state: 'visible'});
   assert.equal(await home.isVisible(), false,
     'Location radio remains hidden until its quote is completed');
@@ -347,12 +370,12 @@ test('Chromium: location quote unlocks the radio and its button disappears after
 
   await home.check();
   await page.waitForFunction(() => {
-    const button = document.querySelector('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+    const button = document.querySelector('#card-step-1 .guide-quote-launch[data-task-id="loc-home"]');
     return button?.hidden === true;
   });
   assert.equal(await quote.isVisible(), false,
     'The selected location quote button must disappear after completion is checked');
-  assert.equal(await page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-office"]').isVisible(), true,
+  assert.equal(await page.locator('#card-step-1 .guide-quote-launch[data-task-id="loc-office"]').isVisible(), true,
     'Unselected location choices must retain their Read quote buttons');
 
   await context.close();
@@ -385,8 +408,7 @@ test('Chromium: completed tasks hide only their own quote buttons on every check
     await quote.waitFor({state: 'visible'});
     assert.ok(await quote.evaluate(button => button.getBoundingClientRect().height >= 44),
       'Mobile card ' + step + ' quote button must retain its 44px touch target');
-    const ariaLabel = await quote.getAttribute('aria-label');
-    const target = ariaLabel.replace('Read quote for ', '');
+    const target = await quote.getAttribute('data-task-id');
     await quote.click();
     await page.locator('#modal-complete-btn').click();
 
@@ -661,13 +683,21 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         const text = label.querySelector('.checklist-location-choice-text');
         const row = label.closest('.guided-task-row');
         const quote = row?.querySelector('.guide-quote-launch');
+        const rowRect = row?.getBoundingClientRect();
+        const quoteRect = quote?.getBoundingClientRect();
         return {
           width: label.getBoundingClientRect().width,
           display: getComputedStyle(label).display,
           radioWidth: radio?.getBoundingClientRect().width ?? 0,
           radioDisplay: radio ? getComputedStyle(radio).display : '',
           radioGuideHidden: radio?.classList.contains('guide-hidden') ?? false,
-          quoteHeight: quote?.getBoundingClientRect().height ?? 0,
+          quoteHeight: quoteRect?.height ?? 0,
+          quoteScrollWidth: quote?.scrollWidth ?? 0,
+          quoteClientWidth: quote?.clientWidth ?? 0,
+          quoteLeft: quoteRect?.left ?? 0,
+          quoteRight: quoteRect?.right ?? 0,
+          rowLeft: rowRect?.left ?? 0,
+          rowRight: rowRect?.right ?? 0,
           textWidth: text?.getBoundingClientRect().width ?? 0,
           textScrollWidth: text?.scrollWidth ?? 0,
           textClientWidth: text?.clientWidth ?? 0,
@@ -680,6 +710,11 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       for (const choice of locationChoiceMetrics) {
         assert.ok(choice.width > 0,
           profile.name + ': unlocked location answers remain visible');
+        assert.ok(choice.quoteLeft >= choice.rowLeft - 1
+            && choice.quoteRight <= choice.rowRight + 1,
+          profile.name + ': each Card 1 task button must fit inside its full-width row');
+        assert.ok(choice.quoteScrollWidth <= choice.quoteClientWidth + 1,
+          profile.name + ': Card 1 task labels must not overflow their buttons');
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control retains its 18px footprint');
         assert.equal(choice.radioGuideHidden, false,
@@ -694,17 +729,17 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.ok(locationChoiceMetrics[0].textHeight <= locationChoiceMetrics[0].textLineHeight * 1.6,
         profile.name + ': AT HOME remains on one line');
       const atHomeChoice = page.locator('#card-step-1 .checklist-location-choice').filter({hasText:'AT HOME'});
-      const atHomeQuote = page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+      const atHomeQuote = page.locator('#card-step-1 .guide-quote-launch[data-task-id="loc-home"]');
       await atHomeChoice.click();
       assert.equal(await atHomeChoice.locator('input[type="radio"]').isChecked(), true,
         profile.name + ': AT HOME selection behavior remains unchanged');
       await page.waitForFunction(() => {
-        const button = document.querySelector('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+        const button = document.querySelector('#card-step-1 .guide-quote-launch[data-task-id="loc-home"]');
         return button?.hidden === true;
       });
       assert.equal(await atHomeQuote.isVisible(), false,
         profile.name + ': completed location quote button disappears after selection');
-      assert.equal(await page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-office"]').isVisible(), true,
+      assert.equal(await page.locator('#card-step-1 .guide-quote-launch[data-task-id="loc-office"]').isVisible(), true,
         profile.name + ': other location quote buttons remain available');
 
       for (let step = 1; step <= 5; step++) {
@@ -766,16 +801,17 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         }
 
         if (step === 3 && profile.viewport.width >= 481 && profile.viewport.width < 768) {
-          const actionRow = card.locator('.ff-guide-row').first();
+          const actionRow = card.locator('.guided-task-row').first();
           const rowMetrics = await actionRow.evaluate(element => {
             const style = getComputedStyle(element);
             const rect = element.getBoundingClientRect();
-            const button = element.querySelector('button');
+            const button = element.querySelector('.guide-quote-launch');
             const buttonStyle = button ? getComputedStyle(button) : null;
             const buttonRect = button?.getBoundingClientRect();
             return {
               display: style.display,
               width: rect.width,
+              cardWidth: element.closest('.step-card').getBoundingClientRect().width,
               paddingTop: parseFloat(style.paddingTop),
               paddingLeft: parseFloat(style.paddingLeft),
               buttonHeight: buttonRect?.height ?? 0,
@@ -785,18 +821,18 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             };
           });
           assert.equal(rowMetrics.display, 'inline-flex',
-            profile.name + ': compact tablet action frames must retain their current layout');
-          assert.ok(rowMetrics.width <= densityMetrics.cardWidth * .86,
-            profile.name + ': compact tablet action frames must remain content-sized');
+            profile.name + ': compact tablet task rows must retain their content-sized layout');
+          assert.ok(rowMetrics.width <= rowMetrics.cardWidth * .86,
+            profile.name + ': compact tablet task rows must remain content-sized');
           assert.ok(rowMetrics.paddingTop <= 8.5 && rowMetrics.paddingLeft <= 12.5,
-            profile.name + ': action-row padding must stay within the updated 8px by 12px spacing scale');
+            profile.name + ': task-row padding must stay within the compact spacing scale');
           assert.equal(rowMetrics.buttonFlexGrow, 0,
-            profile.name + ': action button must not expand inside its frame');
+            profile.name + ': task quote button must remain content-sized');
           assert.ok(rowMetrics.buttonPaddingTop <= 9.5
               && rowMetrics.buttonPaddingLeft <= 16.5,
-            profile.name + ': action button padding must match the updated 9px by 16px spacing scale');
-          assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
-            profile.name + ': action button height must stay within its compact touch-size range');
+            profile.name + ': task quote button padding must match the compact spacing scale');
+          assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 48,
+            profile.name + ': task quote button height must stay within its compact touch-size range');
         }
         const launchers = card.locator('.guide-quote-launch:not([hidden])');
         if (await launchers.count()) {
@@ -809,49 +845,8 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           await page.locator('#anim-modal [data-action="closeModal"]').click();
         }
 
-        const actions = card.locator('button[data-action="openModal"]');
-        for (let index = 0; index < await actions.count(); index++) {
-          const button = actions.nth(index);
-          const target = await button.getAttribute('data-target');
-          await assertPointerHitTarget(button, profile.name + ' card ' + step + ' action ' + target);
-          await button.click();
-          assert.equal(await page.locator('#anim-modal').evaluate(
-            modal => !modal.classList.contains('hidden')), true,
-            profile.name + ': guide action must open its modal (' + target + ')');
-
-          const primaryAction = page.locator('#modal-complete-btn');
-          const guideType = await button.getAttribute('data-modal');
-
-          if (guideType === 'breathing') {
-            // Breathing is a two-stage action: start the timed exercise, then complete it.
-            // Use Playwright's deterministic clock so the five 12-second cycles do not
-            // require a wall-clock minute and the real application timer logic still runs.
-            await page.clock.install();
-            assert.match(await primaryAction.textContent(), /Start 5 breathing cycles/);
-            await primaryAction.click();
-            assert.equal(await primaryAction.isDisabled(), true,
-              profile.name + ': breathing action must disable its start button while running');
-            assert.equal(await page.locator('#breathing-phase').textContent(), 'Breathe in');
-            await page.clock.runFor(60_000);
-            assert.equal(await primaryAction.isDisabled(), false,
-              profile.name + ': breathing action must re-enable after five completed cycles');
-            assert.match(await primaryAction.textContent(), /Good job!/);
-            await primaryAction.click();
-          } else {
-            await primaryAction.click();
-          }
-
-          assert.equal(await page.locator('#anim-modal').evaluate(
-            modal => modal.classList.contains('hidden')), true,
-            profile.name + ': completing the guide must close its modal');
-
-          const checkbox = page.locator('#chk-' + target);
-          assert.equal(await checkbox.isEnabled(), true,
-            profile.name + ': guide must unlock its associated checkbox (' + target + ')');
-          if (!await checkbox.isChecked()) await checkbox.check();
-          assert.equal(await checkbox.isChecked(), true,
-            profile.name + ': unlocked checkbox must accept a user interaction (' + target + ')');
-        }
+        assert.equal(await card.locator('button[data-action="openModal"]').count(), 0,
+          profile.name + ': redundant standalone guide buttons must be removed from card ' + step);
 
         const enabledCheckboxes = card.locator('input.app-chk[type="checkbox"]:visible:not([disabled])');
         for (let index = 0; index < await enabledCheckboxes.count(); index++) {

@@ -1044,7 +1044,7 @@ body { line-height: var(--ff-ui-body-leading); }
   display: none !important;
 }
 
-#view-checklist #card-step-1 .grid label.checklist-location-choice {
+#view-checklist #card-step-1 .checklist-location-list label.checklist-location-choice {
   display: flex;
   align-items: center;
   width: 100%;
@@ -1057,11 +1057,11 @@ body { line-height: var(--ff-ui-body-leading); }
   box-sizing: border-box;
 }
 
-#view-checklist #card-step-1 .grid label.checklist-location-choice:hover {
+#view-checklist #card-step-1 .checklist-location-list label.checklist-location-choice:hover {
   background: transparent !important;
 }
 
-#view-checklist #card-step-1 .grid label.checklist-location-choice > input[type="radio"] {
+#view-checklist #card-step-1 .checklist-location-list label.checklist-location-choice > input[type="radio"] {
   flex: 0 0 18px;
   width: 18px;
   min-width: 18px;
@@ -1070,14 +1070,14 @@ body { line-height: var(--ff-ui-body-leading); }
   accent-color: #6b8e23;
 }
 
-#view-checklist #card-step-1 .grid .checklist-location-choice-text {
+#view-checklist #card-step-1 .checklist-location-list .checklist-location-choice-text {
   display: block;
   flex: 1 1 0%;
   min-width: 0;
   line-height: 1.35;
 }
 
-#view-checklist #card-step-1 .grid > .guided-task-row {
+#view-checklist #card-step-1 .checklist-location-list > .guided-task-row {
   display: flex !important;
   flex-direction: row;
   align-items: center;

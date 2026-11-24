@@ -121,15 +121,16 @@ test('Card 1 location answers sit directly on one watercolor card surface', () =
   assert.equal(locationLabels.length, 4);
   assert.ok(cardOne.includes('data-id="loc-home"><span class="checklist-location-choice-text">AT HOME</span>'));
   assert.ok(cardOne.includes('data-id="loc-office"><span class="checklist-location-choice-text">AT WORK</span>'));
-  assert.ok(cardOne.includes(`data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE'S HOUSE</span>`));
-  assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
+  assert.ok(cardOne.includes(`data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE'S HOME</span>`));
+  assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE SOMEWHERE</span>'));
   assert.doesNotMatch(locationLabels.join('\n'), /(?:^|\s)(?:bg-white(?:\/\d+)?|rounded-2xl|p-3)(?=\s|")/);
 
   const locationStyles = density.slice(density.indexOf('#card-step-1.step-card::after'));
   assert.ok(locationStyles.includes('display: none !important;'));
-  assert.ok(locationStyles.includes('#view-checklist #card-step-1 .grid label.checklist-location-choice {'));
+  assert.ok(locationStyles.includes('#view-checklist #card-step-1 .checklist-location-list label.checklist-location-choice {'));
   assert.ok(locationStyles.includes('border: 0 !important;'));
   assert.ok(locationStyles.includes('background: transparent !important;'));
+  assert.ok(locationStyles.includes('#view-checklist #card-step-1 .checklist-location-list > .guided-task-row {'));
   assert.ok(locationStyles.includes('box-shadow: none !important;'));
 });
 

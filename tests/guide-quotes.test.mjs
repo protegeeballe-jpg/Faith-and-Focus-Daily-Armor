@@ -76,7 +76,9 @@ test('quote cards use safe text rendering and accessible semantic structure', ()
 test('each checklist activity opens a quote launcher and preserves checkbox unlocking', () => {
   assert.match(app, /function attachGuideQuoteLaunchers\(\)/);
   assert.match(app, /guideButton\.className\s*=\s*'guide-quote-launch'/);
-  assert.match(app, /guideLabel\.textContent\s*=\s*'Read quote'/);
+  assert.match(app, /const CHECKLIST_QUOTE_LABELS = Object\.freeze\(\{/);
+  assert.match(app, /guideLabel\.textContent\s*=\s*taskLabel/);
+  assert.match(app, /guideButton\.dataset\.taskId\s*=\s*id/);
   assert.match(app, /openModal\('guided',\s*id\)/);
   assert.match(app, /function syncGuideQuoteLaunchers\(\)/);
   assert.match(app, /chk\.dataset\.guideUnlocked\s*=\s*'true'/);
