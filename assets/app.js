@@ -604,6 +604,31 @@ import {
             });
         }
 
+        const CHECKLIST_QUOTE_LABELS = Object.freeze({
+            'loc-home': 'At Home',
+            'loc-house': "At someone else's Home",
+            'loc-out': 'Out Here Somewhere',
+            'loc-office': 'At Work',
+            'start-1': 'Mental Notes',
+            'start-2': 'Set Intentions',
+            'start-3': 'Move Your Body',
+            'start-4': 'Drink Your Water',
+            'mid-1': 'Posture Check',
+            'mid-2': 'Breathing Exercise',
+            'mid-3': 'Drink Your Water',
+            'mid-4': 'Check Your Emotions',
+            'mid-5': 'Check Your Thoughts',
+            'end-1': 'My 3 Wins Today',
+            'end-2': "Tomorrow's Goals",
+            'end-3': 'Drink Your Water',
+            'end-4': 'Good Job Poke',
+            'sleep-1': 'Grateful to Others',
+            'sleep-2': 'Grateful to God',
+            'sleep-3': 'Digital Curfew',
+            'sleep-4': 'Kneel & Pray',
+            'sleep-5': 'Drink Your Water'
+        });
+
         function attachGuideQuoteLaunchers() {
             renderCloudGuideQuote();
             document.querySelectorAll('.app-chk').forEach(chk => {
@@ -627,32 +652,7 @@ import {
                 quoteMark.className = 'guide-quote-mark';
                 quoteMark.setAttribute('aria-hidden', 'true');
                 quoteMark.textContent = '“';
-                const taskLabels = {
-                    'loc-home': 'At Home',
-                    'loc-house': "At someone else's Home",
-                    'loc-out': 'Out Here Somewhere',
-                    'loc-office': 'At Work',
-                    'start-1': 'Mental Notes',
-                    'start-2': 'Set Intentions',
-                    'start-3': 'Move Your Body',
-                    'start-4': 'Drink Your Water',
-                    'mid-1': 'Posture Check',
-                    'mid-2': 'Breathing Exercise',
-                    'mid-3': 'Drink Your Water',
-                    'mid-4': 'Check Your Emotions',
-                    'mid-5': 'Check Your Thoughts',
-                    'end-1': 'My 3 Wins Today',
-                    'end-2': "Tomorrow's Goals",
-                    'end-3': 'Drink Your Water',
-                    'end-4': 'Good Job Poke',
-                    'sleep-1': 'Grateful to Others',
-                    'sleep-2': 'Grateful to God',
-                    'sleep-3': 'Digital Curfew',
-                    'sleep-4': 'Kneel & Pray',
-                    'sleep-5': 'Drink Your Water'
-                };
-                const taskLabel = taskLabels[id] || 'Read quote';
-                const guideLabel = document.createElement('span');
+                const taskLabel = CHECKLIST_QUOTE_LABELS[id] || 'Read quote';                const guideLabel = document.createElement('span');
                 guideLabel.className = 'guide-quote-label';
                 guideLabel.textContent = taskLabel;
                 guideButton.append(quoteMark, guideLabel);
