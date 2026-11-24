@@ -356,6 +356,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       await page.locator('#card-step-1').waitFor({state: 'visible'});
 
       const densityMetrics = await page.evaluate(() => {
+        const toolbar = document.querySelector('#view-checklist > header');
+        const toolbarLeft = toolbar?.querySelector('.checklist-header-left');
+        const toolbarRight = toolbar?.querySelector('.checklist-header-right');
         const card = document.querySelector('#card-step-1');
         const heading = card?.querySelector('h2');
         const rect = card?.getBoundingClientRect();
@@ -380,6 +383,11 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           nextButtonFlexGrow: parseFloat(nextStyle?.flexGrow || '0'),
           nextButtonPaddingTop: parseFloat(nextStyle?.paddingTop || '0'),
           nextButtonPaddingLeft: parseFloat(nextStyle?.paddingLeft || '0'),
+          toolbarHeight: toolbar?.getBoundingClientRect().height ?? 0,
+          toolbarFlexWrap: toolbar ? getComputedStyle(toolbar).flexWrap : '',
+          toolbarLeftTop: toolbarLeft?.getBoundingClientRect().top ?? -1,
+          toolbarRightTop: toolbarRight?.getBoundingClientRect().top ?? -1,
+          toolbarRightEdge: toolbarRight?.getBoundingClientRect().right ?? Infinity,
           viewportWidth: window.innerWidth
         };
       });
@@ -404,11 +412,32 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           profile.name + ': phone content should use the screen without edge-to-edge frames');
         assert.ok(frameRatio <= .94,
           profile.name + ': phone activity frame must retain a visible outer gutter');
-      } else {
+      } else if (profile.viewport.width < 768) {
         assert.ok(shellRatio >= .45 && shellRatio <= .75,
-          profile.name + ': tablet and desktop column must not occupy nearly the full viewport');
+          profile.name + ': compact tablet column must remain proportionate');
         assert.ok(frameRatio <= .74,
-          profile.name + ': tablet and desktop activity frame must stay proportionate');
+          profile.name + ': compact tablet activity frame must stay proportionate');
+      } else {
+        assert.ok(shellRatio >= .6 && shellRatio <= .9,
+          profile.name + ': expanded app column must use the available desktop space');
+        assert.ok(frameRatio >= .5 && frameRatio <= .9,
+          profile.name + ': expanded checklist card must stay balanced within the app column');
+      }
+      if (profile.viewport.width >= 800) {
+        assert.equal(densityMetrics.toolbarFlexWrap, 'nowrap',
+          profile.name + ': desktop checklist toolbar must remain on one row');
+        assert.ok(densityMetrics.toolbarHeight >= 48 && densityMetrics.toolbarHeight <= 58,
+          profile.name + ': desktop checklist toolbar must stay close to a 50px row');
+        assert.ok(Math.abs(densityMetrics.toolbarLeftTop - densityMetrics.toolbarRightTop) <= 2,
+          profile.name + ': desktop toolbar groups must align on the same row');
+        assert.ok(densityMetrics.toolbarRightEdge <= densityMetrics.viewportWidth + 1,
+          profile.name + ': desktop toolbar must remain inside the viewport');
+      }
+      if (profile.viewport.width >= 1300) {
+        assert.ok(densityMetrics.shellWidth >= 899 && densityMetrics.shellWidth <= 901,
+          profile.name + ': wide desktop app column must cap at 900px');
+        assert.ok(densityMetrics.cardWidth >= 749 && densityMetrics.cardWidth <= 751,
+          profile.name + ': wide desktop checklist card must cap at 750px');
       }
       assert.equal(densityMetrics.nextButtonFlexGrow, 0,
         profile.name + ': navigation buttons must not stretch to fill the footer');
@@ -447,20 +476,51 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         assert.ok(cardTypography.boldLabelSizes.every(size => size <= 13),
           profile.name + ': emphasized task labels must not overpower their body copy');
 
-        if (step === 3 && profile.viewport.width >= 481) {
+        if ([3, 5].includes(step) && profile.viewport.width >= 768) {
+          const rowMetrics = await card.evaluate(element => {
+            const rows = [...element.querySelectorAll(
+              '.guided-task-row, .space-y-3 > div.flex.items-center.justify-between, .space-y-4 > div.flex.items-center.justify-between'
+            )];
+            const cardWidth = element.getBoundingClientRect().width;
+            return rows.map(row => {
+              const rect = row.getBoundingClientRect();
+              return {
+                display: getComputedStyle(row).display,
+                width: rect.width,
+                cardWidth,
+                top: rect.top,
+                bottom: rect.bottom
+              };
+            });
+          });
+          assert.ok(rowMetrics.length >= 2,
+            profile.name + ': checklist cards must expose their action rows for layout checks');
+          for (const row of rowMetrics) {
+            assert.equal(row.display, 'flex',
+              profile.name + ': desktop action rows must be block-level flex rows');
+            assert.ok(row.width >= row.cardWidth * .9,
+              profile.name + ': desktop action rows must use the card width');
+          }
+          const siblingRows = rowMetrics.filter((row, index) => index < rowMetrics.length);
+          for (let index = 1; index < siblingRows.length; index++) {
+            assert.ok(siblingRows[index].top >= siblingRows[index - 1].bottom - 1,
+              profile.name + ': checklist action rows must occupy separate lines');
+          }
+        }
+
+        if (step === 3 && profile.viewport.width >= 481 && profile.viewport.width < 768) {
           const actionRow = card.locator('.ff-guide-row').first();
           const rowMetrics = await actionRow.evaluate(element => {
             const style = getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
             const button = element.querySelector('button');
             const buttonStyle = button ? getComputedStyle(button) : null;
-            const rect = element.getBoundingClientRect();
             const buttonRect = button?.getBoundingClientRect();
             return {
               display: style.display,
               width: rect.width,
               paddingTop: parseFloat(style.paddingTop),
               paddingLeft: parseFloat(style.paddingLeft),
-              buttonWidth: buttonRect?.width ?? 0,
               buttonHeight: buttonRect?.height ?? 0,
               buttonPaddingTop: parseFloat(buttonStyle?.paddingTop || '0'),
               buttonPaddingLeft: parseFloat(buttonStyle?.paddingLeft || '0'),
@@ -468,9 +528,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             };
           });
           assert.equal(rowMetrics.display, 'inline-flex',
-            profile.name + ': short action frames must shrink-wrap their contents');
+            profile.name + ': compact tablet action frames must retain their current layout');
           assert.ok(rowMetrics.width <= densityMetrics.cardWidth * .86,
-            profile.name + ': checklist action frames must not span the activity card');
+            profile.name + ': compact tablet action frames must remain content-sized');
           assert.ok(rowMetrics.paddingTop <= 8.5 && rowMetrics.paddingLeft <= 12.5,
             profile.name + ': action-row padding must stay within the updated 8px by 12px spacing scale');
           assert.equal(rowMetrics.buttonFlexGrow, 0,
