@@ -982,7 +982,7 @@ body { line-height: var(--ff-ui-body-leading); }
 
 
 /* Health Checklist card refinement. */
-#view-checklist .step-card h2 {
+#little-garden #view-checklist .step-card h2 {
   font-size: 1rem !important;
   font-weight: 600 !important;
   line-height: 1.3;
