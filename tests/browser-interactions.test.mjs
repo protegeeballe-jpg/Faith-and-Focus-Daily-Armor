@@ -455,7 +455,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       ).evaluateAll(labels => {
         const grid = labels[0]?.parentElement;
         const tracks = grid
-          ? getComputedStyle(grid).gridTemplateColumns.split(/\\s+/).map(value => parseFloat(value))
+          ? getComputedStyle(grid).gridTemplateColumns.trim().split(' ').filter(Boolean).map(value => parseFloat(value))
           : [];
         const trackWidth = tracks.length ? Math.min(...tracks) : 0;
         return labels.map(label => {
