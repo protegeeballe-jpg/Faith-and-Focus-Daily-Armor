@@ -567,26 +567,50 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         }
       }
 
+      const initialLocationChoices = await page.locator(
+        '#card-step-1 .checklist-location-choice'
+      ).evaluateAll(labels => labels.map(label => {
+        const radio = label.querySelector('input[type="radio"]');
+        return {
+          radioHidden: radio?.classList.contains('guide-hidden') ?? false,
+          labelHidden: getComputedStyle(label).display === 'none',
+          row: label.closest('.guided-task-row')?.getBoundingClientRect().width ?? 0
+        };
+      }));
+      assert.equal(initialLocationChoices.length, 4,
+        profile.name + ': all four location choices must retain their own quote flow');
+      const locationQuoteButtons = page.locator('#card-step-1 .guide-quote-launch');
+      assert.equal(await locationQuoteButtons.count(), 4,
+        profile.name + ': every location choice must have a Read quote button');
+      for (let index = 0; index < 4; index++) {
+        const quote = locationQuoteButtons.nth(index);
+        await assertPointerHitTarget(quote, profile.name + ' location quote ' + index);
+        assert.equal(await quote.isVisible(), true,
+          profile.name + ': location quote button must be visible before completion');
+        await quote.click();
+        assert.equal(await page.locator('#anim-modal').evaluate(
+          modal => !modal.classList.contains('hidden')), true,
+          profile.name + ': location quote button must open its guide');
+        await page.locator('#modal-complete-btn').click();
+        await page.locator('#card-step-1 .checklist-location-choice').nth(index)
+          .locator('input[type="radio"]').waitFor({state: 'visible'});
+      }
+
       const locationChoiceMetrics = await page.locator(
         '#card-step-1 .checklist-location-choice'
       ).evaluateAll(labels => labels.map(label => {
         const radio = label.querySelector('input[type="radio"]');
         const text = label.querySelector('.checklist-location-choice-text');
+        const row = label.closest('.guided-task-row');
+        const quote = row?.querySelector('.guide-quote-launch');
         return {
           width: label.getBoundingClientRect().width,
           display: getComputedStyle(label).display,
-          computedWidth: getComputedStyle(label).width,
-          visibility: getComputedStyle(label).visibility,
-          gridWidth: label.parentElement?.getBoundingClientRect().width ?? 0,
-          cardWidth: label.closest('.step-card')?.getBoundingClientRect().width ?? 0,
           radioWidth: radio?.getBoundingClientRect().width ?? 0,
           radioDisplay: radio ? getComputedStyle(radio).display : '',
           radioGuideHidden: radio?.classList.contains('guide-hidden') ?? false,
-          labelGuideClass: label.classList.contains('guide-checkbox-label'),
-          insideGuidedRow: Boolean(label.closest('.guided-task-row')),
-          radioFlexShrink: radio ? getComputedStyle(radio).flexShrink : '',
+          quoteHeight: quote?.getBoundingClientRect().height ?? 0,
           textWidth: text?.getBoundingClientRect().width ?? 0,
-          textDisplay: text ? getComputedStyle(text).display : '',
           textScrollWidth: text?.scrollWidth ?? 0,
           textClientWidth: text?.clientWidth ?? 0,
           textHeight: text?.getBoundingClientRect().height ?? 0,
@@ -596,26 +620,34 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.equal(locationChoiceMetrics.length, 4,
         profile.name + ': all four location answers must remain present');
       for (const choice of locationChoiceMetrics) {
-        assert.ok(choice.width > 0, profile.name + ': location answers remain visible: ' + JSON.stringify(locationChoiceMetrics));
+        assert.ok(choice.width > 0,
+          profile.name + ': unlocked location answers remain visible');
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control retains its 18px footprint');
         assert.equal(choice.radioGuideHidden, false,
-          profile.name + ': location radio must not be hidden by the guide flow');
-        assert.equal(choice.labelGuideClass, false,
-          profile.name + ': location label must not become a gated guide label');
-        assert.equal(choice.insideGuidedRow, false,
-          profile.name + ': location choice must remain outside guided task rows');
-        assert.equal(choice.radioFlexShrink, '0',
-          profile.name + ': radio control must not compress answer text');
+          profile.name + ': completed quote must reveal its radio control');
         assert.ok(choice.textWidth > 0 && choice.textScrollWidth <= choice.textClientWidth + 1,
           profile.name + ': answer text remains fully visible');
+        if (profile.viewport.width <= 620) {
+          assert.ok(choice.quoteHeight >= 44,
+            profile.name + ': mobile quote controls retain a 44px touch target');
+        }
       }
       assert.ok(locationChoiceMetrics[0].textHeight <= locationChoiceMetrics[0].textLineHeight * 1.6,
         profile.name + ': AT HOME remains on one line');
       const atHomeChoice = page.locator('#card-step-1 .checklist-location-choice').filter({hasText:'AT HOME'});
+      const atHomeQuote = page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
       await atHomeChoice.click();
       assert.equal(await atHomeChoice.locator('input[type="radio"]').isChecked(), true,
         profile.name + ': AT HOME selection behavior remains unchanged');
+      await page.waitForFunction(() => {
+        const button = document.querySelector('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+        return button?.hidden === true;
+      });
+      assert.equal(await atHomeQuote.isVisible(), false,
+        profile.name + ': completed location quote button disappears after selection');
+      assert.equal(await page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-office"]').isVisible(), true,
+        profile.name + ': other location quote buttons remain available');
 
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
