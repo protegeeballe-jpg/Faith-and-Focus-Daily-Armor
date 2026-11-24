@@ -296,12 +296,8 @@ test('Chromium: every in-card guide action button receives a real pointer click'
     // The generated Read quote launcher is another distinct control inside each card.
     const launchers = card.locator('.guide-quote-launch');
     const launcherCount = await launchers.count();
-    if (step === 1) {
-      assert.equal(launcherCount, 0,
-        'Location radio choices must not receive guided checkbox launchers');
-    } else {
-      assert.ok(launcherCount > 0, 'Expected generated guide launchers in card ' + step);
-    }
+    assert.ok(launcherCount > 0,
+      'Expected Read quote launchers in checklist card ' + step);
     for (let index = 0; index < launcherCount; index++) {
       await launchers.nth(index).click();
       assert.equal(await page.locator('#anim-modal').evaluate(
@@ -313,6 +309,52 @@ test('Chromium: every in-card guide action button receives a real pointer click'
 
   assert.deepEqual(pageErrors, [],
     'In-card guide actions must not produce browser runtime errors');
+  await context.close();
+});
+
+
+test('Chromium: location quote unlocks the radio and its button disappears after selection', async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.goto(host.url);
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+
+  const home = page.locator('#card-step-1 [data-id="loc-home"]');
+  const quote = page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+  await quote.waitFor({state: 'visible'});
+  assert.equal(await home.isVisible(), false,
+    'Location radio remains hidden until its quote is completed');
+
+  await quote.click();
+  assert.equal(await page.locator('#anim-modal').evaluate(
+    modal => !modal.classList.contains('hidden')), true,
+    'Location quote must open its guided modal');
+  await page.locator('#modal-complete-btn').click();
+  await home.waitFor({state: 'visible'});
+  assert.equal(await home.isEnabled(), true,
+    'Completing the quote must unlock the location radio');
+
+  await home.check();
+  await page.waitForFunction(() => {
+    const button = document.querySelector('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-home"]');
+    return button?.hidden === true;
+  });
+  assert.equal(await quote.isVisible(), false,
+    'The selected location quote button must disappear after completion is checked');
+  assert.equal(await page.locator('#card-step-1 .guide-quote-launch[aria-label="Read quote for loc-office"]').isVisible(), true,
+    'Unselected location choices must retain their Read quote buttons');
+
   await context.close();
 });
 
