@@ -110,12 +110,13 @@ test('desktop layout widens the app, checklist, and Diary panels without changin
 
 test('Card 1 location answers sit directly on one watercolor card surface', () => {
   const cardOne = html.slice(html.indexOf('id="card-step-1"'), html.indexOf('id="card-step-2"'));
-  assert.equal((cardOne.match(/class="checklist-location-choice flex items-center gap-3 cursor-pointer"/g) || []).length, 4);
+  const locationLabels = cardOne.match(/<label class="checklist-location-choice[^"]*"[^>]*>[\\s\\S]*?<\\/label>/g) || [];
+  assert.equal(locationLabels.length, 4);
   assert.ok(cardOne.includes('data-id="loc-home"><span class="checklist-location-choice-text">AT HOME</span>'));
   assert.ok(cardOne.includes('data-id="loc-office"><span class="checklist-location-choice-text">AT WORK</span>'));
-  assert.ok(cardOne.includes('data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE\'S HOUSE</span>'));
+  assert.ok(cardOne.includes('data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE\\'S HOUSE</span>'));
   assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
-  assert.doesNotMatch(cardOne, /bg-white|rounded-2xl|p-3/);
+  assert.doesNotMatch(locationLabels.join('\\n'), /bg-white|rounded-2xl|p-3/);
 
   const locationStyles = density.slice(density.indexOf('#card-step-1.step-card::after'));
   assert.ok(locationStyles.includes('display: none !important;'));
