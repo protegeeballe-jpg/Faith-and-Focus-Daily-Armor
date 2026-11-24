@@ -104,7 +104,9 @@ test('Chromium: primary account, navigation, settings, and quote controls receiv
     scene => !scene.classList.contains('hidden')), true,
   'Health Checklist navigation must activate its scene');
 
-  const quoteButton = page.locator('.guide-quote-launch').first();
+  await page.locator('#btn-next').click();
+  await page.locator('#card-step-2').waitFor({state: 'visible'});
+  const quoteButton = page.locator('#card-step-2 .guide-quote-launch').first();
   await quoteButton.waitFor({state: 'visible'});
   await quoteButton.click();
   assert.equal(await page.locator('#anim-modal').evaluate(
@@ -294,7 +296,12 @@ test('Chromium: every in-card guide action button receives a real pointer click'
     // The generated Read quote launcher is another distinct control inside each card.
     const launchers = card.locator('.guide-quote-launch');
     const launcherCount = await launchers.count();
-    assert.ok(launcherCount > 0, 'Expected generated guide launchers in card ' + step);
+    if (step === 1) {
+      assert.equal(launcherCount, 0,
+        'Location radio choices must not receive guided checkbox launchers');
+    } else {
+      assert.ok(launcherCount > 0, 'Expected generated guide launchers in card ' + step);
+    }
     for (let index = 0; index < launcherCount; index++) {
       await launchers.nth(index).click();
       assert.equal(await page.locator('#anim-modal').evaluate(
@@ -714,7 +721,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             profile.name + ': unlocked checkbox must accept a user interaction (' + target + ')');
         }
 
-        const enabledCheckboxes = card.locator('input.app-chk:visible:not([disabled])');
+        const enabledCheckboxes = card.locator('input.app-chk[type="checkbox"]:visible:not([disabled])');
         for (let index = 0; index < await enabledCheckboxes.count(); index++) {
           const checkbox = enabledCheckboxes.nth(index);
           if (!await checkbox.isChecked()) await checkbox.check();
@@ -884,7 +891,9 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   assert.equal(cardTexture.edgePointerEvents, 'none');
   assert.equal(cardTexture.isolation, 'isolate');
 
-  const quoteLauncher = page.locator('.guide-quote-launch').first();
+  await page.locator('#btn-next').click();
+  await page.locator('#card-step-2').waitFor({state: 'visible'});
+  const quoteLauncher = page.locator('#card-step-2 .guide-quote-launch').first();
   await quoteLauncher.click();
   const quoteTexture = await page.locator('#anim-modal .guide-quote-card').evaluate(element => ({
     backgroundImage: getComputedStyle(element).backgroundImage,
@@ -928,7 +937,9 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
     window.dispatchEvent(new Event('faith-focus:app-unlocked'));
   });
   await reducedPage.getByRole('button', {name: 'Open Health Checklist'}).click();
-  await reducedPage.locator('.guide-quote-launch').first().click();
+  await reducedPage.locator('#btn-next').click();
+  await reducedPage.locator('#card-step-2').waitFor({state: 'visible'});
+  await reducedPage.locator('#card-step-2 .guide-quote-launch').first().click();
   const reducedAnimation = await reducedPage.locator('#anim-modal .guide-quote-wash').evaluate(
     element => getComputedStyle(element).animationDuration);
   assert.equal(reducedAnimation, '0s',
