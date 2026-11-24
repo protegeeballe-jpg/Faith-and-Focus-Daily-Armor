@@ -453,51 +453,63 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       const locationChoiceMetrics = await page.locator(
         '#card-step-1 .checklist-location-choice'
       ).evaluateAll(labels => {
-        const grid = labels[0]?.parentElement;
-        const gridWidth = grid?.getBoundingClientRect().width ?? 0;
-        return labels.map(label => {
-          const radio = label.querySelector('input[type="radio"]');
-          const text = label.querySelector('.checklist-location-choice-text');
-          const labelStyle = getComputedStyle(label);
-          const radioStyle = radio ? getComputedStyle(radio) : null;
-          const textStyle = text ? getComputedStyle(text) : null;
-          return {
-            labelWidth: label.getBoundingClientRect().width,
-            gridWidth,
-            radioWidth: radio?.getBoundingClientRect().width ?? 0,
-            radioFlexShrink: radioStyle?.flexShrink ?? '',
-            textWidth: text?.getBoundingClientRect().width ?? 0,
-            textHeight: text?.getBoundingClientRect().height ?? 0,
-            textLineHeight: parseFloat(textStyle?.lineHeight || '0'),
-            textScrollWidth: text?.scrollWidth ?? 0,
-            textClientWidth: text?.clientWidth ?? 0,
-            textScrollHeight: text?.scrollHeight ?? 0,
-            textClientHeight: text?.clientHeight ?? 0,
-            labelMinWidth: parseFloat(labelStyle.minWidth || '0')
-          };
-        });
+        const pseudoDisplay = getComputedStyle(
+          document.querySelector('#card-step-1'),
+          '::after'
+        ).display;
+        return {
+          pseudoDisplay,
+          choices: labels.map(label => {
+            const radio = label.querySelector('input[type="radio"]');
+            const text = label.querySelector('.checklist-location-choice-text');
+            const style = getComputedStyle(label);
+            const radioStyle = radio ? getComputedStyle(radio) : null;
+            return {
+              width: label.getBoundingClientRect().width,
+              backgroundColor: style.backgroundColor,
+              borderWidth: style.borderTopWidth,
+              borderRadius: style.borderTopLeftRadius,
+              boxShadow: style.boxShadow,
+              radioWidth: radio?.getBoundingClientRect().width ?? 0,
+              radioFlexShrink: radioStyle?.flexShrink ?? '',
+              textWidth: text?.getBoundingClientRect().width ?? 0,
+              textScrollWidth: text?.scrollWidth ?? 0,
+              textClientWidth: text?.clientWidth ?? 0,
+              textHeight: text?.getBoundingClientRect().height ?? 0,
+              textLineHeight: parseFloat(getComputedStyle(text).lineHeight || '0')
+            };
+          })
+        };
       });
-      assert.equal(locationChoiceMetrics.length, 4,
+      assert.equal(locationChoiceMetrics.choices.length, 4,
         profile.name + ': all four location answers must remain present');
-      for (const choice of locationChoiceMetrics) {
-        assert.ok(choice.labelWidth >= choice.gridWidth * .4
-            && choice.labelWidth <= choice.gridWidth + 1,
-          profile.name + ': each location answer surface must occupy its full grid column');
+      assert.equal(locationChoiceMetrics.pseudoDisplay, 'none',
+        profile.name + ': Card 1 must use a single outer card surface');
+      for (const choice of locationChoiceMetrics.choices) {
+        assert.ok(choice.width > 0,
+          profile.name + ': each location answer must remain visible');
+        assert.equal(choice.backgroundColor, 'rgba(0, 0, 0, 0)',
+          profile.name + ': location answers must not create extra white panels');
+        assert.equal(choice.borderWidth, '0px',
+          profile.name + ': location answers must not draw nested panel borders');
+        assert.equal(choice.borderRadius, '0px',
+          profile.name + ': location answers must not look like individual cards');
+        assert.equal(choice.boxShadow, 'none',
+          profile.name + ': location answers must not add card shadows');
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control must retain its fixed 18px footprint');
         assert.equal(choice.radioFlexShrink, '0',
           profile.name + ': radio control must not compress the answer text');
         assert.ok(choice.textWidth > 0 && choice.textScrollWidth <= choice.textClientWidth + 1,
-          profile.name + ': answer text must remain fully visible inside its label');
+          profile.name + ': answer text must remain fully visible');
       }
-      const atHomeMetrics = locationChoiceMetrics[0];
+      const atHomeMetrics = locationChoiceMetrics.choices[0];
       assert.ok(atHomeMetrics.textHeight <= atHomeMetrics.textLineHeight * 1.6,
-        profile.name + ': AT HOME must stay on one line instead of being squeezed');
-
+        profile.name + ': AT HOME must stay on one line');
       const atHomeChoice = page.locator('#card-step-1 .checklist-location-choice').filter({hasText:'AT HOME'});
       await atHomeChoice.click();
       assert.equal(await atHomeChoice.locator('input[type="radio"]').isChecked(), true,
-        profile.name + ': clicking the AT HOME answer must still select its original radio');
+        profile.name + ': clicking AT HOME must still select its original radio');
 
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
