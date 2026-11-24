@@ -27,6 +27,7 @@ jobs:
         run: |
           node --check assets/app.js
           node --check assets/guide-quotes.js
+          node --check assets/bible-reader.js
           node --check assets/missed-card-notifications.js
           node --check sw.js
           node --check assets/service-worker-registration.js
