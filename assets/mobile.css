@@ -3,6 +3,8 @@
  *
  * Loaded after app.css and garden.css. The phone-specific layout stays inside
  * its breakpoint; the shared density baseline is appended at the end.
+ * Button, row, and frame spacing is controlled by the "spacing dials" at the
+ * top of the "Precision sizing" section.
  * Remove the <link> to this file in index.html to roll back these refinements.
  */
 
@@ -386,12 +388,15 @@ body { line-height: var(--ff-ui-body-leading); }
   --ff-content-column-width: 48rem;
   --ff-content-card-width: 36rem;
   --ff-content-panel-width: 24rem;
-  --ff-frame-pad-y: 8px;
-  --ff-frame-pad-x: 10px;
-  --ff-row-pad-y: 6px;
-  --ff-row-pad-x: 8px;
-  --ff-button-pad-y: 4px;
-  --ff-button-pad-x: 8px;
+  /* Spacing dials: change these numbers to loosen or tighten the whole app. */
+  --ff-frame-pad-y: 12px;   /* space between a frame's border and its content (top/bottom) */
+  --ff-frame-pad-x: 14px;   /* ... left/right */
+  --ff-row-pad-y: 8px;      /* checklist row frames */
+  --ff-row-pad-x: 12px;
+  --ff-button-pad-y: 9px;   /* space between button text and button border */
+  --ff-button-pad-x: 16px;
+  --ff-gap-frame: 10px;     /* space between neighbouring frames */
+  --ff-brush-radius: 14px 11px 15px 12px / 12px 15px 11px 14px; /* hand-painted corners */
 }
 
 .garden-shell {
@@ -486,7 +491,7 @@ body { line-height: var(--ff-ui-body-leading); }
 #view-diary #diary-voice-note-list > li,
 #view-diary .diary-note-card,
 #view-diary .diary-additional-notes-empty {
-  padding: 6px 8px !important;
+  padding: 8px 12px !important;
 }
 
 #view-diary .diary-note-composer-input,
@@ -494,21 +499,21 @@ body { line-height: var(--ff-ui-body-leading); }
 #view-checklist .step-card textarea,
 #vault-login-form input,
 #vault-signup-form input {
-  padding: 8px 10px !important;
+  padding: 10px 12px !important;
   box-sizing: border-box;
 }
 
 #view-checklist .step-card > div:first-child {
-  margin-bottom: 6px !important;
+  margin-bottom: 10px !important;
 }
 
 #view-checklist .step-card .grid {
-  gap: 8px !important;
+  gap: 10px !important;
 }
 
 #view-checklist .step-card .space-y-4 > :not([hidden]) ~ :not([hidden]),
 #view-checklist .step-card .space-y-3 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 6px !important;
+  margin-top: var(--ff-gap-frame) !important;
 }
 
 #view-checklist .guided-task-row,
@@ -522,7 +527,7 @@ body { line-height: var(--ff-ui-body-leading); }
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-start;
-  gap: 8px;
+  gap: 10px;
   padding: var(--ff-row-pad-y) var(--ff-row-pad-x) !important;
   margin-inline: 0;
   box-sizing: border-box;
@@ -574,7 +579,7 @@ body { line-height: var(--ff-ui-body-leading); }
   min-width: 0;
   max-width: 100%;
   min-height: 36px !important;
-  padding: 4px 8px !important;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
   flex: 0 0 auto !important;
   flex-grow: 0 !important;
   white-space: nowrap;
@@ -586,19 +591,19 @@ body { line-height: var(--ff-ui-body-leading); }
 }
 
 #view-diary section.mt-5 {
-  margin-top: 8px !important;
+  margin-top: 14px !important;
 }
 
 .settings-modal .garden-action-button {
   min-height: 36px !important;
-  padding: 4px 8px !important;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
 }
 
 #view-diary .diary-notebook-button {
   width: fit-content;
   min-width: 0;
   max-width: 100%;
-  padding: 4px 8px !important;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
   box-sizing: border-box;
 }
 
@@ -612,16 +617,16 @@ body { line-height: var(--ff-ui-body-leading); }
 }
 
 #little-garden .garden-topbar {
-  margin-bottom: 4px;
-  padding: 6px 10px !important;
+  margin-bottom: 8px;
+  padding: 8px 12px !important;
 }
 
 #little-garden .garden-room-actions {
   width: fit-content;
   max-width: 100%;
   margin-inline: auto;
-  gap: 6px;
-  padding: 6px !important;
+  gap: 8px;
+  padding: 8px !important;
 }
 
 #little-garden .garden-room-actions .garden-action-button {
@@ -637,12 +642,12 @@ body { line-height: var(--ff-ui-body-leading); }
 
 #little-garden .garden-choice-grid,
 #little-garden .garden-growth-grid {
-  gap: 8px;
-  padding: 8px;
+  gap: 10px;
+  padding: 10px;
 }
 
 #little-garden .garden-growth-card {
-  padding: 8px !important;
+  padding: 12px !important;
 }
 
 #little-garden .garden-action-button,
@@ -653,7 +658,7 @@ body { line-height: var(--ff-ui-body-leading); }
 #little-garden .garden-status {
   width: min(92%, 36rem);
   max-width: 36rem;
-  padding: 6px 8px !important;
+  padding: 8px 12px !important;
 }
 
 .settings-modal {
@@ -664,19 +669,19 @@ body { line-height: var(--ff-ui-body-leading); }
 
 .settings-disclosure > summary {
   min-height: 40px;
-  padding: 6px 9px !important;
+  padding: 9px 12px !important;
 }
 
 #view-pin > .card-yellow {
   width: min(100%, 24rem);
-  padding: 10px !important;
+  padding: 14px !important;
 }
 
 #vault-login-submit,
 #vault-signup-form button,
 #diary-key-action,
 #modal-complete-btn {
-  padding: 6px 10px !important;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
   box-sizing: border-box;
 }
 
@@ -686,15 +691,15 @@ body { line-height: var(--ff-ui-body-leading); }
   }
 
   #view-checklist .step-card {
-    padding: 7px 8px !important;
+    padding: 10px 12px !important;
   }
 
   #view-checklist .guided-task-row,
   #view-checklist .step-card .ff-guide-row,
   #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
   #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
-    gap: 6px;
-    padding: 6px 7px !important;
+    gap: 8px;
+    padding: var(--ff-row-pad-y) 10px !important;
   }
 
   #view-checklist .guide-quote-launch,
@@ -708,12 +713,12 @@ body { line-height: var(--ff-ui-body-leading); }
   .diary-archive-back,
   .diary-return-today {
     min-height: 44px !important;
-    padding: 4px 8px !important;
+    padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
   }
 
   #view-checklist .checklist-step-navigation {
-    gap: 6px;
-    padding: 4px !important;
+    gap: 8px;
+    padding: 6px !important;
   }
 
   #view-checklist #btn-prev,
@@ -721,7 +726,7 @@ body { line-height: var(--ff-ui-body-leading); }
   #view-checklist .checklist-step-navigation #btn-prev,
   #view-checklist .checklist-step-navigation #btn-next {
     min-height: 44px !important;
-    padding: 4px 8px !important;
+    padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
     flex: 0 0 auto !important;
     flex-grow: 0 !important;
   }
@@ -731,48 +736,137 @@ body { line-height: var(--ff-ui-body-leading); }
   .settings-modal .garden-action-button,
   .settings-disclosure > summary {
     min-height: 44px !important;
-    padding: 4px 8px !important;
+    padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
   }
 
   #view-checklist .step-card .grid label {
-    padding: 7px !important;
+    padding: 9px 10px !important;
   }
 
   #view-diary:not(.hidden) > .card-lavender {
-    padding: 7px 8px !important;
+    padding: 10px 12px !important;
   }
 
   #view-diary .diary-additional-notes,
   #view-diary #diary-location-history,
   #view-diary #diary-voice-notes {
     width: 88%;
-    padding: 7px 8px !important;
+    padding: 10px 12px !important;
   }
 
   #view-diary .diary-note-composer {
     width: 92%;
-    padding: 6px !important;
+    padding: 10px !important;
   }
 
   #little-garden .garden-room-actions {
-    gap: 5px;
-    padding: 5px !important;
+    gap: 8px;
+    padding: 8px !important;
   }
 
   #little-garden .garden-growth-grid {
-    gap: 6px;
-    padding: 6px !important;
+    gap: 8px;
+    padding: 8px !important;
   }
 
   #little-garden .garden-growth-card {
-    padding: 7px !important;
+    padding: 10px !important;
   }
 
   #view-pin > .card-yellow {
-    padding: 9px !important;
+    padding: 12px !important;
   }
 
   #modal-content-box {
-    padding: 8px !important;
+    padding: 12px !important;
+  }
+}
+
+
+/* Breathing room: readable button text and hand-painted corners.
+   (The padding itself comes from the spacing dials near the top of the
+   "Precision sizing" section. Frame widths are untouched.) */
+#view-checklist .checklist-header-button,
+#view-checklist .checklist-step-navigation button,
+#view-checklist .guide-quote-launch,
+.garden-action-button,
+.garden-small-button,
+.diary-add-note-button,
+.diary-update-button,
+.diary-notebook-button,
+.diary-return-today,
+#view-diary [data-action="lockPrivateWriting"],
+#view-diary #record-btn {
+  border-radius: var(--ff-brush-radius);
+}
+.garden-overlay.garden-room-home .garden-room-actions .garden-action-button {
+  font-size: .8rem;
+}
+.diary-add-note-button {
+  min-height: 40px;
+  font-size: .8rem;
+}
+#view-diary .diary-update-button,
+#view-diary [data-action="lockPrivateWriting"] {
+  min-height: 40px;
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x);
+  font-size: .82rem;
+}
+#view-diary .diary-notebook-button,
+#view-diary .diary-return-today {
+  font-size: .82rem;
+}
+#view-diary #record-btn {
+  padding: 10px 20px;
+  font-size: .84rem;
+  white-space: nowrap;
+}
+#view-diary [data-action="copyLocationCoordinates"] {
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: .76rem;
+}
+#view-checklist > header .checklist-date-input {
+  max-width: none !important;
+}
+
+/* Toolbar buttons (Room, Reset) get the same breathing room on every screen. */
+#view-checklist > header .checklist-header-button,
+#view-checklist > header .checklist-header-right > .checklist-reset-button {
+  padding: var(--ff-button-pad-y) var(--ff-button-pad-x) !important;
+  min-height: 40px !important;
+  min-width: 0 !important;
+}
+
+/* Phones: keep each task's text and its quote button side by side instead of
+   letting the button drop onto its own line (this saves a lot of scrolling). */
+@media (max-width: 620px) {
+  #view-checklist .guided-task-row,
+  #view-checklist .step-card .ff-guide-row,
+  #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+  #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+    flex-wrap: nowrap;
+  }
+  #view-checklist .guided-task-row .guide-checkbox-label,
+  #view-checklist .step-card .ff-guide-row > span,
+  #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between > span,
+  #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between > span {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
+
+/* Narrow phones (about 360px wide): keep the checklist toolbar on one row. */
+@media (max-width: 380px) {
+  #view-checklist > header .checklist-header-button,
+  #view-checklist > header .checklist-header-right > .checklist-reset-button {
+    padding-inline: 11px !important;
+  }
+  #view-checklist > header .checklist-date-input {
+    width: 6.4rem !important;
+    font-size: .85rem !important;
+  }
+  #view-checklist > header .checklist-header-date-time {
+    padding-inline: .45rem !important;
   }
 }

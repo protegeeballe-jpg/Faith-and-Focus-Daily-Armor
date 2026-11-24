@@ -22,11 +22,11 @@ test('shared typography scale reduces oversized type without shrinking the base 
   assert.match(density, /\.text-3xl\s*\{\s*font-size:\s*1\.7rem/);
 });
 
-test('frames use exact compact padding measurements', () => {
-  assert.match(precision, /--ff-frame-pad-y:\s*8px/);
-  assert.match(precision, /--ff-frame-pad-x:\s*10px/);
-  assert.match(precision, /--ff-row-pad-y:\s*6px/);
-  assert.match(precision, /--ff-row-pad-x:\s*8px/);
+test('spacing dials use the updated frame and row measurements', () => {
+  assert.match(precision, /--ff-frame-pad-y:\s*12px/);
+  assert.match(precision, /--ff-frame-pad-x:\s*14px/);
+  assert.match(precision, /--ff-row-pad-y:\s*8px/);
+  assert.match(precision, /--ff-row-pad-x:\s*12px/);
   assert.match(precision, /#view-checklist \.step-card\s*\{[^}]*padding:\s*var\(--ff-frame-pad-y\) var\(--ff-frame-pad-x\) !important/s);
 });
 
@@ -38,11 +38,11 @@ test('content width scales smoothly instead of allowing frames to occupy almost 
   assert.match(precision, /#view-checklist > main\s*\{[^}]*max-width:\s*var\(--ff-content-card-width\)/s);
 });
 
-test('short checklist action rows and buttons shrink to their labels and controls', () => {
+test('short checklist action rows and buttons shrink-wrap using the updated spacing scale', () => {
   assert.match(precision, /#view-checklist \.step-card \.ff-guide-row,[\s\S]*?display:\s*inline-flex !important/);
   assert.match(precision, /width:\s*fit-content/);
-  assert.match(precision, /--ff-button-pad-y:\s*4px/);
-  assert.match(precision, /--ff-button-pad-x:\s*8px/);
+  assert.match(precision, /--ff-button-pad-y:\s*9px/);
+  assert.match(precision, /--ff-button-pad-x:\s*16px/);
   assert.match(precision, /#view-checklist \.checklist-step-navigation button\s*\{[^}]*flex-grow:\s*0 !important/s);
 });
 
