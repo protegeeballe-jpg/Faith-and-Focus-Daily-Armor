@@ -1117,7 +1117,9 @@ body { line-height: var(--ff-ui-body-leading); }
   #view-checklist .step-card .guided-task-row > .guide-quote-launch {
     min-height: 44px !important;
   }
+}
 
+@media (max-width: 480px) {
   #view-checklist .step-card .ff-guide-row,
   #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
   #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
