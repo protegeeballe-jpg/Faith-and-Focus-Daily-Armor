@@ -683,13 +683,21 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         const text = label.querySelector('.checklist-location-choice-text');
         const row = label.closest('.guided-task-row');
         const quote = row?.querySelector('.guide-quote-launch');
+        const rowRect = row?.getBoundingClientRect();
+        const quoteRect = quote?.getBoundingClientRect();
         return {
           width: label.getBoundingClientRect().width,
           display: getComputedStyle(label).display,
           radioWidth: radio?.getBoundingClientRect().width ?? 0,
           radioDisplay: radio ? getComputedStyle(radio).display : '',
           radioGuideHidden: radio?.classList.contains('guide-hidden') ?? false,
-          quoteHeight: quote?.getBoundingClientRect().height ?? 0,
+          quoteHeight: quoteRect?.height ?? 0,
+          quoteScrollWidth: quote?.scrollWidth ?? 0,
+          quoteClientWidth: quote?.clientWidth ?? 0,
+          quoteLeft: quoteRect?.left ?? 0,
+          quoteRight: quoteRect?.right ?? 0,
+          rowLeft: rowRect?.left ?? 0,
+          rowRight: rowRect?.right ?? 0,
           textWidth: text?.getBoundingClientRect().width ?? 0,
           textScrollWidth: text?.scrollWidth ?? 0,
           textClientWidth: text?.clientWidth ?? 0,
@@ -702,6 +710,11 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       for (const choice of locationChoiceMetrics) {
         assert.ok(choice.width > 0,
           profile.name + ': unlocked location answers remain visible');
+        assert.ok(choice.quoteLeft >= choice.rowLeft - 1
+            && choice.quoteRight <= choice.rowRight + 1,
+          profile.name + ': each Card 1 task button must fit inside its full-width row');
+        assert.ok(choice.quoteScrollWidth <= choice.quoteClientWidth + 1,
+          profile.name + ': Card 1 task labels must not overflow their buttons');
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control retains its 18px footprint');
         assert.equal(choice.radioGuideHidden, false,
