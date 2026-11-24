@@ -820,17 +820,17 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
               buttonFlexGrow: parseFloat(buttonStyle?.flexGrow || '0')
             };
           });
-          assert.equal(rowMetrics.display, 'flex',
-            profile.name + ': task action rows must use the shared flat flex layout');
-          assert.ok(rowMetrics.width >= rowMetrics.cardWidth * .9,
-            profile.name + ': task action rows must span the available card width');
+          assert.equal(rowMetrics.display, 'inline-flex',
+            profile.name + ': compact tablet task rows must retain their content-sized layout');
+          assert.ok(rowMetrics.width <= rowMetrics.cardWidth * .86,
+            profile.name + ': compact tablet task rows must remain content-sized');
           assert.ok(rowMetrics.paddingTop <= 8.5 && rowMetrics.paddingLeft <= 12.5,
-            profile.name + ': task rows must stay within the compact spacing scale');
+            profile.name + ': task-row padding must stay within the compact spacing scale');
           assert.equal(rowMetrics.buttonFlexGrow, 0,
             profile.name + ': task quote button must remain content-sized');
           assert.ok(rowMetrics.buttonPaddingTop <= 9.5
               && rowMetrics.buttonPaddingLeft <= 16.5,
-            profile.name + ': task quote button padding must remain compact');
+            profile.name + ': task quote button padding must match the compact spacing scale');
           assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
             profile.name + ': task quote button height must stay within its compact touch-size range');
         }
