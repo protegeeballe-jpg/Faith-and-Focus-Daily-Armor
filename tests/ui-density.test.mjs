@@ -108,19 +108,19 @@ test('desktop layout widens the app, checklist, and Diary panels without changin
   assert.ok(!desktop.includes('@media (max-width:'));
 });
 
-test('Card 1 location answers give their text a full-width flex area beside a fixed radio', () => {
+test('Card 1 location answers sit directly on one watercolor card surface', () => {
   const cardOne = html.slice(html.indexOf('id="card-step-1"'), html.indexOf('id="card-step-2"'));
-  assert.equal((cardOne.match(/class="checklist-location-choice flex items-center/g) || []).length, 4);
+  assert.equal((cardOne.match(/class="checklist-location-choice flex items-center gap-3 cursor-pointer"/g) || []).length, 4);
   assert.ok(cardOne.includes('data-id="loc-home"><span class="checklist-location-choice-text">AT HOME</span>'));
   assert.ok(cardOne.includes('data-id="loc-office"><span class="checklist-location-choice-text">AT WORK</span>'));
   assert.ok(cardOne.includes('data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE\'S HOUSE</span>'));
   assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
+  assert.doesNotMatch(cardOne, /bg-white|rounded-2xl|p-3/);
 
-  const locationStyles = density.slice(density.indexOf('/* Card 1 location answers:'));
-  assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice {'));
-  assert.ok(locationStyles.includes('width: 100%;'));
-  assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice > input[type="radio"] {'));
-  assert.ok(locationStyles.includes('flex: 0 0 18px;'));
-  assert.ok(locationStyles.includes('#card-step-1 .checklist-location-choice-text {'));
-  assert.ok(locationStyles.includes('flex: 1 1 0%;'));
+  const locationStyles = density.slice(density.indexOf('#card-step-1.step-card::after'));
+  assert.ok(locationStyles.includes('display: none !important;'));
+  assert.ok(locationStyles.includes('#view-checklist #card-step-1 .grid label.checklist-location-choice {'));
+  assert.ok(locationStyles.includes('border: 0 !important;'));
+  assert.ok(locationStyles.includes('background: transparent !important;'));
+  assert.ok(locationStyles.includes('box-shadow: none !important;'));
 });
