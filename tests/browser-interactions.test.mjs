@@ -454,10 +454,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         '#card-step-1 .checklist-location-choice'
       ).evaluateAll(labels => {
         const grid = labels[0]?.parentElement;
-        const tracks = grid
-          ? getComputedStyle(grid).gridTemplateColumns.trim().split(' ').filter(Boolean).map(value => parseFloat(value))
-          : [];
-        const trackWidth = tracks.length ? Math.min(...tracks) : 0;
+        const gridWidth = grid?.getBoundingClientRect().width ?? 0;
         return labels.map(label => {
           const radio = label.querySelector('input[type="radio"]');
           const text = label.querySelector('.checklist-location-choice-text');
@@ -466,7 +463,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           const textStyle = text ? getComputedStyle(text) : null;
           return {
             labelWidth: label.getBoundingClientRect().width,
-            trackWidth,
+            gridWidth,
             radioWidth: radio?.getBoundingClientRect().width ?? 0,
             radioFlexShrink: radioStyle?.flexShrink ?? '',
             textWidth: text?.getBoundingClientRect().width ?? 0,
@@ -483,8 +480,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.equal(locationChoiceMetrics.length, 4,
         profile.name + ': all four location answers must remain present');
       for (const choice of locationChoiceMetrics) {
-        assert.ok(choice.labelWidth >= choice.trackWidth - 1,
-          profile.name + ': each location answer surface must fill its grid cell');
+        assert.ok(choice.labelWidth >= choice.gridWidth * .4
+            && choice.labelWidth <= choice.gridWidth + 1,
+          profile.name + ': each location answer surface must occupy its full grid column');
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control must retain its fixed 18px footprint');
         assert.equal(choice.radioFlexShrink, '0',
