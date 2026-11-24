@@ -607,7 +607,8 @@ import {
         function attachGuideQuoteLaunchers() {
             renderCloudGuideQuote();
             document.querySelectorAll('.app-chk').forEach(chk => {
-                if (chk.type === 'radio') return;
+                const isLocationRadio = chk.type === 'radio' && chk.closest('#card-step-1');
+                if (chk.type === 'radio' && !isLocationRadio) return;
                 const label = chk.closest('label');
                 if (!label || label.closest('.guided-task-row')) return;
                 const row = document.createElement('div');
@@ -641,7 +642,8 @@ import {
 
         function syncGuideQuoteLaunchers() {
             document.querySelectorAll('.app-chk').forEach(chk => {
-                if (chk.type === 'radio') return;
+                const isLocationRadio = chk.type === 'radio' && chk.closest('#card-step-1');
+                if (chk.type === 'radio' && !isLocationRadio) return;
                 const row = chk.closest('.guided-task-row');
                 const label = row?.querySelector('.guide-checkbox-label');
                 const launch = row?.querySelector('.guide-quote-launch');
@@ -654,7 +656,7 @@ import {
                 } else {
                     label?.classList.remove('is-unlocked');
                 }
-                launch?.classList.remove('is-hidden');
+                if (launch) launch.hidden = chk.checked;
             });
         }
 
@@ -2577,6 +2579,9 @@ import {
         });
 
         window.addEventListener('resize',resizeEcosystemCanvas,{passive:true});
+        document.addEventListener('change', event => {
+            if (event.target?.matches?.('.app-chk')) syncGuideQuoteLaunchers();
+        });
         document.addEventListener('change',saveData);
         document.addEventListener('input',saveData);
         document.querySelectorAll('#private-diary-entry,.text-input').forEach(field=>{
