@@ -104,7 +104,9 @@ test('Chromium: primary account, navigation, settings, and quote controls receiv
     scene => !scene.classList.contains('hidden')), true,
   'Health Checklist navigation must activate its scene');
 
-  const quoteButton = page.locator('.guide-quote-launch').first();
+  await page.locator('#btn-next').click();
+  await page.locator('#card-step-2').waitFor({state: 'visible'});
+  const quoteButton = page.locator('#card-step-2 .guide-quote-launch').first();
   await quoteButton.waitFor({state: 'visible'});
   await quoteButton.click();
   assert.equal(await page.locator('#anim-modal').evaluate(
@@ -294,7 +296,12 @@ test('Chromium: every in-card guide action button receives a real pointer click'
     // The generated Read quote launcher is another distinct control inside each card.
     const launchers = card.locator('.guide-quote-launch');
     const launcherCount = await launchers.count();
-    assert.ok(launcherCount > 0, 'Expected generated guide launchers in card ' + step);
+    if (step === 1) {
+      assert.equal(launcherCount, 0,
+        'Location radio choices must not receive guided checkbox launchers');
+    } else {
+      assert.ok(launcherCount > 0, 'Expected generated guide launchers in card ' + step);
+    }
     for (let index = 0; index < launcherCount; index++) {
       await launchers.nth(index).click();
       assert.equal(await page.locator('#anim-modal').evaluate(
@@ -450,6 +457,124 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           && densityMetrics.nextButtonHeight <= 44,
         profile.name + ': button height must remain compact while preserving touch sizing');
 
+      const cardSurfaceMetrics = await page.locator(
+        '#view-checklist .step-card'
+      ).evaluateAll(cards => cards.map(card => {
+        const cardStyle = getComputedStyle(card);
+        const nested = [...card.querySelectorAll('label, .ff-guide-row, .space-y-3 > div.flex.items-center.justify-between, .space-y-4 > div.flex.items-center.justify-between')].map(node => {
+          const style = getComputedStyle(node);
+          return {
+            background: style.backgroundColor,
+            border: style.borderTopWidth,
+            radius: style.borderTopLeftRadius,
+            shadow: style.boxShadow
+          };
+        });
+        const cloudPanel = card.id === 'card-step-6'
+          ? card.querySelector('.space-y-2\\.5 > .bg-white\\/80')
+          : null;
+        const cloudStyle = cloudPanel ? getComputedStyle(cloudPanel) : null;
+        return {
+          id: card.id,
+          visible: card.getBoundingClientRect().width > 0,
+          outerShadow: cardStyle.boxShadow,
+          nested,
+          cloudPanel: cloudStyle ? {
+            background: cloudStyle.backgroundColor,
+            border: cloudStyle.borderTopWidth,
+            radius: cloudStyle.borderTopLeftRadius,
+            shadow: cloudStyle.boxShadow
+          } : null
+        };
+      }));
+      assert.equal(cardSurfaceMetrics.length, 6,
+        profile.name + ': all six checklist cards must be checked');
+      assert.deepEqual(cardSurfaceMetrics.map(card => card.id), [
+        'card-step-1', 'card-step-2', 'card-step-3',
+        'card-step-4', 'card-step-5', 'card-step-6'
+      ], profile.name + ': all six checklist steps must be represented');
+      const visibleCards = cardSurfaceMetrics.filter(card => card.visible);
+      assert.equal(visibleCards.length, 1,
+        profile.name + ': the checklist wizard must show only its active step');
+      assert.equal(visibleCards[0].id, 'card-step-1',
+        profile.name + ': Card 1 must be the active step at checklist entry');
+      for (const card of cardSurfaceMetrics) {
+        assert.notEqual(card.outerShadow, 'none',
+          profile.name + ': each step must retain its single outer card surface');
+        for (const inner of card.nested) {
+          assert.equal(inner.background, 'rgba(0, 0, 0, 0)',
+            profile.name + ': inner checklist content must remain transparent');
+          assert.equal(inner.border, '0px',
+            profile.name + ': inner checklist content must not draw card borders');
+          assert.equal(inner.radius, '0px',
+            profile.name + ': inner checklist content must not use card corners');
+          assert.equal(inner.shadow, 'none',
+            profile.name + ': inner checklist content must not cast card shadows');
+        }
+        if (card.id === 'card-step-6') {
+          assert.ok(card.cloudPanel,
+            profile.name + ': Card 6 emotion choices must be checked for an extra wrapper');
+          assert.equal(card.cloudPanel.background, 'rgba(0, 0, 0, 0)',
+            profile.name + ': Card 6 must not retain a nested white panel');
+          assert.equal(card.cloudPanel.border, '0px',
+            profile.name + ': Card 6 nested panel must not retain a border');
+          assert.equal(card.cloudPanel.radius, '0px',
+            profile.name + ': Card 6 nested panel must not retain rounded corners');
+          assert.equal(card.cloudPanel.shadow, 'none',
+            profile.name + ': Card 6 nested panel must not cast a shadow');
+        }
+      }
+
+      const locationChoiceMetrics = await page.locator(
+        '#card-step-1 .checklist-location-choice'
+      ).evaluateAll(labels => labels.map(label => {
+        const radio = label.querySelector('input[type="radio"]');
+        const text = label.querySelector('.checklist-location-choice-text');
+        return {
+          width: label.getBoundingClientRect().width,
+          display: getComputedStyle(label).display,
+          computedWidth: getComputedStyle(label).width,
+          visibility: getComputedStyle(label).visibility,
+          gridWidth: label.parentElement?.getBoundingClientRect().width ?? 0,
+          cardWidth: label.closest('.step-card')?.getBoundingClientRect().width ?? 0,
+          radioWidth: radio?.getBoundingClientRect().width ?? 0,
+          radioDisplay: radio ? getComputedStyle(radio).display : '',
+          radioGuideHidden: radio?.classList.contains('guide-hidden') ?? false,
+          labelGuideClass: label.classList.contains('guide-checkbox-label'),
+          insideGuidedRow: Boolean(label.closest('.guided-task-row')),
+          radioFlexShrink: radio ? getComputedStyle(radio).flexShrink : '',
+          textWidth: text?.getBoundingClientRect().width ?? 0,
+          textDisplay: text ? getComputedStyle(text).display : '',
+          textScrollWidth: text?.scrollWidth ?? 0,
+          textClientWidth: text?.clientWidth ?? 0,
+          textHeight: text?.getBoundingClientRect().height ?? 0,
+          textLineHeight: parseFloat(getComputedStyle(text).lineHeight || '0')
+        };
+      }));
+      assert.equal(locationChoiceMetrics.length, 4,
+        profile.name + ': all four location answers must remain present');
+      for (const choice of locationChoiceMetrics) {
+        assert.ok(choice.width > 0, profile.name + ': location answers remain visible: ' + JSON.stringify(locationChoiceMetrics));
+        assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
+          profile.name + ': radio control retains its 18px footprint');
+        assert.equal(choice.radioGuideHidden, false,
+          profile.name + ': location radio must not be hidden by the guide flow');
+        assert.equal(choice.labelGuideClass, false,
+          profile.name + ': location label must not become a gated guide label');
+        assert.equal(choice.insideGuidedRow, false,
+          profile.name + ': location choice must remain outside guided task rows');
+        assert.equal(choice.radioFlexShrink, '0',
+          profile.name + ': radio control must not compress answer text');
+        assert.ok(choice.textWidth > 0 && choice.textScrollWidth <= choice.textClientWidth + 1,
+          profile.name + ': answer text remains fully visible');
+      }
+      assert.ok(locationChoiceMetrics[0].textHeight <= locationChoiceMetrics[0].textLineHeight * 1.6,
+        profile.name + ': AT HOME remains on one line');
+      const atHomeChoice = page.locator('#card-step-1 .checklist-location-choice').filter({hasText:'AT HOME'});
+      await atHomeChoice.click();
+      assert.equal(await atHomeChoice.locator('input[type="radio"]').isChecked(), true,
+        profile.name + ': AT HOME selection behavior remains unchanged');
+
       for (let step = 1; step <= 5; step++) {
         if (step > 1) {
           await page.locator('#btn-next').click();
@@ -596,7 +721,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             profile.name + ': unlocked checkbox must accept a user interaction (' + target + ')');
         }
 
-        const enabledCheckboxes = card.locator('input.app-chk:visible:not([disabled])');
+        const enabledCheckboxes = card.locator('input.app-chk[type="checkbox"]:visible:not([disabled])');
         for (let index = 0; index < await enabledCheckboxes.count(); index++) {
           const checkbox = enabledCheckboxes.nth(index);
           if (!await checkbox.isChecked()) await checkbox.check();
@@ -766,7 +891,9 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   assert.equal(cardTexture.edgePointerEvents, 'none');
   assert.equal(cardTexture.isolation, 'isolate');
 
-  const quoteLauncher = page.locator('.guide-quote-launch').first();
+  await page.locator('#btn-next').click();
+  await page.locator('#card-step-2').waitFor({state: 'visible'});
+  const quoteLauncher = page.locator('#card-step-2 .guide-quote-launch').first();
   await quoteLauncher.click();
   const quoteTexture = await page.locator('#anim-modal .guide-quote-card').evaluate(element => ({
     backgroundImage: getComputedStyle(element).backgroundImage,
@@ -810,7 +937,9 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
     window.dispatchEvent(new Event('faith-focus:app-unlocked'));
   });
   await reducedPage.getByRole('button', {name: 'Open Health Checklist'}).click();
-  await reducedPage.locator('.guide-quote-launch').first().click();
+  await reducedPage.locator('#btn-next').click();
+  await reducedPage.locator('#card-step-2').waitFor({state: 'visible'});
+  await reducedPage.locator('#card-step-2 .guide-quote-launch').first().click();
   const reducedAnimation = await reducedPage.locator('#anim-modal .guide-quote-wash').evaluate(
     element => getComputedStyle(element).animationDuration);
   assert.equal(reducedAnimation, '0s',

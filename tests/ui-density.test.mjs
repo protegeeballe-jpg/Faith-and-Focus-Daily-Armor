@@ -107,3 +107,39 @@ test('desktop layout widens the app, checklist, and Diary panels without changin
   assert.ok(desktop.includes('min-height: 50px !important;'));
   assert.ok(!desktop.includes('@media (max-width:'));
 });
+
+test('Card 1 location answers sit directly on one watercolor card surface', () => {
+  const cardOne = html.slice(html.indexOf('id="card-step-1"'), html.indexOf('id="card-step-2"'));
+  const locationLabels = [];
+  let labelStart = cardOne.indexOf('<label class="checklist-location-choice');
+  while (labelStart !== -1) {
+    const labelEnd = cardOne.indexOf('</label>', labelStart);
+    assert.notEqual(labelEnd, -1, 'Each location answer label must close');
+    locationLabels.push(cardOne.slice(labelStart, labelEnd + '</label>'.length));
+    labelStart = cardOne.indexOf('<label class="checklist-location-choice', labelEnd + '</label>'.length);
+  }
+  assert.equal(locationLabels.length, 4);
+  assert.ok(cardOne.includes('data-id="loc-home"><span class="checklist-location-choice-text">AT HOME</span>'));
+  assert.ok(cardOne.includes('data-id="loc-office"><span class="checklist-location-choice-text">AT WORK</span>'));
+  assert.ok(cardOne.includes(`data-id="loc-house"><span class="checklist-location-choice-text">AT SOMEONE ELSE'S HOUSE</span>`));
+  assert.ok(cardOne.includes('data-id="loc-out"><span class="checklist-location-choice-text">OUT HERE. SOMEWHERE</span>'));
+  assert.doesNotMatch(locationLabels.join('\n'), /(?:^|\s)(?:bg-white(?:\/\d+)?|rounded-2xl|p-3)(?=\s|")/);
+
+  const locationStyles = density.slice(density.indexOf('#card-step-1.step-card::after'));
+  assert.ok(locationStyles.includes('display: none !important;'));
+  assert.ok(locationStyles.includes('#view-checklist #card-step-1 .grid label.checklist-location-choice {'));
+  assert.ok(locationStyles.includes('border: 0 !important;'));
+  assert.ok(locationStyles.includes('background: transparent !important;'));
+  assert.ok(locationStyles.includes('box-shadow: none !important;'));
+});
+
+
+test('all six checklist cards use one outer surface without nested label or guide-row panels', () => {
+  const source = density.slice(density.indexOf('/* One visual surface per checklist step;'));
+  assert.ok(source.includes('#view-checklist .step-card label,'));
+  assert.ok(source.includes('#view-checklist .step-card .ff-guide-row,'));
+  assert.ok(source.includes('#view-checklist #card-step-6 .space-y-2\\.5 > .bg-white\\/80'));
+  assert.ok(source.includes('#view-checklist #card-step-6 .cloud-item'));
+  assert.ok(source.includes('border-bottom: 1px solid'));
+  assert.ok(source.includes('#view-checklist .step-card input[type="checkbox"],'));
+});
