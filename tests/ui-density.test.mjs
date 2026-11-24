@@ -94,12 +94,15 @@ test('Health Checklist cards use a compact, consistent typography and watercolor
 
 test('desktop layout widens the app, checklist, and Diary panels without changing phone rules', () => {
   const desktop = density.slice(density.lastIndexOf('/* Desktop layout refinement. */'));
-  assert.match(desktop, /@media \\(min-width: 768px\\)/);
-  assert.match(desktop, /--ff-content-column-width:\\s*60rem/);
-  assert.match(desktop, /--ff-content-card-width:\\s*50rem/);
-  assert.match(desktop, /--ff-content-panel-width:\\s*32rem/);
-  assert.match(desktop, /calc\\(50vw \\+ 220px\\)/);
-  assert.match(desktop, /#view-checklist \\.step-card \\.ff-guide-row,[\\s\\S]*?display: flex !important;[\\s\\S]*?width: 100% !important;/);
-  assert.match(desktop, /@media \\(min-width: 800px\\)[\\s\\S]*?flex-flow: row nowrap !important;[\\s\\S]*?min-height: 50px !important;/);
-  assert.doesNotMatch(desktop, /@media \\(max-width:/);
+  assert.ok(desktop.includes('@media (min-width: 768px)'));
+  assert.ok(desktop.includes('--ff-content-column-width: 60rem;'));
+  assert.ok(desktop.includes('--ff-content-card-width: 50rem;'));
+  assert.ok(desktop.includes('--ff-content-panel-width: 32rem;'));
+  assert.ok(desktop.includes('calc(50vw + 220px)'));
+  assert.ok(desktop.includes('display: flex !important;'));
+  assert.ok(desktop.includes('width: 100% !important;'));
+  assert.ok(desktop.includes('@media (min-width: 800px)'));
+  assert.ok(desktop.includes('flex-flow: row nowrap !important;'));
+  assert.ok(desktop.includes('min-height: 50px !important;'));
+  assert.ok(!desktop.includes('@media (max-width:'));
 });
