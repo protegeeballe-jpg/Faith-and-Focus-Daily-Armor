@@ -652,7 +652,8 @@ import {
                 quoteMark.className = 'guide-quote-mark';
                 quoteMark.setAttribute('aria-hidden', 'true');
                 quoteMark.textContent = '“';
-                const taskLabel = CHECKLIST_QUOTE_LABELS[id] || 'Read quote';                const guideLabel = document.createElement('span');
+                const taskLabel = CHECKLIST_QUOTE_LABELS[id] || 'Read quote';
+                const guideLabel = document.createElement('span');
                 guideLabel.className = 'guide-quote-label';
                 guideLabel.textContent = taskLabel;
                 guideButton.append(quoteMark, guideLabel);
