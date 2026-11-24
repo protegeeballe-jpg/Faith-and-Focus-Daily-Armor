@@ -607,6 +607,7 @@ import {
         function attachGuideQuoteLaunchers() {
             renderCloudGuideQuote();
             document.querySelectorAll('.app-chk').forEach(chk => {
+                if (chk.type === 'radio') return;
                 const label = chk.closest('label');
                 if (!label || label.closest('.guided-task-row')) return;
                 const row = document.createElement('div');
@@ -640,6 +641,7 @@ import {
 
         function syncGuideQuoteLaunchers() {
             document.querySelectorAll('.app-chk').forEach(chk => {
+                if (chk.type === 'radio') return;
                 const row = chk.closest('.guided-task-row');
                 const label = row?.querySelector('.guide-checkbox-label');
                 const launch = row?.querySelector('.guide-quote-launch');
