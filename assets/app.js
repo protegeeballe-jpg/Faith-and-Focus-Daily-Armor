@@ -54,6 +54,7 @@ import {
 import { GARDEN_STORAGE_KEY } from './garden-model.js';
 import { syncDailyDateNow } from './vault-sync.js';
 import { getGuideQuote } from './guide-quotes.js';
+import { createBibleReader } from './bible-reader.js';
 import { DAILY_RESET_MARKER_PREFIX, createDailyResetMarker } from './daily-reset.js';
 import {
     MAX_VOICE_NOTE_BYTES, MAX_VOICE_NOTE_DURATION_MS, VOICE_NOTE_TARGET_BITRATE,
@@ -77,6 +78,7 @@ import {
         let currentStep = 1;
         let lastObservedDeviceDate = null;
         let activeTargetCheckboxId = null;
+        let bibleReader = null;
         let mediaRecorder, audioChunks = [];
         let activeVoiceNoteDate = null;
         let activeVoiceNoteDraft = null;
@@ -609,6 +611,7 @@ import {
             'loc-house': "At someone else's Home",
             'loc-out': 'Out Here Somewhere',
             'loc-office': 'At Work',
+            'bible-morning': 'Read & Reflect',
             'start-1': 'Mental Notes',
             'start-2': 'Set Intentions',
             'start-3': 'Move Your Body',
@@ -626,7 +629,8 @@ import {
             'sleep-2': 'Grateful to God',
             'sleep-3': 'Digital Curfew',
             'sleep-4': 'Kneel & Pray',
-            'sleep-5': 'Drink Your Water'
+            'sleep-5': 'Drink Your Water',
+            'bible-evening': 'Read & Reflect'
         });
 
         function attachGuideQuoteLaunchers() {
@@ -651,16 +655,23 @@ import {
                 const quoteMark = document.createElement('span');
                 quoteMark.className = 'guide-quote-mark';
                 quoteMark.setAttribute('aria-hidden', 'true');
-                quoteMark.textContent = '“';
+                const isBibleTask = id === 'bible-morning' || id === 'bible-evening';
+                quoteMark.textContent = isBibleTask ? '▤' : '“';
                 const taskLabel = CHECKLIST_QUOTE_LABELS[id] || 'Read quote';
                 const guideLabel = document.createElement('span');
                 guideLabel.className = 'guide-quote-label';
                 guideLabel.textContent = taskLabel;
                 guideButton.append(quoteMark, guideLabel);
                 guideButton.dataset.taskId = id;
-                guideButton.setAttribute('aria-label', 'Read quote for ' + taskLabel);
-                guideButton.title = 'Read quote for ' + taskLabel;
-                guideButton.addEventListener('click', () => openModal('guided', id));
+                guideButton.setAttribute('aria-label', isBibleTask ? 'Open Bible for ' + taskLabel : 'Read quote for ' + taskLabel);
+                guideButton.title = isBibleTask ? 'Open Bible for ' + taskLabel : 'Read quote for ' + taskLabel;
+                guideButton.addEventListener('click', () => {
+                    if (isBibleTask) {
+                        bibleReader?.open(id).catch(error => console.error('[Faith & Focus] Bible reader could not open.', error));
+                        return;
+                    }
+                    openModal('guided', id);
+                });
                 row.insertBefore(guideButton, label);
             });
             document.querySelectorAll('button[onclick^="openModal("]').forEach(button => {
@@ -1579,7 +1590,7 @@ import {
             const percent=total?Math.round((completed/total)*100):0;
             if(label)label.textContent=completed+' of '+total+' steps';
             if(bar)bar.style.width=percent+'%';
-            if(track)track.setAttribute('aria-valuenow',String(completed));
+            if(track){track.setAttribute('aria-valuenow',String(completed));track.setAttribute('aria-valuemax',String(total));}
         }
 
 
@@ -2531,6 +2542,18 @@ import {
             updateDiaryDateAccess(today);
             updateDeviceClock();
             window.setInterval(updateDeviceClock,15000);
+            bibleReader = createBibleReader({
+                onTaskComplete: taskId => {
+                    const checkbox = document.querySelector('.app-chk[data-id="' + taskId + '"]');
+                    if (!checkbox) throw new Error('The matching Bible checklist task could not be found.');
+                    checkbox.disabled = false;
+                    checkbox.dataset.guideUnlocked = 'true';
+                    checkbox.classList.remove('guide-hidden');
+                    checkbox.closest('.guided-task-row')?.querySelector('.guide-checkbox-label')?.classList.add('is-unlocked');
+                    saveData();
+                    syncGuideQuoteLaunchers();
+                }
+            });
             attachGuideQuoteLaunchers();
             loadData();
             updatePrivateWritingAccess();
