@@ -386,12 +386,12 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.equal(densityMetrics.rootFontSize, '15px',
         profile.name + ': shared type scale must load');
       assert.ok(densityMetrics.cardPaddingTop >= 6
-          && densityMetrics.cardPaddingTop <= 8.5
-          && densityMetrics.cardPaddingBottom <= 8.5,
-        profile.name + ': frame top and bottom padding must stay within 8px');
-      assert.ok(densityMetrics.cardPaddingLeft <= 10.5
-          && densityMetrics.cardPaddingRight <= 10.5,
-        profile.name + ': frame side padding must stay within 10px');
+          && densityMetrics.cardPaddingTop <= 12.5
+          && densityMetrics.cardPaddingBottom <= 12.5,
+        profile.name + ': frame padding must preserve the updated spacing scale');
+      assert.ok(densityMetrics.cardPaddingLeft <= 14.5
+          && densityMetrics.cardPaddingRight <= 14.5,
+        profile.name + ': frame side padding must preserve the updated spacing scale');
       assert.ok(densityMetrics.headingFontSize >= 14 && densityMetrics.headingFontSize <= 20,
         profile.name + ': checklist heading must remain readable');
       assert.ok(densityMetrics.cardLeft >= -1
@@ -414,9 +414,9 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         profile.name + ': navigation buttons must not stretch to fill the footer');
       assert.ok(densityMetrics.nextButtonWidth < densityMetrics.viewportWidth * .35,
         profile.name + ': navigation button width must follow its label');
-      assert.ok(densityMetrics.nextButtonPaddingTop <= 4.5
-          && densityMetrics.nextButtonPaddingLeft <= 8.5,
-        profile.name + ': navigation button padding must remain compact');
+      assert.ok(densityMetrics.nextButtonPaddingTop <= 9.5
+          && densityMetrics.nextButtonPaddingLeft <= 16.5,
+        profile.name + ': navigation button padding must match the updated spacing scale');
       assert.ok(densityMetrics.nextButtonHeight >= 36
           && densityMetrics.nextButtonHeight <= 44,
         profile.name + ': button height must remain compact while preserving touch sizing');
@@ -452,13 +452,13 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             profile.name + ': short action frames must shrink-wrap their contents');
           assert.ok(rowMetrics.width <= densityMetrics.cardWidth * .86,
             profile.name + ': checklist action frames must not span the activity card');
-          assert.ok(rowMetrics.paddingTop <= 6.5 && rowMetrics.paddingLeft <= 8.5,
-            profile.name + ': action-row padding must stay at 6px by 8px');
+          assert.ok(rowMetrics.paddingTop <= 8.5 && rowMetrics.paddingLeft <= 12.5,
+            profile.name + ': action-row padding must stay within the updated 8px by 12px spacing scale');
           assert.equal(rowMetrics.buttonFlexGrow, 0,
             profile.name + ': action button must not expand inside its frame');
-          assert.ok(rowMetrics.buttonPaddingTop <= 4.5
-              && rowMetrics.buttonPaddingLeft <= 8.5,
-            profile.name + ': action button padding must stay at 4px by 8px');
+          assert.ok(rowMetrics.buttonPaddingTop <= 9.5
+              && rowMetrics.buttonPaddingLeft <= 16.5,
+            profile.name + ': action button padding must match the updated 9px by 16px spacing scale');
           assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
             profile.name + ': action button height must stay within its compact touch-size range');
         }

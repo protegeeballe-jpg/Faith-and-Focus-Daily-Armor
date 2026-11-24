@@ -17,10 +17,12 @@ test('the main app page connects its manifest and service-worker registration mo
     assert.match(html, /<meta name="theme-color" content="#FBF9F5">/);
     assert.match(html, /type="module" src="\.\/assets\/service-worker-registration\.js"/);
     assert.equal(manifest.start_url, './index.html');
+    assert.match(html, /href="\.\/assets\/mobile\.css"/);
+    assert.doesNotMatch(html, /assets\/polish\.css/);
 });
 
 test('the offline shell version advances when cached assets change', () => {
-    assert.match(worker, /const CACHE_NAME = 'faith-focus-shell-v42-polish-stylesheet'/);
+    assert.match(worker, /const CACHE_NAME = 'faith-focus-shell-v43-offline-repair'/);
 });
 
 test('the registration module resolves the worker and scope from the app path', () => {
@@ -41,7 +43,6 @@ test('the offline shell includes every page and runtime dependency needed by the
         './assets/tailwind.generated.css',
         './assets/app.css',
         './assets/garden.css',
-        './assets/polish.css',
         './assets/legal.css',
         './assets/app.js',
         './assets/guide-quotes.js',
@@ -106,7 +107,7 @@ test('the worker is scoped to safe GET requests and does not cache cloud or priv
     assert.match(worker, /Cache-Control/);
     assert.match(worker, /ignoreSearch:\s*true/);
     assert.match(worker, /Response\.error\(\)/);
-    assert.doesNotMatch(worker, /faith-focus-proxy|accounts\.google\.com|gist\.github\.com/i);
+    assert.doesNotMatch(worker, /faith-focus-proxy|accounts\.google\.com|gist\.github\.com|polish\.css/i);
 });
 
 test('the worker keeps previous open app tabs safe during an update', () => {
