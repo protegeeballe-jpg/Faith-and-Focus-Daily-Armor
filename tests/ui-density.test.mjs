@@ -46,13 +46,32 @@ test('short checklist action rows and buttons shrink-wrap using the updated spac
   assert.match(precision, /#view-checklist \.checklist-step-navigation button\s*\{[^}]*flex-grow:\s*0 !important/s);
 });
 
-test('Diary sections stay narrower than the Diary frame while the writing field remains usable', () => {
+test('Diary sections stay narrower than the Diary frame while the note field fills its notepad', () => {
   assert.match(precision, /#view-diary \.diary-additional-notes,[\s\S]*?#view-diary #diary-voice-notes\s*\{[^}]*width:\s*min\(88%, var\(--ff-content-panel-width\)\)/s);
-  assert.match(precision, /#view-diary \.diary-note-composer\s*\{[^}]*width:\s*min\(92%, 22rem\)/s);
+  const refinements = density.slice(density.lastIndexOf('/* Diary composer refinement. */'));
+  assert.match(refinements, /#view-diary \.diary-note-composer\s*\{[^}]*width:\s*100% !important/s);
 });
 
 test('phone controls preserve touch targets and form-entry text remains readable', () => {
   assert.match(precision, /@media \(max-width: 620px\)[\s\S]*?min-height:\s*44px !important/);
   assert.match(density, /#vault-login-form input,[\s\S]*?#view-diary textarea\s*\{\s*font-size:\s*16px/);
   assert.match(density, /#vault-login-submit,[\s\S]*?#vault-signup-form button\s*\{\s*min-height:\s*44px/);
+});
+
+
+test('the ADD action is inset into the full-width notepad without changing its handler', () => {
+  const composer = html.match(/<div class="diary-note-composer">[\s\S]*?<ol id="diary-additional-notes-list"/)?.[0] || '';
+  assert.match(composer, /<textarea id="diary-note-composer"/);
+  assert.match(composer, /<button id="diary-add-note-button" type="button" class="diary-add-note-button" data-action="addPrivateDiaryNote"/);
+  const refinements = density.slice(density.lastIndexOf('/* Diary composer refinement. */'));
+  assert.match(refinements, /#view-diary \.diary-note-composer-actions\s*\{[^}]*position: absolute/s);
+  assert.match(refinements, /#view-diary \.diary-note-composer-input\s*\{[^}]*padding: \.72rem \.78rem 3rem/s);
+  assert.match(refinements, /#view-diary \.diary-add-note-button\s*\{[^}]*width: fit-content !important;[^}]*min-height: 36px !important;[^}]*font-size: \.68rem !important/s);
+});
+
+test('bold text and primary action labels use a more restrained type scale', () => {
+  const refinements = density.slice(density.lastIndexOf('/* Diary composer refinement. */'));
+  assert.match(refinements, /\.text-sm\.font-bold,[\s\S]*?font-size: \.76rem !important/);
+  assert.match(refinements, /#little-garden \.garden-action-button,[\s\S]*?font-size: \.72rem !important;\s*font-weight: 600 !important/);
+  assert.match(refinements, /#view-diary \.diary-note-composer-label\s*\{[^}]*font-size: \.62rem;[^}]*font-weight: 600/s);
 });

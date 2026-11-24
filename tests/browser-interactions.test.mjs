@@ -552,11 +552,22 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       await page.locator('#view-diary:not(.hidden) > .card-lavender').waitFor({state: 'visible'});
       const diaryMetrics = await page.evaluate(() => {
         const box = selector => document.querySelector(selector)?.getBoundingClientRect();
+        const composer = box('#diary-note-composer');
+        const addButton = box('#diary-add-note-button');
         return {
           card: box('#view-diary > .card-lavender')?.width ?? 0,
           notes: box('#diary-additional-notes')?.width ?? 0,
           location: box('#diary-location-history')?.width ?? 0,
-          composer: box('#diary-note-composer')?.width ?? 0,
+          composer: composer?.width ?? 0,
+          composerLeft: composer?.left ?? 0,
+          composerRight: composer?.right ?? 0,
+          composerTop: composer?.top ?? 0,
+          composerBottom: composer?.bottom ?? 0,
+          addButtonLeft: addButton?.left ?? 0,
+          addButtonRight: addButton?.right ?? 0,
+          addButtonTop: addButton?.top ?? 0,
+          addButtonBottom: addButton?.bottom ?? 0,
+          addButtonHeight: addButton?.height ?? 0,
           emptyNote: box('#diary-additional-notes-list > li')?.width ?? 0,
           viewportWidth: window.innerWidth
         };
@@ -571,8 +582,15 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         profile.name + ': Location History frame must respect the 360px panel cap');
       assert.ok(diaryMetrics.notes <= 360 && diaryMetrics.notes < diaryMetrics.card * .9,
         profile.name + ': Saved Notes frame must be visibly narrower than the Diary card');
-      assert.ok(diaryMetrics.composer <= 330 && diaryMetrics.composer < diaryMetrics.notes * .94,
-        profile.name + ': note composer must stay content-sized inside Saved Notes');
+      assert.ok(diaryMetrics.composer <= diaryMetrics.notes && diaryMetrics.composer > diaryMetrics.notes * .82,
+        profile.name + ': note composer must use the available width inside Saved Notes');
+      assert.ok(diaryMetrics.addButtonLeft >= diaryMetrics.composerLeft - 1
+          && diaryMetrics.addButtonRight <= diaryMetrics.composerRight + 1
+          && diaryMetrics.addButtonTop >= diaryMetrics.composerTop
+          && diaryMetrics.addButtonBottom <= diaryMetrics.composerBottom + 1,
+        profile.name + ': ADD must sit inside the note-writing surface');
+      assert.ok(diaryMetrics.addButtonHeight >= 32 && diaryMetrics.addButtonHeight <= 40,
+        profile.name + ': inset ADD action must remain compact');
       assert.ok(diaryMetrics.emptyNote < diaryMetrics.notes * .96,
         profile.name + ': short Diary empty-state frames must fit their message');
 
