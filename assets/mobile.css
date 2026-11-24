@@ -1048,6 +1048,15 @@ body { line-height: var(--ff-ui-body-leading); }
     --ff-content-panel-width: 32rem;
   }
 
+  #view-checklist {
+    width: min(100%, calc(var(--ff-content-card-width) + 32px));
+    max-width: calc(var(--ff-content-card-width) + 32px);
+  }
+
+  #view-checklist > main {
+    max-width: calc(var(--ff-content-card-width) + 32px);
+  }
+
   .garden-shell,
   .settings-modal {
     width: min(calc(50vw + 220px), calc(100vw - 32px), var(--ff-content-column-width));
