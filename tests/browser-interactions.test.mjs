@@ -106,7 +106,7 @@ test('Chromium: primary account, navigation, settings, and quote controls receiv
 
   await page.locator('#btn-next').click();
   await page.locator('#card-step-2').waitFor({state: 'visible'});
-  const quoteButton = page.locator('#card-step-2 .guide-quote-launch').first();
+  const quoteButton = page.locator('#card-step-2 .guide-quote-launch[data-task-id="start-1"]');
   await quoteButton.waitFor({state: 'visible'});
   await quoteButton.click();
   assert.equal(await page.locator('#anim-modal').evaluate(
@@ -243,6 +243,21 @@ test('Chromium: task-specific quote buttons are the only in-card actions and rec
     permissions: []
   });
   const page = await context.newPage();
+
+  await page.route('**/bible/*.json', async route => {
+    const fileName = new URL(route.request().url()).pathname.split('/').pop();
+    const prefix = fileName === 'filipino_adb.json' ? 'SALIN' : 'ENGLISH';
+    const sample = [{"book":"Genesis","chapter":1,"verse":1,"text":"In the beginning God created the heavens and the earth."},{"book":"Genesis","chapter":1,"verse":2,"text":"The earth was formless and empty."},{"book":"Genesis","chapter":1,"verse":3,"text":"Let there be light."},{"book":"Genesis","chapter":2,"verse":1,"text":"The heavens and the earth were finished."},{"book":"Exodus","chapter":1,"verse":1,"text":"Now these are the names of the children of Israel."},{"book":"Exodus","chapter":2,"verse":1,"text":"A man of the house of Levi went and took a daughter of Levi as his wife."},{"book":"Exodus","chapter":2,"verse":2,"text":"The woman conceived, and bore a son."}].map(record => ({
+      ...record,
+      text: prefix + ': ' + record.text
+    }));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(sample)
+    });
+  });
+
   const pageErrors = [];
   page.on('pageerror', error => pageErrors.push(error.message));
 
@@ -261,6 +276,7 @@ test('Chromium: task-specific quote buttons are the only in-card actions and rec
       'loc-office': 'At Work'
     },
     2: {
+      'bible-morning': 'Read & Reflect',
       'start-1': 'Mental Notes',
       'start-2': 'Set Intentions',
       'start-3': 'Move Your Body',
@@ -284,7 +300,8 @@ test('Chromium: task-specific quote buttons are the only in-card actions and rec
       'sleep-2': 'Grateful to God',
       'sleep-3': 'Digital Curfew',
       'sleep-4': 'Kneel & Pray',
-      'sleep-5': 'Drink Your Water'
+      'sleep-5': 'Drink Your Water',
+      'bible-evening': 'Read & Reflect'
     }
   };
 
@@ -307,28 +324,41 @@ test('Chromium: task-specific quote buttons are the only in-card actions and rec
         'Quote action must use the requested task label for ' + target);
       await assertPointerHitTarget(button, 'task quote ' + target);
       await button.click();
-      assert.equal(await page.locator('#anim-modal').evaluate(
-        modal => !modal.classList.contains('hidden')), true,
-        'Task quote action failed to open its guide: ' + target);
-      assert.equal(await page.locator('#modal-complete-btn').isEnabled(), true);
+      if (target === 'bible-morning' || target === 'bible-evening') {
+        assert.equal(await page.locator('#bible-reader-dialog').evaluate(dialog => dialog.open), true,
+          'Read & Reflect must open the shared Bible reader: ' + target);
+        await page.waitForFunction(() => {
+          const complete = document.getElementById('bible-reader-complete-btn');
+          return Boolean(complete && !complete.disabled);
+        });
+        assert.equal(await page.locator('#bible-reader-complete-btn').isEnabled(), true);
+        await page.locator('#bible-reader-complete-btn').click();
+        assert.equal(await page.locator('#bible-reader-dialog').evaluate(dialog => dialog.open), false,
+          'Completing Bible reading must close the reader: ' + target);
+      } else {
+        assert.equal(await page.locator('#anim-modal').evaluate(
+          modal => !modal.classList.contains('hidden')), true,
+          'Task quote action failed to open its guide: ' + target);
+        assert.equal(await page.locator('#modal-complete-btn').isEnabled(), true);
 
-      const primaryAction = page.locator('#modal-complete-btn');
-      if (target === 'mid-2') {
-        assert.match(await primaryAction.textContent(), /Start 5 breathing cycles/);
-        await page.clock.install();
+        const primaryAction = page.locator('#modal-complete-btn');
+        if (target === 'mid-2') {
+          assert.match(await primaryAction.textContent(), /Start 5 breathing cycles/);
+          await page.clock.install();
+          await primaryAction.click();
+          assert.equal(await primaryAction.isDisabled(), true,
+            'Guided breathing must disable its start button while running');
+          assert.equal(await page.locator('#breathing-phase').textContent(), 'Breathe in');
+          await page.clock.runFor(60_000);
+          assert.equal(await primaryAction.isDisabled(), false,
+            'Guided breathing must re-enable after five completed cycles');
+          assert.match(await primaryAction.textContent(), /Good job!/);
+        }
+
         await primaryAction.click();
-        assert.equal(await primaryAction.isDisabled(), true,
-          'Guided breathing must disable its start button while running');
-        assert.equal(await page.locator('#breathing-phase').textContent(), 'Breathe in');
-        await page.clock.runFor(60_000);
-        assert.equal(await primaryAction.isDisabled(), false,
-          'Guided breathing must re-enable after five completed cycles');
-        assert.match(await primaryAction.textContent(), /Good job!/);
+        assert.equal(await page.locator('#anim-modal').isVisible(), false,
+          'Completing the task guide must close its quote modal: ' + target);
       }
-
-      await primaryAction.click();
-      assert.equal(await page.locator('#anim-modal').isVisible(), false,
-        'Completing the task guide must close its quote modal: ' + target);
 
       const taskControl = card.locator('input.app-chk[data-id="' + target + '"]');
       await taskControl.waitFor({state: 'visible'});
@@ -424,7 +454,7 @@ test('Chromium: completed tasks hide only their own quote buttons on every check
     if (step > 2) await page.locator('#btn-next').click();
     const card = page.locator('#card-step-' + step);
     await card.waitFor({state: 'visible'});
-    const quote = card.locator('.guide-quote-launch').first();
+    const quote = card.locator('.guide-quote-launch:not([data-task-id^="bible-"])').first();
     await quote.waitFor({state: 'visible'});
     assert.ok(await quote.evaluate(button => button.getBoundingClientRect().height >= 44),
       'Mobile card ' + step + ' quote button must retain its 44px touch target');
@@ -854,7 +884,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           assert.ok(rowMetrics.buttonHeight >= 44 && rowMetrics.buttonHeight <= 48,
             profile.name + ': compact tablet task quote buttons must retain a 44px minimum touch target');
         }
-        const launchers = card.locator('.guide-quote-launch:not([hidden])');
+        const launchers = card.locator('.guide-quote-launch:not([hidden]):not([data-task-id^="bible-"])');
         if (await launchers.count()) {
           const launcher = launchers.first();
           await assertPointerHitTarget(launcher, profile.name);
@@ -1040,7 +1070,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
 
   await page.locator('#btn-next').click();
   await page.locator('#card-step-2').waitFor({state: 'visible'});
-  const quoteLauncher = page.locator('#card-step-2 .guide-quote-launch').first();
+  const quoteLauncher = page.locator('#card-step-2 .guide-quote-launch[data-task-id="start-1"]');
   await quoteLauncher.click();
   const quoteTexture = await page.locator('#anim-modal .guide-quote-card').evaluate(element => ({
     backgroundImage: getComputedStyle(element).backgroundImage,
@@ -1086,7 +1116,7 @@ test('Chromium: watercolor paper layers are visible and decorative edges never i
   await reducedPage.getByRole('button', {name: 'Open Health Checklist'}).click();
   await reducedPage.locator('#btn-next').click();
   await reducedPage.locator('#card-step-2').waitFor({state: 'visible'});
-  await reducedPage.locator('#card-step-2 .guide-quote-launch').first().click();
+  await reducedPage.locator('#card-step-2 .guide-quote-launch[data-task-id="start-1"]').click();
   const reducedAnimation = await reducedPage.locator('#anim-modal .guide-quote-wash').evaluate(
     element => getComputedStyle(element).animationDuration);
   assert.equal(reducedAnimation, '0s',
@@ -1229,4 +1259,118 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
   assert.equal(reducedRoomMotion, '0s',
     'Forge Room decorative effects must respect reduced-motion preferences');
   await reducedContext.close();
+});
+
+
+
+test('Chromium: Read & Reflect loads Scripture on demand, remembers the default version, and unlocks both checklist tasks', {
+  timeout: 30000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({serviceWorkers: 'block'});
+  const page = await context.newPage();
+  const bibleRequests = [];
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.route('**/bible/*.json', async route => {
+    const fileName = new URL(route.request().url()).pathname.split('/').pop();
+    bibleRequests.push(fileName);
+    const prefix = fileName === 'filipino_adb.json' ? 'SALIN' : 'ENGLISH';
+    const sample = [{"book":"Genesis","chapter":1,"verse":1,"text":"In the beginning God created the heavens and the earth."},{"book":"Genesis","chapter":1,"verse":2,"text":"The earth was formless and empty."},{"book":"Genesis","chapter":1,"verse":3,"text":"Let there be light."},{"book":"Genesis","chapter":2,"verse":1,"text":"The heavens and the earth were finished."},{"book":"Exodus","chapter":1,"verse":1,"text":"Now these are the names of the children of Israel."},{"book":"Exodus","chapter":2,"verse":1,"text":"A man of the house of Levi went and took a daughter of Levi as his wife."},{"book":"Exodus","chapter":2,"verse":2,"text":"The woman conceived, and bore a son."}].map(record => ({
+      ...record,
+      text: prefix + ': ' + record.text
+    }));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(sample)
+    });
+  });
+
+  await page.goto(host.url, {waitUntil: 'load'});
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  assert.deepEqual(bibleRequests, [],
+    'The Bible controller must not download Scripture during application startup');
+
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+  await page.locator('#btn-next').click();
+  const morningCard = page.locator('#card-step-2');
+  const morningRows = morningCard.locator('.guided-task-row');
+  assert.equal(await morningRows.first().locator('.guide-quote-launch').getAttribute('data-task-id'), 'bible-morning',
+    'Read & Reflect must be the first Card 2 task');
+  await morningRows.first().locator('.guide-quote-launch').click();
+  await page.locator('#bible-reader-dialog').waitFor({state: 'visible'});
+  await page.waitForFunction(() =>
+    document.querySelector('#bible-reader-book')?.options.length > 1
+    && document.querySelector('#bible-reader-complete-btn')?.disabled === false
+  );
+  assert.deepEqual(bibleRequests, ['english_web.json'],
+    'Opening the Bible must fetch only the selected default translation');
+  assert.equal(await page.locator('#bible-reader-version').inputValue(), 'english_web');
+
+  await page.locator('#bible-reader-version').selectOption('filipino_adb');
+  await page.waitForFunction(() =>
+    localStorage.getItem('faith_focus_bible_default_version') === 'filipino_adb'
+    && document.querySelector('#bible-reader-book')?.options.length > 1
+    && document.querySelector('#bible-reading-heading')?.textContent.includes('Ang Dating Biblia (ADB)')
+  );
+  assert.deepEqual(bibleRequests, ['english_web.json', 'filipino_adb.json'],
+    'Changing the default must load only the newly selected translation');
+  assert.match(await page.locator('#bible-reading-text').textContent(), /SALIN:/);
+
+  await page.locator('#bible-reader-book').selectOption('Exodus');
+  await page.locator('#bible-reader-chapter').selectOption('2');
+  await page.locator('#bible-reader-verse').selectOption('2');
+  const selectedVerse = page.locator('#bible-reading-text [data-verse-number="2"]');
+  assert.equal(await selectedVerse.evaluate(element => element.classList.contains('is-selected')), true,
+    'The selected Book, Chapter, and Verse must be clearly highlighted');
+  assert.match(await selectedVerse.textContent(), /SALIN: The woman conceived/);
+
+  await page.locator('#bible-reader-complete-btn').click();
+  await page.waitForFunction(() => document.querySelector('#bible-reader-dialog')?.open === false);
+  const morningCheckbox = morningCard.locator('input.app-chk[data-id="bible-morning"]');
+  await morningCheckbox.waitFor({state: 'visible'});
+  assert.equal(await morningCheckbox.isEnabled(), true);
+  assert.equal(await morningCheckbox.isChecked(), false,
+    'Reading unlocks the checklist checkbox but does not auto-check it');
+  await morningCheckbox.check();
+  await page.waitForFunction(() =>
+    document.querySelector('#card-step-2 .guide-quote-launch[data-task-id="bible-morning"]')?.hidden === true
+  );
+
+  for (let step = 0; step < 3; step++) {
+    await page.locator('#btn-next').click();
+  }
+  const eveningCard = page.locator('#card-step-5');
+  const eveningRows = eveningCard.locator('.guided-task-row');
+  assert.equal(await eveningRows.last().locator('.guide-quote-launch').getAttribute('data-task-id'), 'bible-evening',
+    'Read & Reflect must be the last Card 5 task');
+  await eveningRows.last().locator('.guide-quote-launch').click();
+  await page.locator('#bible-reader-dialog').waitFor({state: 'visible'});
+  await page.waitForFunction(() =>
+    document.querySelector('#bible-reader-book')?.options.length > 1
+    && document.querySelector('#bible-reader-complete-btn')?.disabled === false
+  );
+  assert.equal(await page.locator('#bible-reader-version').inputValue(), 'filipino_adb',
+    'The selected translation must remain the default for the evening reader');
+  assert.deepEqual(bibleRequests, ['english_web.json', 'filipino_adb.json', 'filipino_adb.json'],
+    'Closing the reader releases its in-memory data; reopening loads only the saved version');
+  await page.locator('#bible-reader-complete-btn').click();
+  const eveningCheckbox = eveningCard.locator('input.app-chk[data-id="bible-evening"]');
+  await eveningCheckbox.waitFor({state: 'visible'});
+  assert.equal(await eveningCheckbox.isEnabled(), true);
+
+  assert.deepEqual(pageErrors, [],
+    'Bible reader interactions must not produce browser runtime errors');
+  await context.close();
 });

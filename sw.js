@@ -8,7 +8,7 @@
  * When the cache list or its behavior changes, increment CACHE_NAME so the
  * old shell is retired cleanly after the new worker activates.
  */
-const CACHE_NAME = 'faith-focus-shell-v43-offline-repair';
+const CACHE_NAME = 'faith-focus-shell-v44-bible-reader';
 const CACHE_PREFIX = 'faith-focus-';
 const NETWORK_TIMEOUT_MS = 4000;
 
@@ -29,6 +29,7 @@ const PRECACHE_URLS = [
 
     './assets/app.js',
     './assets/guide-quotes.js',
+    './assets/bible-reader.js',
     './assets/missed-card-notifications.js',
     './assets/device-clock.js',
     './assets/garden.js',

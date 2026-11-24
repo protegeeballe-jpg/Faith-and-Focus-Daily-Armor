@@ -46,11 +46,15 @@ test('the quote registry contains the exact 23 guide IDs and user-provided wordi
   assert.throws(() => getGuideQuote(null), /GuideQuoteError/);
 });
 
-test('every checklist checkbox has one registered quote and no activity was lost', () => {
+test('quote-led checklist tasks retain their registry and Bible tasks stay separate', () => {
   const checklistIds = [...html.matchAll(/<input[^>]*class="[^"]*app-chk[^"]*"[^>]*data-id="([^"]+)"/g)]
     .map(match => match[1]);
-  assert.equal(checklistIds.length, 23);
-  assert.deepEqual(checklistIds, GUIDE_QUOTE_IDS);
+  const bibleTaskIds = checklistIds.filter(id => id === 'bible-morning' || id === 'bible-evening');
+  const quoteTaskIds = checklistIds.filter(id => id !== 'bible-morning' && id !== 'bible-evening');
+  assert.equal(checklistIds.length, 25);
+  assert.deepEqual(bibleTaskIds, ['bible-morning', 'bible-evening']);
+  assert.equal(quoteTaskIds.length, 23);
+  assert.deepEqual(quoteTaskIds, GUIDE_QUOTE_IDS);
   assert.match(html, /id="cloud-guide-quote"/);
   assert.match(app, /renderCloudGuideQuote\(\)/);
   assert.match(app, /createGuideQuoteCard\(checkboxId\)/);
@@ -80,6 +84,9 @@ test('each checklist activity opens a quote launcher and preserves checkbox unlo
   assert.match(app, /guideLabel\.textContent\s*=\s*taskLabel/);
   assert.match(app, /guideButton\.dataset\.taskId\s*=\s*id/);
   assert.match(app, /openModal\('guided',\s*id\)/);
+  assert.match(app, /if \(isBibleTask\)\s*\{[\s\S]*?bibleReader\?\.open\(id\)/);
+  assert.match(app, /'bible-morning': 'Read & Reflect'/);
+  assert.match(app, /'bible-evening': 'Read & Reflect'/);
   assert.match(app, /function syncGuideQuoteLaunchers\(\)/);
   assert.match(app, /chk\.dataset\.guideUnlocked\s*=\s*'true'/);
   assert.match(app, /launch\?\.classList\.remove\('is-hidden'\)/);
@@ -142,8 +149,13 @@ test('Claim Victory keeps its shield, trophy, one-time completion flow, and retu
 });
 
 test('the quote module is an offline shell dependency and obsolete character modules are retired', () => {
-  assert.match(serviceWorker, /faith-focus-shell-v43-offline-repair/);
+  assert.match(serviceWorker, /faith-focus-shell-v44-bible-reader/);
   assert.match(serviceWorker, /\.\/assets\/guide-quotes\.js/);
+  assert.match(serviceWorker, /\.\/assets\/bible-reader\.js/);
+  const precacheStart = serviceWorker.indexOf('const PRECACHE_URLS = [');
+  const precacheEnd = serviceWorker.indexOf('];', precacheStart);
+  assert.ok(precacheStart >= 0 && precacheEnd > precacheStart);
+  assert.doesNotMatch(serviceWorker.slice(precacheStart, precacheEnd), /\.\/bible\//);
   for (const obsolete of [
     'watercolor-illustrations.js',
     'character-appearance.js',
