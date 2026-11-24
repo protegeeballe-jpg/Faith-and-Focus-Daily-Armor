@@ -1077,6 +1077,64 @@ body { line-height: var(--ff-ui-body-leading); }
   line-height: 1.35;
 }
   
+
+/* One visual surface per checklist step; inner content stays flat and readable. */
+#view-checklist .step-card {
+  box-shadow: 4px 5px 0 rgba(105, 86, 66, .14) !important;
+}
+
+#view-checklist .step-card label,
+#view-checklist .step-card .checklist-location-choice {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#view-checklist .step-card .ff-guide-row,
+#view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+#view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: .3rem 0 !important;
+}
+
+#view-checklist #card-step-6 .space-y-2\.5 > .bg-white\/80 {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: .25rem 0 !important;
+}
+
+#view-checklist #card-step-6 .cloud-item {
+  border: 0 !important;
+  border-bottom: 1px solid rgba(103, 130, 144, .2) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: .55rem .15rem !important;
+}
+
+#view-checklist #card-step-6 .cloud-item:hover:not(:disabled),
+#view-checklist #card-step-6 .cloud-item[aria-pressed="true"] {
+  background: rgba(255, 255, 255, .38) !important;
+}
+
+#view-checklist .step-card input[type="checkbox"],
+#view-checklist .step-card input[type="radio"] {
+  flex: 0 0 1.15rem;
+  width: 1.15rem;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  margin: .12rem 0 0;
+  padding: 0;
+  box-shadow: none;
+  accent-color: #6b8e23;
+}
+
 /* Desktop layout refinement. */
 @media (min-width: 768px) {
   :root {
