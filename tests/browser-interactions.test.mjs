@@ -501,7 +501,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             assert.ok(row.width >= row.cardWidth * .9,
               profile.name + ': desktop action rows must use the card width');
           }
-          const siblingRows = rowMetrics.filter((row, index) => index < rowMetrics.length);
+          const siblingRows = rowMetrics;
           for (let index = 1; index < siblingRows.length; index++) {
             assert.ok(siblingRows[index].top >= siblingRows[index - 1].bottom - 1,
               profile.name + ': checklist action rows must occupy separate lines');
