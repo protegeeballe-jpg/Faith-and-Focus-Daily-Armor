@@ -114,7 +114,10 @@ test('ordinary progress storage is documented as not encrypted',()=>{
  assert.match(readme,/not encrypted/i);
 });
 test('all existing checklist, cloud and ecosystem features remain',()=>{
- assert.equal((html.match(/class="[^"]*app-chk/g)||[]).length,23);
+ assert.equal((html.match(/class="[^"]*app-chk/g)||[]).length,25);
+ assert.match(html,/id="bible-reader-dialog"/);
+ assert.match(html,/id="chk-bible-morning"[^>]*data-id="bible-morning"/);
+ assert.match(html,/id="chk-bible-evening"[^>]*data-id="bible-evening"/);
  assert.equal((html.match(/data-cloud="(?:cumulus|stratus|stratocumulus)"/g)||[]).length,3);
  for(const feature of ['finishChecklist','guide-quote-launch','ecosystem-canvas'])assert.ok(html.includes(feature)||app.includes(feature),feature);
 });
@@ -919,7 +922,7 @@ test('Sign Up, Recovery and Legacy Upgrade use the same original 20-question sec
    assert.deepEqual(options.map(option=>option[2].replaceAll('&amp;','&')),questionTexts.map((question,i)=>`${i+1}. ${question}`));
   }
  }
- assert.match(serviceWorker,/faith-focus-shell-v43-offline-repair/);
+ assert.match(serviceWorker,/faith-focus-shell-v44-bible-reader/);
 });
 
 test('vault sync retries date-level conditional-write conflicts and Settings has no manual sync or lock buttons',()=>{
@@ -982,7 +985,7 @@ test('Diary migration recognizes account-key records and converts only legacy-ke
  assert.match(privateMigration,/if \(await isRecordReadableWithKey\(record, decryptTarget\)\) return record/);
  assert.match(privateMigration,/const plaintext = await decryptLegacy\(record\)/);
  assert.match(privateMigration,/return encryptTarget\(plaintext\)/);
- assert.match(serviceWorker,/faith-focus-shell-v43-offline-repair/);
+ assert.match(serviceWorker,/faith-focus-shell-v44-bible-reader/);
 });
 
 test('legacy Diary migration permits direct encrypted-record checks when its verifier is unavailable',()=>{
