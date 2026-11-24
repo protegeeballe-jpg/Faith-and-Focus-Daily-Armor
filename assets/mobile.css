@@ -1076,6 +1076,71 @@ body { line-height: var(--ff-ui-body-leading); }
   min-width: 0;
   line-height: 1.35;
 }
+
+#view-checklist #card-step-1 .grid > .guided-task-row {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  gap: .3rem;
+  padding: .2rem 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+#view-checklist #card-step-1 .guided-task-row .checklist-location-choice {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: .25rem 0 !important;
+}
+
+#view-checklist #card-step-1 .guided-task-row > .guide-quote-launch {
+  flex: 0 0 auto !important;
+  max-width: 100%;
+  min-height: 36px !important;
+  padding: .25rem .5rem !important;
+  font-size: .65rem !important;
+}
+
+#view-checklist .guide-quote-launch[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 620px) {
+  #view-checklist #card-step-1 .guided-task-row > .guide-quote-launch,
+  #view-checklist .step-card .guided-task-row > .guide-quote-launch {
+    min-height: 44px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  #view-checklist .step-card .ff-guide-row,
+  #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between,
+  #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: .5rem;
+    padding: .3rem 0 !important;
+  }
+
+  #view-checklist .step-card .ff-guide-row > span,
+  #view-checklist .step-card .space-y-3 > div.flex.items-center.justify-between > span,
+  #view-checklist .step-card .space-y-4 > div.flex.items-center.justify-between > span {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+}
   
 
 /* One visual surface per checklist step; inner content stays flat and readable. */
