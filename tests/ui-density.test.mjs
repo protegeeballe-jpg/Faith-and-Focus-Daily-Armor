@@ -91,3 +91,15 @@ test('Health Checklist cards use a compact, consistent typography and watercolor
   assert.ok(checklist.includes('font-size: .78rem;'));
   assert.ok(checklist.includes('font-weight: 500;'));
 });
+
+test('desktop layout widens the app, checklist, and Diary panels without changing phone rules', () => {
+  const desktop = density.slice(density.lastIndexOf('/* Desktop layout refinement. */'));
+  assert.match(desktop, /@media \\(min-width: 768px\\)/);
+  assert.match(desktop, /--ff-content-column-width:\\s*60rem/);
+  assert.match(desktop, /--ff-content-card-width:\\s*50rem/);
+  assert.match(desktop, /--ff-content-panel-width:\\s*32rem/);
+  assert.match(desktop, /calc\\(50vw \\+ 220px\\)/);
+  assert.match(desktop, /#view-checklist \\.step-card \\.ff-guide-row,[\\s\\S]*?display: flex !important;[\\s\\S]*?width: 100% !important;/);
+  assert.match(desktop, /@media \\(min-width: 800px\\)[\\s\\S]*?flex-flow: row nowrap !important;[\\s\\S]*?min-height: 50px !important;/);
+  assert.doesNotMatch(desktop, /@media \\(max-width:/);
+});
