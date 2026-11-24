@@ -124,3 +124,14 @@ test('Card 1 location answers sit directly on one watercolor card surface', () =
   assert.ok(locationStyles.includes('background: transparent !important;'));
   assert.ok(locationStyles.includes('box-shadow: none !important;'));
 });
+
+
+test('all six checklist cards use one outer surface without nested label or guide-row panels', () => {
+  const source = density.slice(density.indexOf('/* One visual surface per checklist step;'));
+  assert.ok(source.includes('#view-checklist .step-card label,'));
+  assert.ok(source.includes('#view-checklist .step-card .ff-guide-row,'));
+  assert.ok(source.includes('#view-checklist #card-step-6 .space-y-2\\.5 > .bg-white\\/80'));
+  assert.ok(source.includes('#view-checklist #card-step-6 .cloud-item'));
+  assert.ok(source.includes('border-bottom: 1px solid'));
+  assert.ok(source.includes('#view-checklist .step-card input[type="checkbox"],'));
+});
