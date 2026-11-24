@@ -359,6 +359,56 @@ test('Chromium: location quote unlocks the radio and its button disappears after
 });
 
 
+test('Chromium: completed tasks hide only their own quote buttons on every checklist card', async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({viewport: {width: 360, height: 800}});
+  const page = await context.newPage();
+  await page.goto(host.url);
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+  await page.locator('#btn-next').click();
+
+  for (let step = 2; step <= 5; step++) {
+    if (step > 2) await page.locator('#btn-next').click();
+    const card = page.locator('#card-step-' + step);
+    await card.waitFor({state: 'visible'});
+    const quote = card.locator('.guide-quote-launch').first();
+    await quote.waitFor({state: 'visible'});
+    assert.ok(await quote.evaluate(button => button.getBoundingClientRect().height >= 44),
+      'Mobile card ' + step + ' quote button must retain its 44px touch target');
+    const ariaLabel = await quote.getAttribute('aria-label');
+    const target = ariaLabel.replace('Read quote for ', '');
+    await quote.click();
+    await page.locator('#modal-complete-btn').click();
+
+    const checkbox = card.locator('input.app-chk[type="checkbox"][data-id="' + target + '"]');
+    await checkbox.waitFor({state: 'visible'});
+    await checkbox.check();
+    await page.waitForFunction(targetId => {
+      const input = document.querySelector('.app-chk[data-id="' + targetId + '"]');
+      const button = input?.closest('.guided-task-row')?.querySelector('.guide-quote-launch');
+      return Boolean(input?.checked && button?.hidden);
+    }, target);
+    assert.equal(await quote.isVisible(), false,
+      'Mobile card ' + step + ' must hide only the completed task quote');
+    const otherQuotes = card.locator('.guide-quote-launch:not([hidden])');
+    assert.ok(await otherQuotes.count() > 0,
+      'Mobile card ' + step + ' must retain quote buttons for unfinished tasks');
+  }
+
+  await context.close();
+});
+
+
 test('Chromium: checklist controls remain clickable across laptop viewport and display-scale profiles', {
   timeout: 120000
 }, async t => {
@@ -579,6 +629,14 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       }));
       assert.equal(initialLocationChoices.length, 4,
         profile.name + ': all four location choices must retain their own quote flow');
+      for (const choice of initialLocationChoices) {
+        assert.equal(choice.radioHidden, true,
+          profile.name + ': each location control waits for its quote');
+        assert.equal(choice.labelHidden, true,
+          profile.name + ': locked location labels stay out of the way');
+        assert.ok(choice.row > 0,
+          profile.name + ': each quote remains inside its own full-width choice row');
+      }
       const locationQuoteButtons = page.locator('#card-step-1 .guide-quote-launch');
       assert.equal(await locationQuoteButtons.count(), 4,
         profile.name + ': every location choice must have a Read quote button');
