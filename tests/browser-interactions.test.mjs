@@ -312,8 +312,8 @@ test('Chromium: task-specific quote buttons are the only in-card actions and rec
         'Task quote action failed to open its guide: ' + target);
       assert.equal(await page.locator('#modal-complete-btn').isEnabled(), true);
 
+      const primaryAction = page.locator('#modal-complete-btn');
       if (target === 'mid-2') {
-        const primaryAction = page.locator('#modal-complete-btn');
         assert.match(await primaryAction.textContent(), /Start 5 breathing cycles/);
         await page.clock.install();
         await primaryAction.click();
@@ -324,9 +324,29 @@ test('Chromium: task-specific quote buttons are the only in-card actions and rec
         assert.equal(await primaryAction.isDisabled(), false,
           'Guided breathing must re-enable after five completed cycles');
         assert.match(await primaryAction.textContent(), /Good job!/);
-        await primaryAction.click();
-      } else {
-        await page.locator('#anim-modal [data-action="closeModal"]').click();
+      }
+
+      await primaryAction.click();
+      assert.equal(await page.locator('#anim-modal').isVisible(), false,
+        'Completing the task guide must close its quote modal: ' + target);
+
+      const taskControl = card.locator('input.app-chk[data-id="' + target + '"]');
+      await taskControl.waitFor({state: 'visible'});
+      assert.equal(await taskControl.isEnabled(), true,
+        'Completing the task quote must unlock its matching control: ' + target);
+
+      if (step > 1) {
+        await taskControl.check();
+        await page.waitForFunction(targetId => {
+          const input = document.querySelector('.app-chk[data-id="' + targetId + '"]');
+          const quote = input?.closest('.guided-task-row')?.querySelector('.guide-quote-launch');
+          return Boolean(input?.checked && quote?.hidden);
+        }, target);
+        assert.equal(await button.isVisible(), false,
+          'Only the completed task quote button must disappear: ' + target);
+        assert.equal(await card.locator('.guide-quote-launch:not([hidden])').count(),
+          Object.keys(labels).length - Object.keys(labels).indexOf(target) - 1,
+          'Unfinished task quote buttons must remain available on card ' + step);
       }
     }
   }
@@ -831,8 +851,8 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           assert.ok(rowMetrics.buttonPaddingTop <= 9.5
               && rowMetrics.buttonPaddingLeft <= 16.5,
             profile.name + ': task quote button padding must match the compact spacing scale');
-          assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 48,
-            profile.name + ': task quote button height must stay within its compact touch-size range');
+          assert.ok(rowMetrics.buttonHeight >= 44 && rowMetrics.buttonHeight <= 48,
+            profile.name + ': compact tablet task quote buttons must retain a 44px minimum touch target');
         }
         const launchers = card.locator('.guide-quote-launch:not([hidden])');
         if (await launchers.count()) {
