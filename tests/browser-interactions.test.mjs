@@ -392,8 +392,8 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.ok(densityMetrics.cardPaddingLeft <= 14.5
           && densityMetrics.cardPaddingRight <= 14.5,
         profile.name + ': frame side padding must preserve the updated spacing scale');
-      assert.ok(densityMetrics.headingFontSize >= 14 && densityMetrics.headingFontSize <= 20,
-        profile.name + ': checklist heading must remain readable');
+      assert.ok(densityMetrics.headingFontSize >= 14 && densityMetrics.headingFontSize <= 16,
+        profile.name + ': checklist heading must stay compact and readable');
       assert.ok(densityMetrics.cardLeft >= -1
           && densityMetrics.cardRight <= densityMetrics.viewportWidth + 1,
         profile.name + ': checklist card must remain inside the viewport');
@@ -428,6 +428,25 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         }
 
         const card = page.locator('#card-step-' + step);
+        const cardTypography = await card.evaluate(element => {
+          const heading = element.querySelector('h2');
+          const boldLabels = [...element.querySelectorAll('.font-bold, .font-extrabold')]
+            .filter(label => !label.matches('h2') && !label.closest('button'));
+          return {
+            headingSize: parseFloat(getComputedStyle(heading).fontSize),
+            buttonSizes: [...element.querySelectorAll('button')]
+              .map(button => parseFloat(getComputedStyle(button).fontSize)),
+            boldLabelSizes: boldLabels
+              .map(label => parseFloat(getComputedStyle(label).fontSize))
+          };
+        });
+        assert.ok(cardTypography.headingSize >= 14 && cardTypography.headingSize <= 16,
+          profile.name + ': every card title must share the compact heading scale');
+        assert.ok(cardTypography.buttonSizes.every(size => size >= 9.5 && size <= 11.5),
+          profile.name + ': card action labels must stay compact without becoming tiny');
+        assert.ok(cardTypography.boldLabelSizes.every(size => size <= 13),
+          profile.name + ': emphasized task labels must not overpower their body copy');
+
         if (step === 3 && profile.viewport.width >= 481) {
           const actionRow = card.locator('.ff-guide-row').first();
           const rowMetrics = await actionRow.evaluate(element => {
@@ -528,6 +547,22 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
 
       await page.locator('#btn-next').click();
       await page.locator('#card-step-6').waitFor({state: 'visible'});
+      const cloudTypography = await page.locator('#card-step-6').evaluate(element => {
+        const heading = element.querySelector('h2');
+        const buttons = [...element.querySelectorAll('.cloud-item')];
+        return {
+          headingSize: parseFloat(getComputedStyle(heading).fontSize),
+          buttonSizes: buttons.map(button => parseFloat(getComputedStyle(button).fontSize)),
+          statusSizes: buttons.map(button => parseFloat(getComputedStyle(button.querySelector('.cloud-status')).fontSize))
+        };
+      });
+      assert.ok(cloudTypography.headingSize >= 14 && cloudTypography.headingSize <= 16,
+        profile.name + ': Cloud Check title must match the other card titles');
+      assert.ok(cloudTypography.buttonSizes.every(size => size >= 9.5 && size <= 11.5),
+        profile.name + ': Cloud choices must keep compact readable labels');
+      assert.ok(cloudTypography.statusSizes.every(size => size >= 9 && size <= 10.5),
+        profile.name + ': Cloud action status must remain secondary');
+
       const selectedCloud = cloudChoices[profileIndex % cloudChoices.length];
       const cloudButton = page.locator('.cloud-item[data-cloud="' + selectedCloud + '"]');
       await assertPointerHitTarget(cloudButton, profile.name + ' cloud choice');
