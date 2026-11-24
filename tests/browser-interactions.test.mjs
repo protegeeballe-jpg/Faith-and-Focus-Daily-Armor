@@ -453,7 +453,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       const cardSurfaceMetrics = await page.locator(
         '#view-checklist .step-card'
       ).evaluateAll(cards => cards.map(card => {
-        const pseudo = getComputedStyle(card, '::after');
+        const cardStyle = getComputedStyle(card);
         const nested = [...card.querySelectorAll('label, .ff-guide-row, .space-y-3 > div.flex.items-center.justify-between, .space-y-4 > div.flex.items-center.justify-between')].map(node => {
           const style = getComputedStyle(node);
           return {
@@ -463,14 +463,37 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             shadow: style.boxShadow
           };
         });
-        return { visible: card.getBoundingClientRect().width > 0, pseudoDisplay: pseudo.display, nested };
+        const cloudPanel = card.id === 'card-step-6'
+          ? card.querySelector('.space-y-2\\.5 > .bg-white\\/80')
+          : null;
+        const cloudStyle = cloudPanel ? getComputedStyle(cloudPanel) : null;
+        return {
+          id: card.id,
+          visible: card.getBoundingClientRect().width > 0,
+          outerShadow: cardStyle.boxShadow,
+          nested,
+          cloudPanel: cloudStyle ? {
+            background: cloudStyle.backgroundColor,
+            border: cloudStyle.borderTopWidth,
+            radius: cloudStyle.borderTopLeftRadius,
+            shadow: cloudStyle.boxShadow
+          } : null
+        };
       }));
       assert.equal(cardSurfaceMetrics.length, 6,
         profile.name + ': all six checklist cards must be checked');
+      assert.deepEqual(cardSurfaceMetrics.map(card => card.id), [
+        'card-step-1', 'card-step-2', 'card-step-3',
+        'card-step-4', 'card-step-5', 'card-step-6'
+      ], profile.name + ': all six checklist steps must be represented');
+      const visibleCards = cardSurfaceMetrics.filter(card => card.visible);
+      assert.equal(visibleCards.length, 1,
+        profile.name + ': the checklist wizard must show only its active step');
+      assert.equal(visibleCards[0].id, 'card-step-1',
+        profile.name + ': Card 1 must be the active step at checklist entry');
       for (const card of cardSurfaceMetrics) {
-        assert.ok(card.visible, profile.name + ': all six cards remain laid out');
-        assert.equal(card.pseudoDisplay, 'none',
-          profile.name + ': no decorative panel may stack over the card');
+        assert.notEqual(card.outerShadow, 'none',
+          profile.name + ': each step must retain its single outer card surface');
         for (const inner of card.nested) {
           assert.equal(inner.background, 'rgba(0, 0, 0, 0)',
             profile.name + ': inner checklist content must remain transparent');
@@ -480,6 +503,18 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
             profile.name + ': inner checklist content must not use card corners');
           assert.equal(inner.shadow, 'none',
             profile.name + ': inner checklist content must not cast card shadows');
+        }
+        if (card.id === 'card-step-6') {
+          assert.ok(card.cloudPanel,
+            profile.name + ': Card 6 emotion choices must be checked for an extra wrapper');
+          assert.equal(card.cloudPanel.background, 'rgba(0, 0, 0, 0)',
+            profile.name + ': Card 6 must not retain a nested white panel');
+          assert.equal(card.cloudPanel.border, '0px',
+            profile.name + ': Card 6 nested panel must not retain a border');
+          assert.equal(card.cloudPanel.radius, '0px',
+            profile.name + ': Card 6 nested panel must not retain rounded corners');
+          assert.equal(card.cloudPanel.shadow, 'none',
+            profile.name + ': Card 6 nested panel must not cast a shadow');
         }
       }
 
