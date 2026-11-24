@@ -75,3 +75,14 @@ test('bold text and primary action labels use a more restrained type scale', () 
   assert.match(refinements, /#little-garden \.garden-action-button,[\s\S]*?font-size: \.72rem !important;\s*font-weight: 600 !important/);
   assert.match(refinements, /#view-diary \.diary-note-composer-label\s*\{[^}]*font-size: \.62rem;[^}]*font-weight: 600/s);
 });
+
+
+test('Health Checklist cards use a compact, consistent typography and watercolor row scale', () => {
+  const checklist = density.slice(density.lastIndexOf('/* Health Checklist card refinement. */'));
+  assert.match(checklist, /#view-checklist \.step-card h2\\s*\\{[^}]*font-size: 1rem !important;[^}]*font-weight: 600 !important/s);
+  assert.match(checklist, /#view-checklist \.step-card \.font-bold,[\\s\\S]*?font-weight: 600 !important/);
+  assert.match(checklist, /#view-checklist \.step-card button:not\\(\\.cloud-item\\),[\\s\\S]*?font-size: \.68rem !important;[^}]*font-weight: 600 !important/);
+  assert.match(checklist, /#view-checklist \.step-card \.cloud-item\\s*\\{[^}]*font-size: \.7rem/s);
+  assert.match(checklist, /#view-checklist \.step-card \.ff-guide-row,[\\s\\S]*?background: rgba\\(255, 255, 255, \.52\\) !important/);
+  assert.match(checklist, /#view-checklist \.step-card \.grid label\\s*\\{[^}]*font-size: \.78rem;[^}]*font-weight: 500/s);
+});
