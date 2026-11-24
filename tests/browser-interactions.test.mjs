@@ -1260,3 +1260,117 @@ test('Chromium: blue-and-yellow Diary and painterly Forge Room surfaces preserve
     'Forge Room decorative effects must respect reduced-motion preferences');
   await reducedContext.close();
 });
+
+
+
+test('Chromium: Read & Reflect loads Scripture on demand, remembers the default version, and unlocks both checklist tasks', {
+  timeout: 30000
+}, async t => {
+  const host = await startStaticServer();
+  const browser = await chromium.launch({headless: true});
+  t.after(async () => {
+    await browser.close();
+    await host.close();
+  });
+
+  const context = await browser.newContext({serviceWorkers: 'block'});
+  const page = await context.newPage();
+  const bibleRequests = [];
+  const pageErrors = [];
+  page.on('pageerror', error => pageErrors.push(error.message));
+
+  await page.route('**/bible/*.json', async route => {
+    const fileName = new URL(route.request().url()).pathname.split('/').pop();
+    bibleRequests.push(fileName);
+    const prefix = fileName === 'filipino_adb.json' ? 'SALIN' : 'ENGLISH';
+    const sample = [{"book":"Genesis","chapter":1,"verse":1,"text":"In the beginning God created the heavens and the earth."},{"book":"Genesis","chapter":1,"verse":2,"text":"The earth was formless and empty."},{"book":"Genesis","chapter":1,"verse":3,"text":"Let there be light."},{"book":"Genesis","chapter":2,"verse":1,"text":"The heavens and the earth were finished."},{"book":"Exodus","chapter":1,"verse":1,"text":"Now these are the names of the children of Israel."},{"book":"Exodus","chapter":2,"verse":1,"text":"A man of the house of Levi went and took a daughter of Levi as his wife."},{"book":"Exodus","chapter":2,"verse":2,"text":"The woman conceived, and bore a son."}].map(record => ({
+      ...record,
+      text: prefix + ': ' + record.text
+    }));
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(sample)
+    });
+  });
+
+  await page.goto(host.url, {waitUntil: 'load'});
+  await page.evaluate(() => {
+    document.getElementById('view-pin')?.classList.add('hidden');
+    window.dispatchEvent(new Event('faith-focus:app-unlocked'));
+  });
+  assert.deepEqual(bibleRequests, [],
+    'The Bible controller must not download Scripture during application startup');
+
+  await page.getByRole('button', {name: 'Open Health Checklist'}).click();
+  await page.locator('#btn-next').click();
+  const morningCard = page.locator('#card-step-2');
+  const morningRows = morningCard.locator('.guided-task-row');
+  assert.equal(await morningRows.first().locator('.guide-quote-launch').getAttribute('data-task-id'), 'bible-morning',
+    'Read & Reflect must be the first Card 2 task');
+  await morningRows.first().locator('.guide-quote-launch').click();
+  await page.locator('#bible-reader-dialog').waitFor({state: 'visible'});
+  await page.waitForFunction(() =>
+    document.querySelector('#bible-reader-book')?.options.length > 1
+    && document.querySelector('#bible-reader-complete-btn')?.disabled === false
+  );
+  assert.deepEqual(bibleRequests, ['english_web.json'],
+    'Opening the Bible must fetch only the selected default translation');
+  assert.equal(await page.locator('#bible-reader-version').inputValue(), 'english_web');
+
+  await page.locator('#bible-reader-version').selectOption('filipino_adb');
+  await page.waitForFunction(() =>
+    localStorage.getItem('faith_focus_bible_default_version') === 'filipino_adb'
+    && document.querySelector('#bible-reader-book')?.options.length > 1
+    && document.querySelector('#bible-reading-heading')?.textContent.includes('Ang Dating Biblia (ADB)')
+  );
+  assert.deepEqual(bibleRequests, ['english_web.json', 'filipino_adb.json'],
+    'Changing the default must load only the newly selected translation');
+  assert.match(await page.locator('#bible-reading-text').textContent(), /SALIN:/);
+
+  await page.locator('#bible-reader-book').selectOption('Exodus');
+  await page.locator('#bible-reader-chapter').selectOption('2');
+  await page.locator('#bible-reader-verse').selectOption('2');
+  const selectedVerse = page.locator('#bible-reading-text [data-verse-number="2"]');
+  assert.equal(await selectedVerse.evaluate(element => element.classList.contains('is-selected')), true,
+    'The selected Book, Chapter, and Verse must be clearly highlighted');
+  assert.match(await selectedVerse.textContent(), /SALIN: The woman conceived/);
+
+  await page.locator('#bible-reader-complete-btn').click();
+  await page.waitForFunction(() => document.querySelector('#bible-reader-dialog')?.open === false);
+  const morningCheckbox = morningCard.locator('input.app-chk[data-id="bible-morning"]');
+  await morningCheckbox.waitFor({state: 'visible'});
+  assert.equal(await morningCheckbox.isEnabled(), true);
+  assert.equal(await morningCheckbox.isChecked(), false,
+    'Reading unlocks the checklist checkbox but does not auto-check it');
+  await morningCheckbox.check();
+  await page.waitForFunction(() =>
+    document.querySelector('#card-step-2 .guide-quote-launch[data-task-id="bible-morning"]')?.hidden === true
+  );
+
+  for (let step = 0; step < 3; step++) {
+    await page.locator('#btn-next').click();
+  }
+  const eveningCard = page.locator('#card-step-5');
+  const eveningRows = eveningCard.locator('.guided-task-row');
+  assert.equal(await eveningRows.last().locator('.guide-quote-launch').getAttribute('data-task-id'), 'bible-evening',
+    'Read & Reflect must be the last Card 5 task');
+  await eveningRows.last().locator('.guide-quote-launch').click();
+  await page.locator('#bible-reader-dialog').waitFor({state: 'visible'});
+  await page.waitForFunction(() =>
+    document.querySelector('#bible-reader-book')?.options.length > 1
+    && document.querySelector('#bible-reader-complete-btn')?.disabled === false
+  );
+  assert.equal(await page.locator('#bible-reader-version').inputValue(), 'filipino_adb',
+    'The selected translation must remain the default for the evening reader');
+  assert.deepEqual(bibleRequests, ['english_web.json', 'filipino_adb.json', 'filipino_adb.json'],
+    'Closing the reader releases its in-memory data; reopening loads only the saved version');
+  await page.locator('#bible-reader-complete-btn').click();
+  const eveningCheckbox = eveningCard.locator('input.app-chk[data-id="bible-evening"]');
+  await eveningCheckbox.waitFor({state: 'visible'});
+  assert.equal(await eveningCheckbox.isEnabled(), true);
+
+  assert.deepEqual(pageErrors, [],
+    'Bible reader interactions must not produce browser runtime errors');
+  await context.close();
+});
