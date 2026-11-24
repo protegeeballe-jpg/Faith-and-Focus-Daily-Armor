@@ -98,6 +98,7 @@ test('desktop layout widens the app, checklist, and Diary panels without changin
   assert.ok(desktop.includes('--ff-content-column-width: 60rem;'));
   assert.ok(desktop.includes('--ff-content-card-width: 50rem;'));
   assert.ok(desktop.includes('--ff-content-panel-width: 32rem;'));
+  assert.ok(desktop.includes('calc(var(--ff-content-card-width) + 32px)'));
   assert.ok(desktop.includes('calc(50vw + 220px)'));
   assert.ok(desktop.includes('display: flex !important;'));
   assert.ok(desktop.includes('width: 100% !important;'));
