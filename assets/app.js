@@ -656,6 +656,7 @@ import {
                 } else {
                     label?.classList.remove('is-unlocked');
                 }
+                launch?.classList.remove('is-hidden');
                 if (launch) launch.hidden = chk.checked;
             });
         }
