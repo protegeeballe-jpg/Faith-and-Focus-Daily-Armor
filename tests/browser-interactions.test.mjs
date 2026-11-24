@@ -525,9 +525,16 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         const text = label.querySelector('.checklist-location-choice-text');
         return {
           width: label.getBoundingClientRect().width,
+          display: getComputedStyle(label).display,
+          computedWidth: getComputedStyle(label).width,
+          visibility: getComputedStyle(label).visibility,
+          gridWidth: label.parentElement?.getBoundingClientRect().width ?? 0,
+          cardWidth: label.closest('.step-card')?.getBoundingClientRect().width ?? 0,
           radioWidth: radio?.getBoundingClientRect().width ?? 0,
+          radioDisplay: radio ? getComputedStyle(radio).display : '',
           radioFlexShrink: radio ? getComputedStyle(radio).flexShrink : '',
           textWidth: text?.getBoundingClientRect().width ?? 0,
+          textDisplay: text ? getComputedStyle(text).display : '',
           textScrollWidth: text?.scrollWidth ?? 0,
           textClientWidth: text?.clientWidth ?? 0,
           textHeight: text?.getBoundingClientRect().height ?? 0,
@@ -537,7 +544,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
       assert.equal(locationChoiceMetrics.length, 4,
         profile.name + ': all four location answers must remain present');
       for (const choice of locationChoiceMetrics) {
-        assert.ok(choice.width > 0, profile.name + ': location answers remain visible');
+        assert.ok(choice.width > 0, profile.name + ': location answers remain visible: ' + JSON.stringify(locationChoiceMetrics));
         assert.ok(choice.radioWidth >= 17 && choice.radioWidth <= 19,
           profile.name + ': radio control retains its 18px footprint');
         assert.equal(choice.radioFlexShrink, '0',
