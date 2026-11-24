@@ -798,7 +798,7 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
           assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
             profile.name + ': action button height must stay within its compact touch-size range');
         }
-        const launchers = card.locator('.guide-quote-launch');
+        const launchers = card.locator('.guide-quote-launch:not([hidden])');
         if (await launchers.count()) {
           const launcher = launchers.first();
           await assertPointerHitTarget(launcher, profile.name);
