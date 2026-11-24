@@ -60,18 +60,18 @@ test('phone controls preserve touch targets and form-entry text remains readable
 
 
 test('the ADD action is inset into the full-width notepad without changing its handler', () => {
-  const composer = html.match(/<div class="diary-note-composer">[\\s\\S]*?<ol id="diary-additional-notes-list"/)?.[0] || '';
+  const composer = html.match(/<div class="diary-note-composer">[\s\S]*?<ol id="diary-additional-notes-list"/)?.[0] || '';
   assert.match(composer, /<textarea id="diary-note-composer"/);
   assert.match(composer, /<button id="diary-add-note-button" type="button" class="diary-add-note-button" data-action="addPrivateDiaryNote"/);
   const refinements = density.slice(density.lastIndexOf('/* Diary composer refinement. */'));
-  assert.match(refinements, /#view-diary \.diary-note-composer-actions\\s*\\{[^}]*position: absolute/s);
-  assert.match(refinements, /#view-diary \.diary-note-composer-input\\s*\\{[^}]*padding: \.72rem \.78rem 3rem/s);
-  assert.match(refinements, /#view-diary \.diary-add-note-button\\s*\\{[^}]*width: fit-content !important;[^}]*min-height: 36px !important;[^}]*font-size: \.68rem !important/s);
+  assert.match(refinements, /#view-diary \.diary-note-composer-actions\s*\{[^}]*position: absolute/s);
+  assert.match(refinements, /#view-diary \.diary-note-composer-input\s*\{[^}]*padding: \.72rem \.78rem 3rem/s);
+  assert.match(refinements, /#view-diary \.diary-add-note-button\s*\{[^}]*width: fit-content !important;[^}]*min-height: 36px !important;[^}]*font-size: \.68rem !important/s);
 });
 
 test('bold text and primary action labels use a more restrained type scale', () => {
   const refinements = density.slice(density.lastIndexOf('/* Diary composer refinement. */'));
-  assert.match(refinements, /\.text-sm\\.font-bold,[\\s\\S]*?font-size: \.76rem !important/);
-  assert.match(refinements, /#little-garden \.garden-action-button,[\\s\\S]*?font-size: \.72rem !important;\\s*font-weight: 600 !important/);
-  assert.match(refinements, /#view-diary \.diary-note-composer-label\\s*\\{[^}]*font-size: \.62rem;[^}]*font-weight: 600/s);
+  assert.match(refinements, /\.text-sm\.font-bold,[\s\S]*?font-size: \.76rem !important/);
+  assert.match(refinements, /#little-garden \.garden-action-button,[\s\S]*?font-size: \.72rem !important;\s*font-weight: 600 !important/);
+  assert.match(refinements, /#view-diary \.diary-note-composer-label\s*\{[^}]*font-size: \.62rem;[^}]*font-weight: 600/s);
 });
