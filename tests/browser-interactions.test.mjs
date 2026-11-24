@@ -801,16 +801,17 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
         }
 
         if (step === 3 && profile.viewport.width >= 481 && profile.viewport.width < 768) {
-          const actionRow = card.locator('.ff-guide-row').first();
+          const actionRow = card.locator('.guided-task-row').first();
           const rowMetrics = await actionRow.evaluate(element => {
             const style = getComputedStyle(element);
             const rect = element.getBoundingClientRect();
-            const button = element.querySelector('button');
+            const button = element.querySelector('.guide-quote-launch');
             const buttonStyle = button ? getComputedStyle(button) : null;
             const buttonRect = button?.getBoundingClientRect();
             return {
               display: style.display,
               width: rect.width,
+              cardWidth: element.closest('.step-card').getBoundingClientRect().width,
               paddingTop: parseFloat(style.paddingTop),
               paddingLeft: parseFloat(style.paddingLeft),
               buttonHeight: buttonRect?.height ?? 0,
@@ -819,19 +820,19 @@ test('Chromium: checklist controls remain clickable across laptop viewport and d
               buttonFlexGrow: parseFloat(buttonStyle?.flexGrow || '0')
             };
           });
-          assert.equal(rowMetrics.display, 'inline-flex',
-            profile.name + ': compact tablet action frames must retain their current layout');
-          assert.ok(rowMetrics.width <= densityMetrics.cardWidth * .86,
-            profile.name + ': compact tablet action frames must remain content-sized');
+          assert.equal(rowMetrics.display, 'flex',
+            profile.name + ': task action rows must use the shared flat flex layout');
+          assert.ok(rowMetrics.width >= rowMetrics.cardWidth * .9,
+            profile.name + ': task action rows must span the available card width');
           assert.ok(rowMetrics.paddingTop <= 8.5 && rowMetrics.paddingLeft <= 12.5,
-            profile.name + ': action-row padding must stay within the updated 8px by 12px spacing scale');
+            profile.name + ': task rows must stay within the compact spacing scale');
           assert.equal(rowMetrics.buttonFlexGrow, 0,
-            profile.name + ': action button must not expand inside its frame');
+            profile.name + ': task quote button must remain content-sized');
           assert.ok(rowMetrics.buttonPaddingTop <= 9.5
               && rowMetrics.buttonPaddingLeft <= 16.5,
-            profile.name + ': action button padding must match the updated 9px by 16px spacing scale');
+            profile.name + ': task quote button padding must remain compact');
           assert.ok(rowMetrics.buttonHeight >= 36 && rowMetrics.buttonHeight <= 44,
-            profile.name + ': action button height must stay within its compact touch-size range');
+            profile.name + ': task quote button height must stay within its compact touch-size range');
         }
         const launchers = card.locator('.guide-quote-launch:not([hidden])');
         if (await launchers.count()) {
