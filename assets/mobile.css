@@ -870,3 +870,112 @@ body { line-height: var(--ff-ui-body-leading); }
     padding-inline: .45rem !important;
   }
 }
+
+
+/* Diary composer refinement. */
+#little-garden .text-xs.font-bold,
+#little-garden .text-xs.font-extrabold { font-size: .68rem !important; }
+#little-garden .text-sm.font-bold,
+#little-garden .text-sm.font-extrabold { font-size: .76rem !important; }
+#little-garden .text-base.font-bold,
+#little-garden .text-base.font-extrabold { font-size: .88rem !important; }
+#little-garden .text-lg.font-bold,
+#little-garden .text-lg.font-extrabold { font-size: .98rem !important; }
+#little-garden .text-xl.font-bold,
+#little-garden .text-xl.font-extrabold { font-size: 1.12rem !important; }
+#little-garden .text-2xl.font-bold,
+#little-garden .text-2xl.font-extrabold { font-size: 1.32rem !important; }
+#little-garden .text-3xl.font-bold,
+#little-garden .text-3xl.font-extrabold { font-size: 1.58rem !important; }
+#little-garden .text-4xl.font-bold,
+#little-garden .text-4xl.font-extrabold { font-size: 1.9rem !important; }
+
+#view-checklist .checklist-header-button,
+#view-checklist .checklist-step-navigation button,
+#little-garden .garden-action-button,
+#little-garden .garden-small-button,
+#view-diary .diary-notebook-button,
+#view-diary .diary-update-button,
+#view-diary #record-btn {
+  font-size: .72rem !important;
+  font-weight: 600 !important;
+  letter-spacing: normal !important;
+}
+
+#view-diary .diary-additional-notes-header h3,
+#view-diary #diary-location-history-heading,
+#view-diary #diary-voice-notes-heading {
+  font-size: .74rem !important;
+  font-weight: 600 !important;
+}
+
+#view-diary .diary-archive-heading {
+  font-size: .9rem;
+  font-weight: 650;
+}
+#view-diary .diary-archive-entry-date {
+  font-size: .86rem;
+  font-weight: 650;
+}
+
+#view-diary .diary-note-composer {
+  position: relative;
+  width: 100% !important;
+  max-width: none;
+  margin: .55rem 0 0;
+  padding: 0 !important;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+#view-diary .diary-note-composer-label {
+  margin-bottom: .35rem;
+  font-size: .62rem;
+  font-weight: 600;
+}
+
+#view-diary .diary-note-composer-input {
+  min-height: 7rem;
+  padding: .72rem .78rem 3rem !important;
+  border: 1px solid rgba(112, 157, 188, .5) !important;
+  border-radius: 13px 10px 15px 11px / 10px 14px 11px 13px;
+  background-color: rgba(255, 254, 247, .97) !important;
+  background-image:
+    repeating-linear-gradient(to bottom, transparent 0, transparent 25px, rgba(107, 157, 188, .16) 25px, rgba(107, 157, 188, .16) 26px),
+    radial-gradient(ellipse at 94% 5%, rgba(244, 214, 139, .16), transparent 42%),
+    linear-gradient(145deg, rgba(255, 255, 255, .94), rgba(239, 247, 250, .92)) !important;
+  box-shadow: inset 0 1px 7px rgba(79, 125, 155, .07), 0 2px 5px rgba(55, 99, 126, .05);
+  box-sizing: border-box;
+}
+
+#view-diary .diary-note-composer-actions {
+  position: absolute;
+  right: .68rem;
+  bottom: .68rem;
+  z-index: 1;
+  margin: 0;
+}
+
+#view-diary .diary-add-note-button {
+  width: fit-content !important;
+  min-width: 3.2rem;
+  min-height: 36px !important;
+  padding: .24rem .68rem !important;
+  border: 1px solid rgba(98, 148, 181, .52);
+  border-radius: 10px 8px 12px 9px;
+  background:
+    radial-gradient(ellipse at 94% 6%, rgba(244, 214, 139, .28), transparent 48%),
+    linear-gradient(145deg, rgba(255, 255, 255, .97), rgba(232, 244, 250, .96));
+  color: #254f69;
+  font-size: .68rem !important;
+  font-weight: 600 !important;
+  letter-spacing: .025em;
+  box-shadow: 0 1px 3px rgba(55, 99, 126, .08);
+}
+
+#view-diary .diary-note-card-label {
+  font-size: .58rem;
+  font-weight: 600;
+}
