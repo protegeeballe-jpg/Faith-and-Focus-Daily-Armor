@@ -884,23 +884,25 @@
                 <button id="bible-reader-close" type="button" class="bible-reader-close" aria-label="Close Bible Reader" title="Close Bible Reader">×</button>
             </header>
             <div class="bible-reader-content">
-                <section class="bible-reader-version-control" aria-label="Bible version preference">
-                    <label for="bible-reader-version">Default Bible Version</label>
-                    <select id="bible-reader-version">
-                        <option value="english_web">World English Bible (WEB)</option>
-                    </select>
-                    <p id="bible-reader-default-status" role="status">Default on this device: World English Bible (WEB)</p>
-                </section>
-                <div class="bible-reader-reference-controls" aria-label="Scripture passage">
-                    <label for="bible-reader-book">Book
-                        <select id="bible-reader-book"><option value="">Book</option></select>
-                    </label>
-                    <label for="bible-reader-chapter">Chapter
-                        <select id="bible-reader-chapter"><option value="">Chapter</option></select>
-                    </label>
-                    <label for="bible-reader-verse">Verse
-                        <select id="bible-reader-verse"><option value="">Verse</option></select>
-                    </label>
+                <div class="bible-reader-controls" aria-label="Bible version and passage controls">
+                    <section class="bible-reader-version-control" aria-label="Bible version preference">
+                        <label for="bible-reader-version">Default Bible Version</label>
+                        <select id="bible-reader-version">
+                            <option value="english_web">World English Bible (WEB)</option>
+                        </select>
+                        <p id="bible-reader-default-status" role="status">Default on this device: World English Bible (WEB)</p>
+                    </section>
+                    <div class="bible-reader-reference-controls" aria-label="Scripture passage">
+                        <label for="bible-reader-book">Book
+                            <select id="bible-reader-book"><option value="">Book</option></select>
+                        </label>
+                        <label for="bible-reader-chapter">Chapter
+                            <select id="bible-reader-chapter"><option value="">Chapter</option></select>
+                        </label>
+                        <label for="bible-reader-verse">Verse
+                            <select id="bible-reader-verse"><option value="">Verse</option></select>
+                        </label>
+                    </div>
                 </div>
                 <p id="bible-reader-status" class="bible-reader-status" role="status" aria-live="polite">Your Bible will load when you open Read &amp; Reflect.</p>
                 <section class="bible-reader-passage-region" aria-label="Selected Scripture passage">
@@ -908,7 +910,6 @@
                     <div id="bible-reading-text" class="bible-reader-passage"></div>
                 </section>
                 <footer class="bible-reader-actions">
-                    <button id="bible-reader-retry-btn" type="button" class="bible-reader-retry" hidden>Retry Loading</button>
                     <button id="bible-reader-complete-btn" type="button" class="bible-reader-complete" disabled>I've Read &amp; Reflected</button>
                 </footer>
             </div>
