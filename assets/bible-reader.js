@@ -212,12 +212,11 @@ export function createBibleReader({
     const heading = documentRef.getElementById('bible-reading-heading');
     const passage = documentRef.getElementById('bible-reading-text');
     const completeButton = documentRef.getElementById('bible-reader-complete-btn');
-    const retryButton = documentRef.getElementById('bible-reader-retry-btn');
     const closeButton = documentRef.getElementById('bible-reader-close');
 
     const required = [
         dialog, versionSelect, bookSelect, chapterSelect, verseSelect,
-        status, defaultStatus, heading, passage, completeButton, retryButton, closeButton
+        status, defaultStatus, heading, passage, completeButton, closeButton
     ];
     if (required.some(element => !element)) {
         throw new Error('The Bible reader interface is incomplete.');
@@ -429,7 +428,6 @@ export function createBibleReader({
         activeController = controller;
         activeVersionId = versionId;
         completeButton.disabled = true;
-        retryButton.hidden = true;
         setStatus('Loading ' + version.name + '…');
 
         try {
@@ -460,8 +458,7 @@ export function createBibleReader({
             activeController = null;
                 activeIndex = null;
             clearPassage();
-            retryButton.hidden = false;
-            setStatus(error?.message || 'The Bible version could not be loaded. Please try again.', 'error');
+            setStatus((error?.message || 'The Bible version could not be loaded.') + ' Close and reopen Read & Reflect to try again.', 'error');
         }
     }
 
@@ -483,7 +480,6 @@ export function createBibleReader({
         const savedVersion = safeStorageRead(storage, BIBLE_DEFAULT_STORAGE_KEY);
         versionSelect.value = savedVersion;
         updateDefaultStatus(savedVersion);
-        retryButton.hidden = true;
 
         if (!dialog.open) {
             if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -526,12 +522,6 @@ export function createBibleReader({
         populateVerseOptions(getSelectedBookName(), getSelectedChapter(), 1);
     });
     verseSelect.addEventListener('change', () => highlightSelectedVerse({ scroll: true }));
-    retryButton.addEventListener('click', () => {
-        const versionId = versionsById.has(versionSelect.value)
-            ? versionSelect.value
-            : BIBLE_DEFAULT_VERSION;
-        loadVersion(versionId);
-    });
     closeButton.addEventListener('click', close);
     completeButton.addEventListener('click', () => {
         if (!activeIndex || !currentTaskId || completeButton.disabled) return;
