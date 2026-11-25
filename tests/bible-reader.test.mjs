@@ -96,4 +96,8 @@ test('Bible data is lazy, released on close, and excluded from service-worker ca
     assert.doesNotMatch(worker, /\.\/bible\/[^']+\.json/);
     assert.match(css, /\.bible-reader-dialog\s*\{/);
     assert.match(css, /\.bible-reader-verse\.is-selected\s*\{/);
+    assert.match(css, /\.bible-reader-content\{[^}]*flex:1 1 auto[^}]*overflow:hidden/);
+    assert.match(css, /\.bible-reader-passage-region\{[^}]*flex:1 1 0/);
+    assert.match(css, /\.bible-reader-passage\{[^}]*flex:1 1 auto[^}]*max-height:none/);
+    assert.doesNotMatch(html, /bible-reader-retry-btn/);
 });
