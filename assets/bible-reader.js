@@ -208,16 +208,14 @@ export function createBibleReader({
     const chapterSelect = documentRef.getElementById('bible-reader-chapter');
     const verseSelect = documentRef.getElementById('bible-reader-verse');
     const status = documentRef.getElementById('bible-reader-status');
-    const defaultStatus = documentRef.getElementById('bible-reader-default-status');
     const heading = documentRef.getElementById('bible-reading-heading');
     const passage = documentRef.getElementById('bible-reading-text');
     const completeButton = documentRef.getElementById('bible-reader-complete-btn');
-    const retryButton = documentRef.getElementById('bible-reader-retry-btn');
     const closeButton = documentRef.getElementById('bible-reader-close');
 
     const required = [
         dialog, versionSelect, bookSelect, chapterSelect, verseSelect,
-        status, defaultStatus, heading, passage, completeButton, retryButton, closeButton
+        status, heading, passage, completeButton, closeButton
     ];
     if (required.some(element => !element)) {
         throw new Error('The Bible reader interface is incomplete.');
@@ -251,13 +249,6 @@ export function createBibleReader({
         activeVersionId = null;
         activeIndex = null;
         clearPassage();
-    }
-
-    function updateDefaultStatus(versionId) {
-        const version = versionsById.get(versionId);
-        if (version) {
-            defaultStatus.textContent = 'Default on this device: ' + version.name;
-        }
     }
 
     function populateVersionOptions() {
@@ -429,7 +420,6 @@ export function createBibleReader({
         activeController = controller;
         activeVersionId = versionId;
         completeButton.disabled = true;
-        retryButton.hidden = true;
         setStatus('Loading ' + version.name + '…');
 
         try {
@@ -454,14 +444,12 @@ export function createBibleReader({
 
             activeController = null;
             populateBooks(preferredBook, preferredChapter, preferredVerse);
-            updateDefaultStatus(versionId);
         } catch (error) {
             if (controller.signal.aborted || sequence !== loadSequence) return;
             activeController = null;
                 activeIndex = null;
             clearPassage();
-            retryButton.hidden = false;
-            setStatus(error?.message || 'The Bible version could not be loaded. Please try again.', 'error');
+            setStatus((error?.message || 'The Bible version could not be loaded.') + ' Close and reopen Read & Reflect to try again.', 'error');
         }
     }
 
@@ -482,8 +470,6 @@ export function createBibleReader({
         currentTaskId = taskId;
         const savedVersion = safeStorageRead(storage, BIBLE_DEFAULT_STORAGE_KEY);
         versionSelect.value = savedVersion;
-        updateDefaultStatus(savedVersion);
-        retryButton.hidden = true;
 
         if (!dialog.open) {
             if (typeof dialog.showModal === 'function') dialog.showModal();
@@ -505,7 +491,6 @@ export function createBibleReader({
         };
 
         const saved = safeStorageWrite(storage, BIBLE_DEFAULT_STORAGE_KEY, versionId);
-        updateDefaultStatus(versionId);
         setStatus(saved
             ? 'Your preferred Bible version has been saved on this device.'
             : 'This version is selected, but your browser could not save the default preference.');
@@ -526,12 +511,6 @@ export function createBibleReader({
         populateVerseOptions(getSelectedBookName(), getSelectedChapter(), 1);
     });
     verseSelect.addEventListener('change', () => highlightSelectedVerse({ scroll: true }));
-    retryButton.addEventListener('click', () => {
-        const versionId = versionsById.has(versionSelect.value)
-            ? versionSelect.value
-            : BIBLE_DEFAULT_VERSION;
-        loadVersion(versionId);
-    });
     closeButton.addEventListener('click', close);
     completeButton.addEventListener('click', () => {
         if (!activeIndex || !currentTaskId || completeButton.disabled) return;
@@ -552,7 +531,6 @@ export function createBibleReader({
     populateVersionOptions();
     const initialVersion = safeStorageRead(storage, BIBLE_DEFAULT_STORAGE_KEY);
     versionSelect.value = initialVersion;
-    updateDefaultStatus(initialVersion);
     clearPassage();
     setStatus('Your Bible will load when you open Read & Reflect.');
 
