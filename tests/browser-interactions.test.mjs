@@ -1273,7 +1273,7 @@ test('Chromium: Read & Reflect loads Scripture on demand, remembers the default 
     await host.close();
   });
 
-  const context = await browser.newContext({serviceWorkers: 'block'});
+  const context = await browser.newContext({serviceWorkers: 'block', viewport: {width: 390, height: 844}});
   const page = await context.newPage();
   const bibleRequests = [];
   const pageErrors = [];
@@ -1314,6 +1314,25 @@ test('Chromium: Read & Reflect loads Scripture on demand, remembers the default 
     document.querySelector('#bible-reader-book')?.options.length > 1
     && document.querySelector('#bible-reader-complete-btn')?.disabled === false
   );
+  const phoneLayout = await page.evaluate(() => {
+    const dialog = document.querySelector('#bible-reader-dialog');
+    const passage = document.querySelector('#bible-reading-text');
+    return {
+      viewportHeight: window.innerHeight,
+      dialogHeight: dialog.getBoundingClientRect().height,
+      dialogWidth: dialog.getBoundingClientRect().width,
+      viewportWidth: window.innerWidth,
+      passageHeight: passage.getBoundingClientRect().height
+    };
+  });
+  assert.ok(phoneLayout.dialogHeight >= phoneLayout.viewportHeight * .9,
+    'The mobile Bible reader must use nearly the full available screen height');
+  assert.ok(phoneLayout.passageHeight >= phoneLayout.dialogHeight * .52,
+    'The mobile Scripture pane must receive most of the reader panel height');
+  assert.ok(phoneLayout.dialogWidth >= phoneLayout.viewportWidth - 20,
+    'The mobile reader panel must retain its existing near-full width');
+
+
   assert.deepEqual(bibleRequests, ['english_web.json'],
     'Opening the Bible must fetch only the selected default translation');
   assert.equal(await page.locator('#bible-reader-version').inputValue(), 'english_web');
@@ -1335,6 +1354,24 @@ test('Chromium: Read & Reflect loads Scripture on demand, remembers the default 
   assert.equal(await selectedVerse.evaluate(element => element.classList.contains('is-selected')), true,
     'The selected Book, Chapter, and Verse must be clearly highlighted');
   assert.match(await selectedVerse.textContent(), /SALIN: The woman conceived/);
+
+  await page.setViewportSize({width: 1280, height: 800});
+  const desktopLayout = await page.evaluate(() => {
+    const dialog = document.querySelector('#bible-reader-dialog');
+    const passage = document.querySelector('#bible-reading-text');
+    return {
+      viewportHeight: window.innerHeight,
+      dialogHeight: dialog.getBoundingClientRect().height,
+      dialogWidth: dialog.getBoundingClientRect().width,
+      passageHeight: passage.getBoundingClientRect().height
+    };
+  });
+  assert.ok(desktopLayout.dialogHeight >= desktopLayout.viewportHeight * .9,
+    'The desktop Bible reader must also use nearly the full available screen height');
+  assert.ok(desktopLayout.passageHeight >= desktopLayout.dialogHeight * .52,
+    'The desktop Scripture pane must receive most of the reader panel height');
+  assert.ok(desktopLayout.dialogWidth <= 760,
+    'The desktop reader must keep the established maximum panel width');
 
   await page.locator('#bible-reader-complete-btn').click();
   await page.waitForFunction(() => document.querySelector('#bible-reader-dialog')?.open === false);
