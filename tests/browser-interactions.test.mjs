@@ -1317,16 +1317,22 @@ test('Chromium: Read & Reflect loads Scripture on demand, remembers the default 
   const phoneLayout = await page.evaluate(() => {
     const dialog = document.querySelector('#bible-reader-dialog');
     const passage = document.querySelector('#bible-reading-text');
+    const content = document.querySelector('.bible-reader-content');
+    const passageRegion = document.querySelector('.bible-reader-passage-region');
     return {
       viewportHeight: window.innerHeight,
       dialogHeight: dialog.getBoundingClientRect().height,
       dialogWidth: dialog.getBoundingClientRect().width,
       viewportWidth: window.innerWidth,
+      contentHeight: content.getBoundingClientRect().height,
+      passageRegionHeight: passageRegion.getBoundingClientRect().height,
       passageHeight: passage.getBoundingClientRect().height
     };
   });
   assert.ok(phoneLayout.dialogHeight >= phoneLayout.viewportHeight * .9,
     'The mobile Bible reader must use nearly the full available screen height');
+  assert.ok(phoneLayout.passageRegionHeight >= phoneLayout.contentHeight * .7,
+    'The mobile Scripture region must use at least 70% of the reader content area');
   assert.ok(phoneLayout.passageHeight >= phoneLayout.dialogHeight * .52,
     'The mobile Scripture pane must receive most of the reader panel height');
   assert.ok(phoneLayout.dialogWidth >= phoneLayout.viewportWidth - 20,
@@ -1359,15 +1365,21 @@ test('Chromium: Read & Reflect loads Scripture on demand, remembers the default 
   const desktopLayout = await page.evaluate(() => {
     const dialog = document.querySelector('#bible-reader-dialog');
     const passage = document.querySelector('#bible-reading-text');
+    const content = document.querySelector('.bible-reader-content');
+    const passageRegion = document.querySelector('.bible-reader-passage-region');
     return {
       viewportHeight: window.innerHeight,
       dialogHeight: dialog.getBoundingClientRect().height,
       dialogWidth: dialog.getBoundingClientRect().width,
+      contentHeight: content.getBoundingClientRect().height,
+      passageRegionHeight: passageRegion.getBoundingClientRect().height,
       passageHeight: passage.getBoundingClientRect().height
     };
   });
   assert.ok(desktopLayout.dialogHeight >= desktopLayout.viewportHeight * .9,
     'The desktop Bible reader must also use nearly the full available screen height');
+  assert.ok(desktopLayout.passageRegionHeight >= desktopLayout.contentHeight * .7,
+    'The desktop Scripture region must use at least 70% of the reader content area');
   assert.ok(desktopLayout.passageHeight >= desktopLayout.dialogHeight * .52,
     'The desktop Scripture pane must receive most of the reader panel height');
   assert.ok(desktopLayout.dialogWidth <= 760,
